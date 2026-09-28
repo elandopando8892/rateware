@@ -18,8 +18,8 @@ assert.ok(['127.0.0.1', 'localhost'].includes(parsedUrl.hostname), 'Refusing a n
 const functionUrl = new URL('/functions/v1/rfx-bid-api', apiUrl);
 const runId = randomUUID();
 const ids = {
-  vendorA: randomUUID(), vendorB: randomUUID(), event: randomUUID(), lane: randomUUID(),
-  invitationA: randomUUID(), invitationB: randomUUID()
+  vendorA: randomUUID(), vendorB: randomUUID(), event: randomUUID(), lane: randomUUID(), laneB: randomUUID(),
+  invitationA: randomUUID(), invitationB: randomUUID(), invitationB2: randomUUID()
 };
 const tokens = { a: `ci-peek-a-${runId}`, b: `ci-peek-b-${runId}` };
 const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
@@ -96,13 +96,16 @@ try {
     owner_email: 'owner@example.invalid', customer: 'Synthetic CI customer', status: 'open',
     due_date: '2099-12-31', bid_visibility_mode: 'private'
   } });
-  await rest('rfx_lanes', { method: 'POST', body: {
-    id: ids.lane, rfx_event_id: ids.event, lane_number: 1,
-    origin: 'Synthetic origin', destination: 'Synthetic destination', equipment: 'Dry Van'
-  } });
+  await rest('rfx_lanes', { method: 'POST', body: [
+    { id: ids.lane, rfx_event_id: ids.event, lane_number: 1,
+      origin: 'Synthetic origin', destination: 'Synthetic destination', equipment: 'Dry Van' },
+    { id: ids.laneB, rfx_event_id: ids.event, lane_number: 2,
+      origin: 'B-only origin', destination: 'B-only destination', equipment: 'Reefer' }
+  ] });
   await rest('rfx_lane_vendors', { method: 'POST', body: [
     { id: ids.invitationA, rfx_event_id: ids.event, rfx_lane_id: ids.lane, vendor_id: ids.vendorA, invitation_status: 'invited', invitation_token: tokens.a },
-    { id: ids.invitationB, rfx_event_id: ids.event, rfx_lane_id: ids.lane, vendor_id: ids.vendorB, invitation_status: 'invited', invitation_token: tokens.b }
+    { id: ids.invitationB, rfx_event_id: ids.event, rfx_lane_id: ids.lane, vendor_id: ids.vendorB, invitation_status: 'invited', invitation_token: tokens.b },
+    { id: ids.invitationB2, rfx_event_id: ids.event, rfx_lane_id: ids.laneB, vendor_id: ids.vendorB, invitation_status: 'invited', invitation_token: `ci-peek-b2-${runId}` }
   ] });
 
   const beforeA = await invitationSnapshot(ids.invitationA);
@@ -115,8 +118,17 @@ try {
     assert.ok(Array.isArray(result.body.carrier_book?.invited));
     assert.ok(result.body.carrier_book.invited.some((row) => row.invitation_id === ownId));
     assert.ok(result.body.carrier_book.invited.every((row) => row.invitation_id !== otherId));
+    assert.deepEqual(result.body.carrier_book.open_not_invited, []);
+    assert.equal(result.body.carrier_book.summary.not_invited_open, 0);
+    if (ownId === ids.invitationA) {
+      assert.ok(!JSON.stringify(result.body).includes(ids.laneB), 'Carrier A must not see B-only lane');
+      assert.ok(!JSON.stringify(result.body).includes(ids.invitationB2), 'Carrier A must not see B-only invitation');
+    } else {
+      assert.ok(result.body.carrier_book.invited.some((row) => row.invitation_id === ids.invitationB2), 'Carrier B must see its own second lane');
+    }
     assert.ok(!JSON.stringify(result.body).includes(tokens.a));
     assert.ok(!JSON.stringify(result.body).includes(tokens.b));
+    assert.ok(!JSON.stringify(result.body).includes(`ci-peek-b2-${runId}`));
     assert.ok(!('segment_confirmations' in result.body));
     assert.ok(!('bid_history' in result.body));
   }

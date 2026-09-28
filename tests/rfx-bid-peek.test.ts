@@ -90,6 +90,9 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
     const fullPayload = await fullResponse.json();
     assertEquals(fullPayload.carrier_book.invited[0].invitation_id, "invitation-a");
     assertEquals(fullPayload.carrier_book.invited.length, 1);
+    assertEquals(fullPayload.carrier_book.open_not_invited.length, 0);
+    assertEquals(fullPayload.carrier_book.summary.not_invited_open, 0);
+    assertEquals(queries.some((query) => new URL(query.url).pathname.endsWith("/rfx_lanes")), false);
     assertEquals(tokenPaths(fullPayload).join(","), "");
     assertEquals("bid_history" in fullPayload, false);
     assertEquals("segment_confirmations" in fullPayload, false);

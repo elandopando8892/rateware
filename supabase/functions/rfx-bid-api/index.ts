@@ -4965,7 +4965,9 @@ Deno.serve(async (request) => {
         !readOnlyPeek
       );
 
-      const openLanesResult = ownerEmail
+      // A Loads peek is strictly vendor-bound: unrelated open lanes from the
+      // same RFx owner are not part of this carrier's private invitation book.
+      const openLanesResult = readOnlyPeek ? { data: [], error: null } : ownerEmail
         ? await supabase
             .from("rfx_lanes")
             .select(`
