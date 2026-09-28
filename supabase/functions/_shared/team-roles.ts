@@ -8,8 +8,9 @@
  *   admin     everything.
  *   operator  day-to-day work: builds and runs events and quotes, talks to
  *             carriers and shippers. Doesn't award or hand awards to rateware,
- *             archive, restore or delete records, change the shared catalog,
- *             revoke what a shipper was given, or disconnect an integration.
+ *             publish a Ratebook, archive, restore or delete records, change the
+ *             shared catalog, revoke what a shipper was given, or disconnect an
+ *             integration.
  *   viewer    reads only.
  *
  * Only accounts that belong to an organization are held to a role, and one of
@@ -62,9 +63,9 @@ const READS: Record<string, ReadonlySet<string>> = {
 /** An Administrador's decisions. */
 const ADMIN: Record<string, ReadonlySet<string>> = {
   "rateware-api": new Set([
-    // Awarding, and handing the awards to rateware
+    // Awarding, handing the awards to rateware, and publishing the Ratebook (decided 2026-09-27)
     "award_rfx_lane_vendor", "clear_rfx_award", "closeout_awarded_rfx_to_rateware", "create_rfx_award_package",
-    "generate_rfx_award_notices", "mark_rfx_award_package_implementation_ready",
+    "generate_rfx_award_notices", "mark_rfx_award_package_implementation_ready", "publish_ratebook",
     // Archiving, restoring and deleting records
     "archive_rfx_event", "delete_rfx_event", "archive_carrier_list_template", "restore_carrier_list_template",
     "delete_vendor_segment", "remove_vendors", "archive_shippers", "delete_shipper_record", "archive_ratebook",
