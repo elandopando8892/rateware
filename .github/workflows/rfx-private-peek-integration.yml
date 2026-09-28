@@ -1,0 +1,40 @@
+name: rfx-private-peek-integration
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/rfx-bid-api/**"
+      - "supabase/functions/_shared/**"
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
+      - "tools/test-rfx-bid-peek-local.mjs"
+      - ".github/workflows/rfx-private-peek-integration.yml"
+  workflow_dispatch:
+
+jobs:
+  private-peek:
+    name: Isolated private invitation integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
+        with:
+          version: 2.114.0
+
+      - name: Start isolated local Supabase stack
+        env:
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
+        run: supabase start
+
+      - name: Exercise real Edge function and local database
+        env:
+          RFX_PEEK_LOCAL_ONLY: "1"
+        run: node tools/test-rfx-bid-peek-local.mjs
+
+      - name: Stop isolated Supabase stack
+        if: always()
+        run: supabase stop --no-backup || true
