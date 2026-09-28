@@ -29,7 +29,7 @@ Deno.test("what each action asks of the role", () => {
   assertEquals(teamRoleNeed("rateware-api", "invite_rfx_lane_vendors"), "operate");
   assertEquals(teamRoleNeed("rateware-api", "suppress_outreach_contact"), "operate", "an opt-out is anyone's to record");
   assertEquals(teamRoleNeed("rateware-api", "update_onboarding_task"), "operate", "the contract calls it a read, but it writes");
-  for (const action of ["award_rfx_lane_vendor", "closeout_awarded_rfx_to_rateware", "archive_rfx_event", "save_catalog_value", "remove_vendors"]) {
+  for (const action of ["award_rfx_lane_vendor", "closeout_awarded_rfx_to_rateware", "publish_ratebook", "archive_rfx_event", "save_catalog_value", "remove_vendors"]) {
     assertEquals(teamRoleNeed("rateware-api", action), "admin", action);
   }
   assertEquals(teamRoleNeed("rateware-api", "update_rfx_event", { patch: { status: "closed" } }), "admin", "closing hands the awards to rateware");
