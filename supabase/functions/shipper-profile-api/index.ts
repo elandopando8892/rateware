@@ -94,6 +94,8 @@ function publicLocation(row: Record<string, unknown>) {
     id: row.id, location_name: row.location_name, location_type: row.location_type,
     city: row.city, state_code: row.state_code, country_code: row.country_code, postal_code: row.postal_code,
     address_line_1: row.address_line_1, address_line_2: row.address_line_2,
+    // submit_profile writes the site contact back, so it has to come out too.
+    contact_name: row.contact_name, contact_email: row.contact_email, contact_phone: row.contact_phone,
     operating_hours: row.operating_hours, appointment_required: row.appointment_required,
     handling_type: row.handling_type, notes: row.notes
   };
