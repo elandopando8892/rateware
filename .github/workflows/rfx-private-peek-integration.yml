@@ -30,6 +30,13 @@ jobs:
           SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
         run: supabase start
 
+      - name: Inspect service-role grants used by the private book
+        run: |
+          docker exec supabase_db_alqjqzqagdmcywpjtnnr psql -U postgres -d postgres -Atc \
+            "select relname || '=' || has_table_privilege('service_role', 'public.' || relname, 'SELECT')
+             from pg_class where relnamespace = 'public'::regnamespace
+             and relname in ('vendors','rfx_events','rfx_lanes','rfx_lane_vendors') order by relname;"
+
       - name: Exercise real Edge function and local database
         env:
           RFX_PEEK_LOCAL_ONLY: "1"

@@ -48,7 +48,7 @@ async function peek(token) {
 
 async function waitForFunction() {
   let lastResult = 'no response';
-  for (let attempt = 0; attempt < 60; attempt++) {
+  for (let attempt = 0; attempt < 15; attempt++) {
     if (serve.exitCode !== null) {
       const safeDiagnostics = serveDiagnostics.replaceAll(serviceKey, '[redacted]').slice(-3000);
       throw new Error(`Edge server exited with ${serve.exitCode}: ${safeDiagnostics}`);
@@ -61,7 +61,7 @@ async function waitForFunction() {
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   const safeDiagnostics = `LAST_RESPONSE: ${lastResult}`.replaceAll(serviceKey, '[redacted]').slice(-3000);
-  throw new Error(`Local rfx-bid-api did not become ready within 60 seconds: ${safeDiagnostics}`);
+  throw new Error(`Local rfx-bid-api did not become ready within 15 seconds: ${safeDiagnostics}`);
 }
 
 async function invitationSnapshot(id) {
