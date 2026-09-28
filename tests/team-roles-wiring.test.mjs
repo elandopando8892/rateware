@@ -27,6 +27,9 @@ for (const action of [
 }
 assert.match(roles, /"rateware-api\.update_rfx_event": new Set\(\["archived", "draft", "closed", "awarded"\]\)/);
 assert.match(roles, /"quotedesk-api\.set_quote_status": new Set\(\["archived", "new"\]\)/);
+for (const action of ["update_staging", "bulk_update_staging", "bulk_update_rate_rows_by_filter"]) {
+  assert.match(roles, new RegExp(`"rateware-api\\.${action}": new Set\\(\\["approved"\\]\\)`), `approving through ${action} is an Administrador's`);
+}
 
 const api = read("supabase/functions/rateware-api/index.ts");
 const gate = api.indexOf('teamRoleDenial("rateware-api"');

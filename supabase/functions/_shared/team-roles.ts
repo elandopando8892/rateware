@@ -84,12 +84,16 @@ const ADMIN: Record<string, ReadonlySet<string>> = {
 /**
  * Statuses only an Administrador sets through a general update. In rateware,
  * closing an event IS the hand-off of its awards; "draft" and "new" restore an
- * event or a quote from the archive. "open" and the project review stages stay
- * day-to-day work.
+ * event or a quote from the archive; "approved" puts a staged rate in the rate
+ * base (decided 2026-09-28). "open", the project review stages, and correcting,
+ * rejecting or archiving a staged rate stay day-to-day work.
  */
 const ADMIN_STATUSES: Record<string, ReadonlySet<string>> = {
   "rateware-api.update_rfx_event": new Set(["archived", "draft", "closed", "awarded"]),
   "rateware-api.update_rfx_process_project": new Set(["archived"]),
+  "rateware-api.update_staging": new Set(["approved"]),
+  "rateware-api.bulk_update_staging": new Set(["approved"]),
+  "rateware-api.bulk_update_rate_rows_by_filter": new Set(["approved"]),
   "quotedesk-api.set_quote_status": new Set(["archived", "new"]),
 };
 

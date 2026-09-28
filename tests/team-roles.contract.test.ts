@@ -38,6 +38,12 @@ Deno.test("what each action asks of the role", () => {
   assertEquals(teamRoleNeed("rateware-api", "update_rfx_event", { patch: { name: "Renamed" } }), "operate");
   assertEquals(teamRoleNeed("rateware-api", "update_rfx_process_project", { status: "archived" }), "admin");
   assertEquals(teamRoleNeed("rateware-api", "update_rfx_process_project", { patch: { status: "bid_evaluation" } }), "operate");
+  assertEquals(teamRoleNeed("rateware-api", "update_staging", { id: "r-1", patch: { status: "approved" } }), "admin", "approving puts the rate in the rate base");
+  assertEquals(teamRoleNeed("rateware-api", "bulk_update_staging", { ids: ["r-1"], patch: { status: " Approved " } }), "admin");
+  assertEquals(teamRoleNeed("rateware-api", "bulk_update_rate_rows_by_filter", { filters: {}, patch: { status: "approved" } }), "admin");
+  assertEquals(teamRoleNeed("rateware-api", "update_staging", { id: "r-1", patch: { currency: "USD" } }), "operate", "correcting a staged rate");
+  assertEquals(teamRoleNeed("rateware-api", "bulk_update_staging", { ids: ["r-1"], patch: { status: "rejected" } }), "operate");
+  assertEquals(teamRoleNeed("rateware-api", "archive_staging", { ids: ["r-1"] }), "operate");
   assertEquals(teamRoleNeed("quotedesk-api", "set_quote_status", { status: "archived" }), "admin");
   assertEquals(teamRoleNeed("quotedesk-api", "set_quote_status", { status: "won" }), "operate");
   assertEquals(teamRoleNeed("quotedesk-api", "get_quote"), "read");
@@ -102,6 +108,15 @@ Deno.test("rateware-api refuses an operator's close, which hands the awards to r
   const result = await call({ ...org, roles: ["operator"] }, { action: "update_rfx_event", id: "e-1", patch: { status: "closed" } });
   assertEquals(result.status, 403);
   assertEquals(result.touched, []);
+});
+
+Deno.test("rateware-api refuses an operator's approval, which puts the rate in the rate base", async () => {
+  const approval = await call({ ...org, roles: ["operator"] }, { action: "update_staging", id: "r-1", patch: { status: "approved" } });
+  assertEquals(approval.status, 403);
+  assertEquals(approval.body.required, "admin");
+  assertEquals(approval.touched, []);
+  const correction = await call({ ...org, roles: ["operator"] }, { action: "update_staging", id: "r-1", patch: { currency: "USD" } });
+  assert(correction.status !== 403 && correction.touched.length > 0, "an operator still corrects a staged rate");
 });
 
 Deno.test("rateware-api lets an organization account without a role only read", async () => {
