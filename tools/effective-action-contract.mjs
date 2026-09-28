@@ -114,7 +114,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': 'ead08469fbde4cf0769bfead4991ead02a18dad24daf4e5f3048c4e9e605d18a',
+  'edge.rateware-api.': '54789c602dbfa6d38b47ea130c12bf8228df340920aaafbd2dea8855a964d83d',
   'edge.rfx-bid-api.': '3a4394c4405cf9c4f1a3b60d2ac653a09c2492fcb3b54bf89bffa834a9c47c4e',
   'edge.shipper-directory-api.': '529b561a078707872c24b999e1ed60c61ad2b024fcbfbdc4b9d3f121dca942cf',
   'edge.shipper-profile-api.': '501f2bec390dab9ecce5b9e6aac016683fb51d2c9f8afc0217b097912fe36949',
@@ -192,7 +192,7 @@ const oracleStorageSurfaceOverrides = {
 // read only by the reviewed source-file access check, and fcm.mjs reads free-text
 // equipment as the FCM's units. quotedesk-api's tenant scoping and permissions
 // are unchanged.
-const quotedeskAuthEnvelope = '2eca3a8db14c3165d2492fa600a900b114fe1b3cb0f964f382271d3020b8cee0';
+const quotedeskAuthEnvelope = '3082f57517e04cf92a6f467c6a7a60494990931703cb2e3d15fca51d3dbe30aa';
 
 const supabaseAuthMetadataOverrides = {
   'edge.google-chat-app.handle_chat_event': 'fd759bead6f0bfed76d9f70c962399ba7d815ef30f7a85491d68c4d5b088accf',
