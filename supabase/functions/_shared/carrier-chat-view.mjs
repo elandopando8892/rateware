@@ -42,6 +42,17 @@ export function carrierChatThread(thread) {
   };
 }
 
+// A message copied in from the team's Google Chat space belongs to a thread only
+// when it was written in that thread's own Google Chat conversation. The sync
+// used to drop the space's other conversations (other events, other carriers'
+// private threads, the team's own chat) into the event's shared thread.
+export function belongsToThread(thread, message) {
+  const meta = record(message?.metadata);
+  if (text(meta?.source) !== "google_chat_inbound") return true;
+  const own = text(thread?.google_chat_thread_name);
+  return Boolean(own) && text(meta?.google_chat_thread_name) === own;
+}
+
 export function carrierChatMessage(message) {
   const role = text(message?.sender_role)?.toLowerCase() || null;
   const vendor = record(message?.vendors);
