@@ -3875,7 +3875,7 @@ assert.match(bidRoomChatSnapshotMigration, /security invoker[\s\S]+set search_pa
 assert.match(bidRoomChatSnapshotMigration, /revoke all on function public\.rateware_bid_room_chat_snapshot[\s\S]+from public, anon, authenticated/, "Bid Room snapshot RPC should remain backend-only");
 assert.match(createRawUploadSource, /resolveSourceFileUser\(supabase, identity\)/, "Upload creation should enforce the reviewed tenant identity");
 assert.match(readFileSync(new URL("../supabase/functions/_shared/source-file-access.ts", import.meta.url), "utf8"), /resolveRuntimeWorkspaceUser\(client, sourceFileClaims\(claims\), \{\s*mode: "required"/, "Reviewed source-file access must resolve the canonical tenant in required mode");
-assert.match(interpretUploadSource, /resolveSourceFileUser\(supabase, await requireRatewareUser/, "Interpretation should enforce the reviewed tenant identity through the staged provider verifier");
+assert.match(interpretUploadSource, /identity = await requireRatewareUser\(request\);\s*user = await resolveSourceFileUser\(supabase, identity\)/, "Interpretation should enforce the reviewed tenant identity through the staged provider verifier");
 assert.match(canonicalWorkspaceMigration, /create table if not exists public\.workspace_registry/, "Canonical workspace ownership should be persisted");
 assert.match(canonicalWorkspaceMigration, /with recursive owner_edges as/, "Legacy owners should be discovered through existing vendor-rate relationships");
 assert.match(canonicalWorkspaceMigration, /rate_staging_vendor_workspace_guard/, "Staged rates should reject cross-workspace vendor links");

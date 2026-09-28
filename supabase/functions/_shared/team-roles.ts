@@ -66,9 +66,12 @@ const ADMIN: Record<string, ReadonlySet<string>> = {
     // Awarding, handing the awards to rateware, and publishing the Ratebook (decided 2026-09-27)
     "award_rfx_lane_vendor", "clear_rfx_award", "closeout_awarded_rfx_to_rateware", "create_rfx_award_package",
     "generate_rfx_award_notices", "mark_rfx_award_package_implementation_ready", "publish_ratebook",
-    // Archiving, restoring and deleting records
+    // Archiving, restoring and deleting records; merging shippers archives the duplicate
     "archive_rfx_event", "delete_rfx_event", "archive_carrier_list_template", "restore_carrier_list_template",
     "delete_vendor_segment", "remove_vendors", "archive_shippers", "delete_shipper_record", "archive_ratebook",
+    "merge_shipper_accounts",
+    // Taking approved rates out of the rate base (decided 2026-09-28)
+    "return_rateware_to_staging",
     "archive_outreach_campaign", "delete_outreach_campaign", "archive_outreach_template", "delete_outreach_template",
     // Taking back what a shipper was given
     "revoke_rfx_rfi_magic_link", "revoke_shipper_profile_request",
@@ -94,6 +97,7 @@ const ADMIN_STATUSES: Record<string, ReadonlySet<string>> = {
   "rateware-api.update_staging": new Set(["approved"]),
   "rateware-api.bulk_update_staging": new Set(["approved"]),
   "rateware-api.bulk_update_rate_rows_by_filter": new Set(["approved"]),
+  "rateware-api.update_shipper": new Set(["archived"]),
   "quotedesk-api.set_quote_status": new Set(["archived", "new"]),
 };
 
@@ -132,6 +136,24 @@ export function belongsToOrganization(claims: Record<string, unknown>) {
 
 export const teamRoleAllows = (role: TeamRole, need: TeamNeed) =>
   need === "read" || (need === "operate" ? role !== "viewer" : role === "admin");
+
+/**
+ * What only a row can tell, the handler checks after reading it: taking
+ * approved rates out of the rate base (archiving, deleting or reopening them,
+ * directly or through their upload) and restoring an archived shipper
+ * (decided 2026-09-28). The 403 body when the account isn't an
+ * Administrador, otherwise null.
+ */
+export function adminOnlyDenial(fn: string, claims: Record<string, unknown>, action: string, error: string) {
+  if (!belongsToOrganization(claims)) return null;
+  const role = teamRoleFromClaims(claims);
+  if (role === "admin") return null;
+  console.warn("TEAM_ROLE_DENIED", { fn, action, role, required: "admin" });
+  return { error, code: "role_forbidden", role, required: "admin" as TeamNeed, action };
+}
+
+export const RATE_BASE_REMOVAL_ERROR = "Solo un Administrador puede sacar tarifas del tarifario.";
+export const SHIPPER_ARCHIVE_ERROR = "Solo un Administrador puede archivar o restaurar un shipper.";
 
 /** The 403 body when the account's role doesn't allow the call, otherwise null. */
 export function teamRoleDenial(fn: string, claims: Record<string, unknown>, body: Record<string, unknown>) {

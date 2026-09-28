@@ -23,6 +23,7 @@ const calls: { path:string; method:string }[]=[];
 let revoked = false;
 let missing = false;
 let stubStorage = false;
+let approvedRates = 0;
 const forwarded: unknown[] = [];
 const oracleFile = "44444444-4444-4444-8444-444444444444";
 const tenant = "11111111-1111-4111-8111-111111111111";
@@ -63,6 +64,8 @@ async function fakeFetch(input: string | URL | Request, init?: RequestInit): Pro
   if(u.pathname.startsWith("/storage/v1/object/raw-uploads/") && req.method==="POST") return json({Key:"fixture-upload",Id:"fixture-upload"});
   if(u.pathname==="/storage/v1/object/raw-uploads" && req.method==="DELETE") return json([{name:"fixture-a"}]);
   if(u.pathname.endsWith("/saas_audit_log")) return json(null,201);
+  // The upload's approved rates, counted before a removal or a re-read takes them out of the rate base.
+  if(u.pathname.endsWith("/rate_staging")&&req.method==="HEAD") return new Response(null,{status:200,headers:{"content-range":`*/${approvedRates}`}});
   throw new Error(`Unexpected downstream call: ${req.method} ${u.pathname}`);
 }
 function request(token:string, body:unknown, multipart=false) {
@@ -70,7 +73,7 @@ function request(token:string, body:unknown, multipart=false) {
   return new Request("https://fixture.invalid/functions/v1/test",{method:"POST",headers:{Authorization:`Bearer ${token}`,...(!multipart?{"Content-Type":"application/json"}:{})},body:multipart?form:JSON.stringify(body)});
 }
 async function scenario(fn:()=>Promise<void>) {
-  calls.length=0;forwarded.length=0;revoked=false;missing=false;stubStorage=false;globalThis.fetch=fakeFetch;
+  calls.length=0;forwarded.length=0;revoked=false;missing=false;stubStorage=false;approvedRates=0;globalThis.fetch=fakeFetch;
   try { await fn(); } finally {globalThis.fetch=originalFetch;revoked=false;stubStorage=false;}
 }
 
@@ -148,6 +151,26 @@ Deno.test("a Supabase-stored upload keeps the existing removal path",()=>scenari
   assert.equal(response.status,200,await response.clone().text());
   assert.ok(!calls.some(c=>c.path==="/functions/v1/rateware-storage-api"));
   assert.ok(calls.some(c=>c.path==="/storage/v1/object/raw-uploads"&&c.method==="DELETE"));
+}));
+Deno.test("an operator can't remove or re-read an upload whose rates are approved",()=>scenario(async()=>{
+  approvedRates=2;
+  for(const id of ["11111111-1111-4111-8111-111111111111",oracleFile]) {
+    calls.length=0;
+    const response=await api(request("a",{action:"remove_upload",id,confirmed:true,confirmation_action:"remove_upload"}));
+    assert.equal(response.status,403,await response.clone().text());
+    assert.equal((await response.json()).code,"role_forbidden");
+    assert.ok(!calls.some(c=>c.path.startsWith("/storage/")||c.path==="/functions/v1/rateware-storage-api"||c.method==="DELETE"));
+  }
+  // Straight to the storage service, the same answer.
+  calls.length=0;
+  const direct=await storage(request("a",{action:"remove_upload",id:oracleFile,confirmed:true,confirmation_action:"remove_upload"}));
+  assert.equal(direct.status,403,await direct.clone().text());
+  assert.ok(!calls.some(c=>c.method==="DELETE"));
+  // Reading the file again would archive them.
+  calls.length=0;
+  const reread=await interpret(request("a",{raw_upload_id:"file-a"}));
+  assert.equal(reread.status,403,await reread.clone().text());
+  assert.ok(!calls.some(c=>c.path.includes("interpretation_jobs")));
 }));
 Deno.test("invalid bearer cannot reach identity lookup or storage",()=>scenario(async()=>{
   assert.equal((await upload(request("invalid",{},true))).status,401);

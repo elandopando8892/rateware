@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { requireRatewareUser } from "../_shared/auth.ts";
+import { adminOnlyDenial, RATE_BASE_REMOVAL_ERROR } from "../_shared/team-roles.ts";
 import { resolveSourceFileUser, SOURCE_FILE_ACTIONS } from "../_shared/source-file-access.ts";
 import {
   corsHeaders,
@@ -123,6 +124,18 @@ Deno.serve(async (request) => {
           error: "Explicit remove_upload confirmation is required.",
         }, 409);
       }
+      // The upload's rates are deleted with it; taking approved ones out of
+      // the rate base is an Administrador's.
+      const approved = await supabase.from("rate_staging")
+        .select("id", { count: "exact", head: true })
+        .eq("raw_upload_id", id)
+        .eq("owner_email", user.owner_email)
+        .eq("status", "approved");
+      if (approved.error) throw approved.error;
+      const denial = (approved.count || 0) > 0
+        ? adminOnlyDenial("rateware-storage-api", identity as Record<string, unknown>, "remove_upload", RATE_BASE_REMOVAL_ERROR)
+        : null;
+      if (denial) return jsonResponse(denial, 403);
       const replicas = await supabase
         .from("object_storage_replicas")
         .select(
