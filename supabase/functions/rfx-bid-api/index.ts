@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
-import { carrierChatMessage, carrierChatThread } from "../_shared/carrier-chat-view.mjs";
+import { belongsToThread, carrierChatMessage, carrierChatThread } from "../_shared/carrier-chat-view.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -928,35 +928,20 @@ async function syncGoogleChatInboundMessagesForThreads(
   if (existingResult.error) throw existingResult.error;
 
   const existingByGoogleName = new Map((existingResult.data || []).map((message) => [String(message.google_chat_message_name), message]));
-  const threadsById = new Map(candidateThreads.map((thread) => [String(thread.id), thread]));
   const threadsByGoogleThreadName = new Map(
     candidateThreads
       .map((thread) => [cleanText(thread.google_chat_thread_name), thread] as [string | null, Record<string, unknown>])
       .filter(([name]) => Boolean(name)) as [string, Record<string, unknown>][]
   );
-  const eventGroupThread = candidateThreads.find((thread) => cleanText(thread.thread_type) === "event_group") || candidateThreads[0];
 
   let imported = 0;
   let skipped = 0;
-  let updatedThreads = 0;
 
   for (const googleMessage of googleMessages) {
     const googleMessageName = cleanText(googleMessage.name);
     const googleThreadName = googleChatMessageThreadName(googleMessage);
     const existingMessage = googleMessageName ? existingByGoogleName.get(googleMessageName) : null;
     if (existingMessage) {
-      const existingThread = threadsById.get(String(existingMessage.thread_id));
-      if (existingThread && googleThreadName && cleanText(existingThread.google_chat_thread_name) !== googleThreadName) {
-        await supabase.from("bid_room_chat_threads").update({
-          google_chat_space: spaceName,
-          google_chat_thread_name: googleThreadName,
-          google_chat_sync_status: "synced",
-          updated_at: new Date().toISOString()
-        }).eq("id", existingThread.id);
-        existingThread.google_chat_thread_name = googleThreadName;
-        threadsByGoogleThreadName.set(googleThreadName, existingThread);
-        updatedThreads += 1;
-      }
       skipped += 1;
       continue;
     }
@@ -966,21 +951,14 @@ async function syncGoogleChatInboundMessagesForThreads(
       skipped += 1;
       continue;
     }
-    const targetThread = (googleThreadName && threadsByGoogleThreadName.get(googleThreadName)) || eventGroupThread;
+    // The space holds every event's conversations and the team's own chat. A
+    // message is copied only into the thread whose Google Chat conversation it
+    // was written in (the one Rateware posts to), and never moves that thread
+    // to another conversation.
+    const targetThread = googleThreadName ? threadsByGoogleThreadName.get(googleThreadName) : null;
     if (!targetThread) {
       skipped += 1;
       continue;
-    }
-    if (googleThreadName && cleanText(targetThread.google_chat_thread_name) !== googleThreadName) {
-      await supabase.from("bid_room_chat_threads").update({
-        google_chat_space: spaceName,
-        google_chat_thread_name: googleThreadName,
-        google_chat_sync_status: "synced",
-        updated_at: new Date().toISOString()
-      }).eq("id", targetThread.id);
-      targetThread.google_chat_thread_name = googleThreadName;
-      threadsByGoogleThreadName.set(googleThreadName, targetThread);
-      updatedThreads += 1;
     }
 
     const sender = objectRecord(googleMessage.sender);
@@ -1021,7 +999,7 @@ async function syncGoogleChatInboundMessagesForThreads(
     }
   }
 
-  return { status: "synced", imported, skipped, updated_threads: updatedThreads };
+  return { status: "synced", imported, skipped };
 }
 
 async function currentInvitationContext(supabase: RfxBidSupabaseClient, token: string) {
@@ -1241,7 +1219,7 @@ async function listCarrierBidRoomChat(supabase: RfxBidSupabaseClient, invitation
     // Only what the carrier's page shows; the team's notes and addresses stay out.
     rows: threads.map((thread) => ({
       ...carrierChatThread(thread),
-      messages: (messagesByThread.get(String(thread.id)) || []).map(carrierChatMessage)
+      messages: (messagesByThread.get(String(thread.id)) || []).filter((message) => belongsToThread(thread, message)).map(carrierChatMessage)
     }))
   };
 }
