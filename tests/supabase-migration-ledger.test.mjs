@@ -230,5 +230,6 @@ test("Bid Room service-role grants survive a clean replay without browser grants
   for (const table of ["rfx_events", "rfx_lanes", "rfx_lane_vendors"]) {
     assert.match(migration, new RegExp(`grant select, insert, update on table public\\.${table} to service_role;`, "i"));
   }
+  assert.match(migration, /grant update on table public\.vendors to service_role;/i);
   assert.doesNotMatch(migration, /\bgrant\b[^;]*\bto (anon|authenticated)\b/i);
 });
