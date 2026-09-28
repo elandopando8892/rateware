@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "./vendor/xlsx-0.20.3.mjs";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
+import { adminOnlyDenial, RATE_BASE_REMOVAL_ERROR } from "../_shared/team-roles.ts";
 import { resolveSourceFileUser, SOURCE_FILE_ACTIONS } from "../_shared/source-file-access.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import { decideServiceFromResolution, resolveServiceEvidence } from "../_shared/service-normalization.mjs";
@@ -2445,8 +2446,10 @@ Deno.serve(async (request) => {
 
   const supabase = getClient();
   let user: RuntimeWorkspaceUser;
+  let identity: Awaited<ReturnType<typeof requireRatewareUser>>;
   try {
-    user = await resolveSourceFileUser(supabase, await requireRatewareUser(request));
+    identity = await requireRatewareUser(request);
+    user = await resolveSourceFileUser(supabase, identity);
   } catch (error) {
     return jsonResponse({ error: interpretationErrorMessage(error, "Authentication required.") }, runtimeIdentityStatus(error) === 403 ? 403 : 401);
   }
@@ -2461,6 +2464,16 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "Source file unavailable." }, uploadResult.error?.code === "PGRST116" || !uploadResult.error ? 404 : 503);
   }
   const rawUpload = uploadResult.data;
+
+  // Reading a file again archives the rates it gave before; taking approved
+  // ones out of the rate base is an Administrador's.
+  const approved = await supabase.from("rate_staging").select("id", { count: "exact", head: true })
+    .eq("raw_upload_id", raw_upload_id).eq("owner_email", user.owner_email).eq("status", "approved");
+  if (approved.error) return jsonResponse({ error: interpretationErrorMessage(approved.error, "Could not check the upload's rates.") }, 500);
+  const denial = (approved.count || 0) > 0
+    ? adminOnlyDenial("interpret-upload", identity as Record<string, unknown>, "interpret_upload", RATE_BASE_REMOVAL_ERROR)
+    : null;
+  if (denial) return jsonResponse(denial, 403);
 
   const job = await supabase.from("interpretation_jobs").insert({
     raw_upload_id,

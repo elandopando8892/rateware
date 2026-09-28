@@ -104,17 +104,23 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // link (places and freight lists); its existing handlers are unchanged.
 // 2026-09-27: rateware-api's Bid Room launch copies the project's Shipper id
 // onto the new event (a column it already writes elsewhere); no check changes.
+// 2026-09-28: taking approved rates out of the rate base (archiving, deleting
+// or reopening them, directly, through their upload or by reading the upload
+// again) and archiving or restoring a shipper became an Administrador's.
+// rateware-api, rateware-storage-api and interpret-upload read the rows first
+// and refuse an operator (_shared/team-roles.ts adminOnlyDenial). Ownership
+// and tenant checks are unchanged.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': '47344307ceef4b051008850e8211fad1e395c7fd5830e3a3f011a10d5a36ccf3',
   'edge.gmail-oauth-callback.': '9cd3a3329bdb82d139b988dc7503fc3676b744157bd9a1063ce579fa4c8b178c',
   'edge.google-chat-app.': '0d81b2db1ca1d0442814d2e07264c967b1a1999a70be60bd1ed641fbe675475b',
-  'edge.interpret-upload.': '304b078d1da33c906068d510767dc95cf6fe82c576e627b818d85d33229df0a4',
+  'edge.interpret-upload.': '324f2b3c375bfe15aa4618898893057e5d7433f8d080423faa366e227046f1b1',
   'edge.provider-gmail-intake-api.': '51f613ef43bb666a2bbe81fd09ab99af18315677a6210119bc105bafc7f5f9b6',
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': '54789c602dbfa6d38b47ea130c12bf8228df340920aaafbd2dea8855a964d83d',
+  'edge.rateware-api.': '4d0f3b39f9ccbb489dacc94e63df8486942080b3ad42b59c18e71126e93cb90d',
   'edge.rfx-bid-api.': '3a4394c4405cf9c4f1a3b60d2ac653a09c2492fcb3b54bf89bffa834a9c47c4e',
   'edge.shipper-directory-api.': '529b561a078707872c24b999e1ed60c61ad2b024fcbfbdc4b9d3f121dca942cf',
   'edge.shipper-profile-api.': '501f2bec390dab9ecce5b9e6aac016683fb51d2c9f8afc0217b097912fe36949',
@@ -147,7 +153,7 @@ const ratewareApiSourceFingerprintOverrides = {
 // (_shared/source-file-access.ts). Ownership checks are unchanged.
 const supabaseAuthSourceFingerprintOverrides = {
   'edge.create-raw-upload.create_raw_upload': 'aa374df97b0680a4df07507bdf5f7028fc1c37ac6cf72643e577001ff4d147fe',
-  'edge.interpret-upload.interpret_upload': '60474ad4568881ebd470b63cdfeebdcb3ad3a534a2487363c6b74cde7322e6a2',
+  'edge.interpret-upload.interpret_upload': 'fda251de5baaa8d0111a00cc9602f07d8511d29fcf373af9bb07645739e866d8',
   'edge.sync-rateware-catalog.sync_rateware_catalog': '207fd12f17afbbd5e4dd58a0e914ad939aab033816bf8a5a64b461cf46aa8c83',
 };
 
@@ -186,13 +192,27 @@ const portableRfxBidSourceFingerprintOverrides = {
 // files keep the in-process path. No service credential is substituted.
 const oracleStorageSurfaceOverrides = {
   'edge.rateware-api.get_upload_source_url': { sourceFingerprint: '35ec7b2a0469f28567702178cf05fcb0ead07d9ef5aea2a0b2d05aa619bf4830' },
-  'edge.rateware-api.remove_upload': { sourceFingerprint: '9b772c50588df68658fa9b069cebd43113670425c9ea6cd22c72c0967b816510' },
+  'edge.rateware-api.remove_upload': { sourceFingerprint: '7916e001cf9f76a3f3a18dfa57687ea1de9104c9038654adbf97e9e827ec63c9' },
 };
 // _shared/auth.ts now also returns email_confirmed and rateware_organization_id,
 // read only by the reviewed source-file access check, and fcm.mjs reads free-text
 // equipment as the FCM's units. quotedesk-api's tenant scoping and permissions
 // are unchanged.
-const quotedeskAuthEnvelope = '3082f57517e04cf92a6f467c6a7a60494990931703cb2e3d15fca51d3dbe30aa';
+// The handlers that now read the rows they touch and refuse an operator
+// before writing when that would take approved rates out of the rate base or
+// archive or restore a shipper (2026-09-28). Nothing else in them changed.
+const rateBaseAdminSourceFingerprintOverrides = {
+  'edge.rateware-api.archive_staging': 'ee15cc468134c653aa7cc137ad282817c48b3d1671dc913214776a06cfc5c2ed',
+  'edge.rateware-api.bulk_update_rate_rows_by_filter': 'd5da4dbd5a3552eb72a925c5e25e52369b089b5a8d525ebf0267f18e22739b78',
+  'edge.rateware-api.bulk_update_staging': '0dd135b2f38e45a1de0c1e07d46d1c2f554f24bcefceedd870981779af13e86e',
+  'edge.rateware-api.import_shipper_crm_workbook': 'd2c6779661af8a5b86480788555ed405e7446d3c8ac50278c860bb2ab3769134',
+  'edge.rateware-api.import_shippers': 'c0036b4d417a877be000a1e1162c969c1d79cbe6fef8bd2aadd0d00336ced9fd',
+  'edge.rateware-api.remove_staging': '66725240f06dff9331ea193c9e1a6063f3efa9eefcf8ab2efc10c1b591cbb6f5',
+  'edge.rateware-api.update_shipper': '79f16ecad98739a920f35e5d7206b7585ee7a6a18c5688d32b553bc42c9c6a87',
+  'edge.rateware-api.update_staging': '22a302e2ff4f73213c0a419b960cdf16bde43ceb0195597ce5fc039ae63920e7',
+};
+
+const quotedeskAuthEnvelope = 'ab4b06fd808d9c6c80363163455c6843bbbd31e0a1c694cae17e1aeadd169c18';
 
 const supabaseAuthMetadataOverrides = {
   'edge.google-chat-app.handle_chat_event': 'fd759bead6f0bfed76d9f70c962399ba7d815ef30f7a85491d68c4d5b088accf',
@@ -433,8 +453,8 @@ export const ACTION_CONTRACT = {
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
       ...entry,
       contractVersion,
-      ...((ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId] || whatsappWebhookSourceFingerprintOverrides[entry.canonicalId])
-        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId] || whatsappWebhookSourceFingerprintOverrides[entry.canonicalId] }
+      ...((ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId] || whatsappWebhookSourceFingerprintOverrides[entry.canonicalId] || rateBaseAdminSourceFingerprintOverrides[entry.canonicalId])
+        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId] || whatsappWebhookSourceFingerprintOverrides[entry.canonicalId] || rateBaseAdminSourceFingerprintOverrides[entry.canonicalId] }
         : {}),
       ...(entry.canonicalId.startsWith('edge.google-chat-app.')
         ? { analysisCoverage: 'shared-observed', coverageSignals: ['shared_dependency_observed'] }

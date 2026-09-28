@@ -27,6 +27,36 @@ for (const action of [
 }
 assert.match(roles, /"rateware-api\.update_rfx_event": new Set\(\["archived", "draft", "closed", "awarded"\]\)/);
 assert.match(roles, /"quotedesk-api\.set_quote_status": new Set\(\["archived", "new"\]\)/);
+for (const action of ["return_rateware_to_staging", "merge_shipper_accounts"]) {
+  assert.match(roles, new RegExp(`"${action}"`), `${action} is an Administrador's`);
+}
+assert.match(roles, /"rateware-api\.update_shipper": new Set\(\["archived"\]\)/, "archiving a shipper by editing it is an Administrador's");
+
+// What only the rows can tell is checked in the handler, before it writes.
+const checkedBeforeWrite = (source, start, write, label) => {
+  const from = source.indexOf(start);
+  assert.ok(from > 0, `${label}: handler found`);
+  const check = source.indexOf("adminOnlyDenial(", from);
+  const written = source.indexOf(write, from);
+  assert.ok(check > 0 && written > 0 && check < written, `${label}: the Administrador check comes before ${write}`);
+};
+const apiSource = read("supabase/functions/rateware-api/index.ts");
+for (const [action, write] of [
+  ["update_staging", ".update(patch)"],
+  ["bulk_update_staging", ".update(patch)"],
+  ["bulk_update_rate_rows_by_filter", ".update(patch)"],
+  ["archive_staging", '.update({ status: "archived" })'],
+  ["remove_staging", ".delete()"],
+  ["remove_upload", "forwardSourceRemoval("],
+  ["update_shipper", ".update(patch)"],
+  ["import_shippers", ".insert(insertChunk)"],
+  ["import_shipper_crm_workbook", ".insert(insertChunk)"],
+]) {
+  checkedBeforeWrite(apiSource, `body.action === "${action}"`, write, action);
+}
+checkedBeforeWrite(read("supabase/functions/rateware-storage-api/index.ts"), 'body.action === "remove_upload"', "deleteStorageObject(", "storage remove_upload");
+checkedBeforeWrite(read("supabase/functions/interpret-upload/index.ts"), "const rawUpload = uploadResult.data;", 'from("interpretation_jobs").insert', "interpret-upload");
+
 for (const action of ["update_staging", "bulk_update_staging", "bulk_update_rate_rows_by_filter"]) {
   assert.match(roles, new RegExp(`"rateware-api\\.${action}": new Set\\(\\["approved"\\]\\)`), `approving through ${action} is an Administrador's`);
 }
