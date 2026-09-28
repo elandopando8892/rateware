@@ -97,3 +97,13 @@ assert.match(ratewareApi, /patch\.commercial_model = normalizeCommercialModelFor
 assert.match(bidApi, /commercial_model: commercialModel,/);
 
 console.log("Commercial model compatibility tests passed (canonical writes + legacy UI reads).\n");
+
+// rate_staging_commercial_model_check only allows the canonical names. Staging
+// the legacy value from commercialRateEconomics made every carrier-portal bid
+// fail after it was already saved (Aug 12 - Sep 22 2026: 45 bids, 0 staged).
+{
+  const source = read("supabase/functions/rfx-bid-api/index.ts");
+  const staging = extractFunction(source, "bidRateStagingInput");
+  assert.match(staging, /commercial_model: normalizeCommercialModel\(updatedBid\.commercial_model\)/);
+  assert.doesNotMatch(staging, /commercial_model: economics\.commercial_model/);
+}

@@ -1,7 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
+import { resolveSourceFileUser, SOURCE_FILE_ACTIONS } from "../_shared/source-file-access.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from "../_shared/runtime-identity.ts";
+import {
+  deleteStorageObject,
+  headStorageObject,
+  putStorageObject,
+  sha256Hex,
+  storageWritePlan,
+} from "../_shared/object-storage.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -76,7 +84,7 @@ Deno.serve(async (request) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const user = await resolveRuntimeWorkspaceUser(supabase, identity);
+    const user = await resolveSourceFileUser(supabase, identity);
     const ownerEmail = user.owner_email;
 
     const formData = await request.formData();
@@ -107,19 +115,48 @@ Deno.serve(async (request) => {
       || normalizeDomain(selectedVendor.data?.primary_email)
       || cleanText(selectedVendor.data?.vendor_name);
 
-    const storage = await supabase.storage.from(RAW_UPLOADS_BUCKET).upload(path, file, {
-      cacheControl: "3600",
-      contentType: file.type || undefined,
-      upsert: false
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const storageSha256 = await sha256Hex(bytes);
+    const writePlan = storageWritePlan(RAW_UPLOADS_BUCKET);
+    const primary = await putStorageObject(supabase, writePlan.primary, RAW_UPLOADS_BUCKET, path, bytes, {
+      contentType: file.type,
+      sha256: storageSha256,
+      upsert: false,
     });
-
-    if (storage.error) throw storage.error;
+    if (primary.provider === "oracle_s3") {
+      const observed = await headStorageObject(supabase, primary.provider, RAW_UPLOADS_BUCKET, path);
+      if (observed.size !== bytes.byteLength || observed.sha256 !== storageSha256) {
+        await deleteStorageObject(supabase, primary.provider, RAW_UPLOADS_BUCKET, path).catch(() => undefined);
+        throw new Error("Oracle primary object failed size or SHA-256 verification.");
+      }
+      primary.etag = observed.etag;
+    }
+    let replica: Awaited<ReturnType<typeof putStorageObject>> | null = null;
+    let replicaError: string | null = null;
+    if (writePlan.replica) {
+      try {
+        const uploadedReplica = await putStorageObject(supabase, writePlan.replica, RAW_UPLOADS_BUCKET, path, bytes, {
+          contentType: file.type,
+          sha256: storageSha256,
+          upsert: false,
+        });
+        const observed = await headStorageObject(supabase, uploadedReplica.provider, RAW_UPLOADS_BUCKET, path);
+        if (observed.size !== bytes.byteLength || observed.sha256 !== storageSha256) {
+          throw new Error("Oracle replica failed size or SHA-256 verification.");
+        }
+        replica = { ...uploadedReplica, etag: observed.etag };
+      } catch (error) {
+        replicaError = uploadErrorMessage(error, "Oracle replica upload failed.");
+      }
+    }
 
     const rawUpload = {
       id: uploadId,
       original_filename: file.name,
       storage_bucket: RAW_UPLOADS_BUCKET,
       storage_path: path,
+      storage_provider: primary.provider,
+      storage_sha256: storageSha256,
       mime_type: file.type || null,
       file_size_bytes: file.size,
       document_type: documentType,
@@ -136,11 +173,51 @@ Deno.serve(async (request) => {
     const insert = await supabase.from("raw_uploads").insert(rawUpload).select().single();
 
     if (insert.error) {
-      await supabase.storage.from(RAW_UPLOADS_BUCKET).remove([path]);
+      await Promise.allSettled([
+        deleteStorageObject(supabase, primary.provider, RAW_UPLOADS_BUCKET, path),
+        ...(replica ? [deleteStorageObject(supabase, replica.provider, RAW_UPLOADS_BUCKET, path)] : []),
+      ]);
       throw insert.error;
     }
 
-    return jsonResponse({ raw_upload: insert.data });
+    if (writePlan.replica) {
+      const ledger = await supabase.from("object_storage_replicas").insert({
+        organization_id: user.organization_id,
+        owner_email: ownerEmail,
+        source_table: "raw_uploads",
+        source_record_id: uploadId,
+        source_provider: primary.provider,
+        source_bucket: RAW_UPLOADS_BUCKET,
+        source_path: path,
+        replica_provider: writePlan.replica,
+        replica_bucket: RAW_UPLOADS_BUCKET,
+        replica_path: path,
+        object_sha256: storageSha256,
+        object_size_bytes: bytes.byteLength,
+        object_etag: replica?.etag || null,
+        replica_status: replica ? "verified" : "failed",
+        attempts: 1,
+        last_error: replicaError,
+        verified_at: replica ? new Date().toISOString() : null,
+      });
+      if (ledger.error) {
+        await Promise.allSettled([
+          supabase.from("raw_uploads").delete().eq("id", uploadId),
+          deleteStorageObject(supabase, primary.provider, RAW_UPLOADS_BUCKET, path),
+          ...(replica ? [deleteStorageObject(supabase, replica.provider, RAW_UPLOADS_BUCKET, path)] : []),
+        ]);
+        throw ledger.error;
+      }
+    }
+
+    return jsonResponse({
+      raw_upload: insert.data,
+      storage: {
+        mode: writePlan.mode,
+        primary: primary.provider,
+        replica_status: writePlan.replica ? (replica ? "verified" : "failed") : "disabled",
+      },
+    });
   } catch (error) {
     const identityStatus = runtimeIdentityStatus(error);
     return jsonResponse({ error: uploadErrorMessage(error) }, identityStatus === 403 ? 403 : uploadErrorStatus(error));

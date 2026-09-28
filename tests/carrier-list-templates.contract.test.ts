@@ -1349,9 +1349,11 @@ Deno.test("Task 7 materialization rejects foreign, inactive, stale-version, and 
   assertEquals(nonmemberDb.traces.some((trace) => trace.table === "saas_audit_log"), false);
 });
 
+// `status: "inactive"` is deliberately absent: it only means the carrier has
+// not been activated in the TMS, so it must NOT keep them out of an RFx. The
+// test below asserts the positive case.
 for (const fixture of [
   { patch: { status: "blocked" }, reason: "status_blocked" },
-  { patch: { status: "inactive" }, reason: "status_inactive" },
   { patch: { base_stage: "archived" }, reason: "base_stage_archived" },
   { patch: { primary_email: "", secondary_emails: [], whatsapp_phone: "" }, reason: "missing_contact" },
 ]) {
@@ -1396,6 +1398,37 @@ for (const fixture of [
     assertEquals(db.traces.some((trace) => trace.table === "saas_audit_log"), false);
   });
 }
+
+Deno.test("Task 7 materialization admits status_inactive vendors, which are only un-activated in the TMS", async () => {
+  const finalRow = {
+    id: "invitation-inactive",
+    rfx_event_id: materializationEventId,
+    rfx_lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+    carrier_template_materialization_operation_id: materializationOperationId,
+  };
+  const db = new ScriptedSupabase([
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor(vendorA, { status: "inactive" })]),
+    laneRead([materializationLaneA]),
+    ...materializationJournalStart(),
+    materializationJournalClaim(),
+    { table: "rfx_lane_vendors", operation: "upsert", data: [finalRow] },
+    finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
+    materializationJournalFinish(),
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest(materializationAction()));
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.result, "inserted");
+  assertEquals(body.counts.rejected, 0);
+  assertEquals(body.counts.confirmed, 1);
+  assertEquals(body.outcomes.some((outcome: { reason?: string }) => outcome.reason === "status_inactive"), false);
+  assertEquals(body.confirmed_audience_vendor_ids, [vendorA.id]);
+});
 
 Deno.test("Task 7 rejects reuse of a materialization UUID with mismatched immutable context before participant mutation", async () => {
   const db = new ScriptedSupabase([

@@ -1,4 +1,4 @@
-const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
+const XLSX_MODULE_URL = "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 export const BULK_IMPORT_TEMPLATE_COLUMNS = [
   { key: "row_id", header: "Shipment ID", required: "recommended", example: "SHP-1001", notes: "Customer shipment, lane, load, or quote row identifier." },

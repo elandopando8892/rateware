@@ -41,7 +41,7 @@ const LIST_PAGE_SIZE = 200;
 const LIST_SAFETY_LIMIT = 5000;
 const CRM_PAGE_SIZE = 50;
 const CRM_MATERIALIZATION_LIMIT = 1000;
-const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
+const XLSX_MODULE_URL = "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 let xlsxModulePromise = null;
 
 function escapeHtml(value) {

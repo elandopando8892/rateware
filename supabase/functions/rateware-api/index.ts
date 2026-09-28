@@ -1,7 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
+import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
+import { teamRoleDenial } from "../_shared/team-roles.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
+import { forwardSourceDownload, forwardSourceRemoval } from "../_shared/source-download-routing.mjs";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
 import {
   CARRIER_TEMPLATE_IMPORT_MAX_ROWS,
@@ -12,6 +15,12 @@ import {
   resolveCarrierTemplateImportRows
 } from "./carrier-list-templates.ts";
 import { handleGrowthAction, isGrowthAction } from "./growth.ts";
+import {
+  assertOutreachMatrixWithinLimit,
+  fetchBoundedKeysetRows,
+  OUTREACH_RELATED_ROW_BATCH_LIMIT,
+  OUTREACH_RELATED_ROW_PAGE_SIZE
+} from "./outreach-pagination.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -101,6 +110,7 @@ const BULK_SEND_LIMIT = 100;
 // the operator selected only a few dozen carriers. Keep the request bounded,
 // but large enough for the existing 50,000-row RFx safety envelope.
 const RFX_OUTREACH_INVITATION_ID_LIMIT = 50000;
+const RFX_OUTREACH_ALL_ELIGIBLE_LIMIT = 5000;
 const EXACT_VENDOR_CONSOLIDATION_BATCH_LIMIT = 1;
 const OUTREACH_MANUAL_STATUSES = new Set([
   "drafted",
@@ -540,18 +550,30 @@ export function carrierTemplateVendorHasUsableContact(vendor: Record<string, unk
   );
 }
 
+/**
+ * Statuses that keep a carrier out of an RFx.
+ *
+ * `inactive` is deliberately NOT here: in this operation it only means the
+ * carrier has not been activated in the TMS, which says nothing about whether
+ * they may bid. Every carrier is invitable; only a deliberate block or a
+ * retired record is not. The rest of the system already agreed — the plain
+ * shortlist path has 3,265 lane participations from `inactive` carriers, while
+ * template materialisation was silently excluding them.
+ */
+const CARRIER_RFX_BLOCKING_STATUSES = ["blocked", "archived", "deleted"];
+
 export function carrierTemplateVendorIsAvailable(vendor: Record<string, unknown> = {}) {
   const status = cleanText(vendor.status)?.toLowerCase() || "";
   const baseStage = cleanText(vendor.base_stage)?.toLowerCase() || "";
   return Boolean(cleanText(vendor.id)) &&
-    !["blocked", "inactive", "archived", "deleted"].includes(status) &&
+    !CARRIER_RFX_BLOCKING_STATUSES.includes(status) &&
     baseStage !== "archived";
 }
 
 function carrierTemplateVendorIneligibleReason(vendor: Record<string, unknown> | null) {
   if (!vendor || !cleanText(vendor.id)) return "unavailable";
   const status = cleanText(vendor.status)?.toLowerCase() || "";
-  if (["blocked", "inactive", "archived", "deleted"].includes(status)) return `status_${status}`;
+  if (CARRIER_RFX_BLOCKING_STATUSES.includes(status)) return `status_${status}`;
   if ((cleanText(vendor.base_stage)?.toLowerCase() || "") === "archived") return "base_stage_archived";
   if (!carrierTemplateVendorHasUsableContact(vendor)) return "missing_contact";
   return "";
@@ -4667,7 +4689,11 @@ function scopedOutreachMessagesQuery(
     ? body.channels.map((value: unknown) => cleanText(value)?.toLowerCase()).filter(Boolean)
     : [];
   const requestedTrackingStatus = cleanText(body.tracking_status)?.toLowerCase();
-  const outreachSelect = body.view === "event_context"
+  // Audience eligibility needs delivery history, not message bodies, portal
+  // tokens, or the five unrelated joins used by the delivery workspace.
+  const outreachSelect = body.view === "audience_history"
+    ? "id,created_at,updated_at,rfx_event_id,vendor_id,channel,recipient_email,recipient_phone,normalized_recipient_phone,status,provider_response_status,delivery_error,metadata,next_action,outcome_reason,rfx_lane_vendors(invitation_status,bid_rate,responded_at)"
+    : body.view === "event_context"
     ? OUTREACH_MESSAGE_EVENT_SELECT
     : body.compact === true
       ? OUTREACH_MESSAGE_COMPACT_SELECT
@@ -4701,7 +4727,9 @@ async function allScopedOutreachMessages(
     if (result.error) throw result.error;
     const pageRows = (result.data || []) as Record<string, unknown>[];
     rows.push(...pageRows);
-    if (pageRows.length < pageSize) return hydrateOutreachInvitationTokens(supabase, rows);
+    if (pageRows.length < pageSize) {
+      return body.view === "audience_history" ? rows : hydrateOutreachInvitationTokens(supabase, rows);
+    }
   }
 }
 
@@ -10255,6 +10283,12 @@ function supplyDepthForLane(lane: Record<string, unknown>, rates: Record<string,
   };
 }
 
+/** A lane invitation without its joined vendor profile (list_rfx_detail's compact vendors). */
+function withoutVendorProfile(invitation: Record<string, unknown>) {
+  const { vendors: _vendors, ...rest } = invitation;
+  return rest;
+}
+
 function invitationWithComparison(invitation: Record<string, unknown>, benchmark: Record<string, unknown> | null) {
   const bidRate = cleanNumber(invitation.bid_rate);
   const benchmarkRate = cleanNumber(benchmark?.all_in_rate);
@@ -11615,140 +11649,11 @@ function normalizeBidRoomThreadType(value: unknown) {
   return BID_ROOM_CHAT_THREAD_TYPES.has(threadType) ? threadType : "event_group";
 }
 
-function bidRoomGoogleThreadKey(eventId: unknown, threadType: string, laneId: unknown, vendorId: unknown) {
-  return [
-    "rateware",
-    "bid-room",
-    cleanText(eventId) || "event",
-    threadType,
-    cleanText(laneId) || "event",
-    cleanText(vendorId) || "group"
-  ].join("-").replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 190);
-}
-
 function bidRoomThreadTitle(threadType: string, event: Record<string, unknown>, lane?: Record<string, unknown> | null, vendor?: Record<string, unknown> | null) {
   const eventRef = [cleanText(event.rfx_id), cleanText(event.name)].filter(Boolean).join(" | ") || "Bid Room";
   if (threadType === "carrier_private") return `${eventRef} | Private: ${cleanText(vendor?.vendor_name || vendor?.domain) || "Carrier"}`;
   if (threadType === "lane_group") return `${eventRef} | Lane: ${[lane?.origin, lane?.destination].filter(Boolean).join(" -> ") || lane?.lane_number || "Selected lane"}`;
   return `${eventRef} | Event group`;
-}
-
-function googleChatThreadTarget(thread: Record<string, unknown>, threadKey: string) {
-  const threadName = cleanText(thread.google_chat_thread_name);
-  return {
-    replyOption: threadName ? "REPLY_MESSAGE_OR_FAIL" : "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD",
-    thread: threadName ? { name: threadName } : { threadKey }
-  };
-}
-
-async function syncBidRoomMessageToGoogleChatApi(
-  supabase: RatewareSupabaseClient,
-  thread: Record<string, unknown>,
-  message: Record<string, unknown>,
-  event: Record<string, unknown>
-) {
-  const ownerEmail = cleanText(message.owner_email || thread.owner_email || event.owner_email);
-  if (!ownerEmail) return { status: "not_configured", name: null };
-  const connectionResult = await supabase
-    .from("google_chat_connections")
-    .select("default_space_name,default_space_display_name,status")
-    .eq("owner_email", ownerEmail)
-    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
-    .eq("status", "connected")
-    .maybeSingle();
-  if (connectionResult.error) throw connectionResult.error;
-  const connection = connectionResult.data;
-  const spaceName = cleanText(connection?.default_space_name);
-  if (!connection || !spaceName) return { status: "not_configured", name: null };
-
-  const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
-  const sender = cleanText(message.sender_name || message.sender_email) || "Rateware";
-  const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
-  const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
-  try {
-    const accessToken = await googleChatAccessToken(supabase, { owner_email: ownerEmail });
-    const target = googleChatThreadTarget(thread, threadKey);
-    const params = new URLSearchParams({ messageReplyOption: target.replyOption });
-    const response = await fetch(`https://chat.googleapis.com/v1/${spaceName}/messages?${params.toString()}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        text,
-        thread: target.thread
-      })
-    });
-    const payload = await response.json().catch(() => ({}));
-    const status = response.ok ? "synced" : "error";
-    await supabase.from("bid_room_chat_messages").update({
-      google_chat_message_name: cleanText(payload.name),
-      google_chat_sync_status: status
-    }).eq("id", message.id);
-    await supabase.from("bid_room_chat_threads").update({
-      google_chat_space: spaceName,
-      google_chat_thread_key: threadKey,
-      google_chat_thread_name: cleanText(payload?.thread?.name) || cleanText(thread.google_chat_thread_name),
-      google_chat_sync_status: status,
-      updated_at: new Date().toISOString()
-    }).eq("id", thread.id);
-    if (!response.ok) {
-      await supabase.from("google_chat_connections").update({
-        last_error: cleanText(payload?.error?.message) || `Google Chat send failed (${response.status}).`,
-        updated_at: new Date().toISOString()
-      }).eq("owner_email", ownerEmail).eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
-    }
-    return { status, name: cleanText(payload.name), space_name: spaceName };
-  } catch (error) {
-    await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
-    await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
-    const errorMessage = safeOperationalError(error);
-    return { status: "error", name: null, error: errorMessage };
-  }
-}
-
-async function syncBidRoomMessageToGoogleChat(
-  supabase: RatewareSupabaseClient,
-  thread: Record<string, unknown>,
-  message: Record<string, unknown>,
-  event: Record<string, unknown>
-) {
-  const apiSync = await syncBidRoomMessageToGoogleChatApi(supabase, thread, message, event);
-  if (apiSync.status !== "not_configured") return apiSync;
-  if (!GOOGLE_CHAT_WEBHOOK_URL) return { status: "not_configured", name: null };
-  const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
-  const url = new URL(GOOGLE_CHAT_WEBHOOK_URL);
-  url.searchParams.set("threadKey", threadKey);
-  url.searchParams.set("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD");
-  const sender = cleanText(message.sender_name || message.sender_email) || "Rateware";
-  const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
-  const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
-  try {
-    const response = await fetch(url.toString(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text })
-    });
-    const payload = await response.json().catch(() => ({}));
-    const status = response.ok ? "synced" : "error";
-    await supabase.from("bid_room_chat_messages").update({
-      google_chat_message_name: cleanText(payload.name),
-      google_chat_sync_status: status
-    }).eq("id", message.id);
-    await supabase.from("bid_room_chat_threads").update({
-      google_chat_thread_key: threadKey,
-      google_chat_thread_name: cleanText(payload?.thread?.name),
-      google_chat_sync_status: status,
-      updated_at: new Date().toISOString()
-    }).eq("id", thread.id);
-    return { status, name: cleanText(payload.name) };
-  } catch (error) {
-    await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
-    await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
-    const errorMessage = safeOperationalError(error);
-    return { status: "error", name: null, error: errorMessage };
-  }
 }
 
 function googleChatConnectionCanReadMessages(connection: Record<string, unknown> | null | undefined) {
@@ -11795,7 +11700,7 @@ async function syncGoogleChatInboundMessagesForThreads(
     };
   }
 
-  const accessToken = await googleChatAccessToken(supabase, { owner_email: owner });
+  const accessToken = await googleChatAccessToken(supabase, owner);
   const url = new URL(`https://chat.googleapis.com/v1/${spaceName}/messages`);
   url.searchParams.set("pageSize", String(Math.min(Math.max(Number(input.limit) || 100, 10), 100)));
   const response = await fetch(url.toString(), {
@@ -11972,7 +11877,7 @@ async function retryGoogleChatSync(
       rows.push({ id: message.id, status: "skipped", reason: "Missing Bid Room thread or event." });
       continue;
     }
-    const result = await syncBidRoomMessageToGoogleChat(supabase, thread, message, event);
+    const result = await syncBidRoomMessageToGoogleChat(supabase, thread, message, event, { defaultSender: "Rateware" });
     if (result.status === "synced") synced += 1;
     else if (result.status === "not_configured") skipped += 1;
     else failed += 1;
@@ -12514,7 +12419,7 @@ async function postBidRoomChatMessage(
     resolved_at: null,
     resolved_by: null
   }).eq("id", thread.id);
-  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data, event);
+  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data, event, { defaultSender: "Rateware" });
   return { thread, message: { ...messageResult.data, google_chat_sync_status: sync.status }, google_chat_configured: sync.status !== "not_configured" || Boolean(GOOGLE_CHAT_WEBHOOK_URL) };
 }
 
@@ -12584,7 +12489,7 @@ async function syncBidRoomEventThread(
     title: bidRoomThreadTitle("event_group", event),
     updated_at: new Date().toISOString()
   }).eq("id", thread.id);
-  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, message, event);
+  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, message, event, { defaultSender: "Rateware" });
   return {
     thread: { ...thread, title: bidRoomThreadTitle("event_group", event), google_chat_sync_status: sync.status },
     message: { ...message, google_chat_sync_status: sync.status },
@@ -13361,10 +13266,12 @@ async function fetchAllRfxLaneRows(
 async function fetchAllRfxLaneVendorRows(
   supabase: RatewareSupabaseClient,
   eventId: string,
-  columns: string
+  columns: string,
+  parallelPages = 1
 ) {
   const rows: Record<string, unknown>[] = [];
-  for (let offset = 0; offset < RFX_LANE_VENDOR_MAX_ROWS; offset += RFX_LANE_VENDOR_PAGE_SIZE) {
+  const width = Math.min(3, Math.max(1, Math.floor(parallelPages) || 1));
+  const readPage = async (offset: number) => {
     const result = await supabase
       .from("rfx_lane_vendors")
       .select(columns)
@@ -13374,9 +13281,20 @@ async function fetchAllRfxLaneVendorRows(
       .range(offset, offset + RFX_LANE_VENDOR_PAGE_SIZE - 1);
     if (result.error) throw new Error(`RFx participant load failed: ${result.error.message}`);
 
-    const page = (result.data || []) as unknown as Record<string, unknown>[];
-    rows.push(...page);
-    if (page.length < RFX_LANE_VENDOR_PAGE_SIZE) return rows;
+    return (result.data || []) as unknown as Record<string, unknown>[];
+  };
+  // Probe one page first: small events do not incur speculative queries.
+  // Promise.all preserves page order even when requests complete out of order.
+  for (let offset = 0; offset < RFX_LANE_VENDOR_MAX_ROWS;) {
+    const pageCount = offset === 0 ? 1 : width;
+    const offsets = Array.from({ length: pageCount }, (_, i) => offset + i * RFX_LANE_VENDOR_PAGE_SIZE)
+      .filter((start) => start < RFX_LANE_VENDOR_MAX_ROWS);
+    const pages = await Promise.all(offsets.map(readPage));
+    for (const page of pages) {
+      rows.push(...page);
+      if (page.length < RFX_LANE_VENDOR_PAGE_SIZE) return rows;
+    }
+    offset += offsets.length * RFX_LANE_VENDOR_PAGE_SIZE;
   }
   throw new Error(`RFx participant load exceeded ${RFX_LANE_VENDOR_MAX_ROWS} rows for one event.`);
 }
@@ -17701,8 +17619,7 @@ async function hydrateRfxBoardInvitationTokens(
   supabase: RatewareSupabaseClient,
   rows: Record<string, unknown>[]
 ) {
-  const hydrated: Record<string, unknown>[] = [];
-  for (const row of rows) {
+  return await mapWithConcurrency(rows, 24, async (row) => {
     const legacyToken = cleanText(row.invitation_token);
     let token = legacyToken;
     if (legacyToken) {
@@ -17718,9 +17635,8 @@ async function hydrateRfxBoardInvitationTokens(
         token = null;
       }
     }
-    hydrated.push({ ...publicRfxParticipantRow(row), invitation_token: token || "" });
-  }
-  return hydrated;
+    return { ...publicRfxParticipantRow(row), invitation_token: token || "" };
+  });
 }
 
 async function requireHydratedRfxInvitationTokens(
@@ -18273,64 +18189,6 @@ async function syncGmailBounces(
   };
 }
 
-async function googleChatAccessToken(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
-  const result = await supabase
-    .from("google_chat_connections")
-    .select("*")
-    .eq("owner_email", user.owner_email)
-    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
-    .eq("status", "connected")
-    .maybeSingle();
-  if (result.error) throw result.error;
-  const connection = result.data;
-  if (!connection) throw new Error(`Connect ${GOOGLE_CHAT_ALLOWED_ACCOUNT} in Settings before using Google Chat.`);
-
-  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
-  if (connection.access_token_encrypted && expiresAt > Date.now() + 120_000) {
-    return await decryptGmailToken(connection.access_token_encrypted);
-  }
-
-  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
-  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
-  if (!clientId || !clientSecret) throw new Error("Google OAuth client is not configured.");
-  const refreshToken = await decryptGmailToken(connection.refresh_token_encrypted);
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token"
-    })
-  });
-  const tokenData = await tokenResponse.json();
-  if (!tokenResponse.ok || !tokenData.access_token) {
-    const message = cleanText(tokenData.error_description) || cleanText(tokenData.error) || "Google Chat token refresh failed.";
-    await supabase
-      .from("google_chat_connections")
-      .update({ status: "error", last_error: message, updated_at: new Date().toISOString() })
-      .eq("owner_email", user.owner_email)
-      .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
-    throw new Error(message);
-  }
-
-  const accessToken = String(tokenData.access_token);
-  const expiresIn = Number(tokenData.expires_in) || 3600;
-  const update = await supabase
-    .from("google_chat_connections")
-    .update({
-      access_token_encrypted: await encryptGmailToken(accessToken),
-      token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
-      last_error: null,
-      updated_at: new Date().toISOString()
-    })
-    .eq("owner_email", user.owner_email)
-    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
-  if (update.error) throw update.error;
-  return accessToken;
-}
-
 function normalizeGoogleChatSpaceName(value: unknown) {
   const text = cleanText(value);
   if (!text) return null;
@@ -18371,7 +18229,7 @@ async function getGoogleChatSpaceDetails(
   if (!spaceName) {
     throw new Error("Paste a valid Google Chat Space link or resource name like spaces/AAA...");
   }
-  const accessToken = await googleChatAccessToken(supabase, user);
+  const accessToken = await googleChatAccessToken(supabase, user.owner_email);
   const response = await fetch(`https://chat.googleapis.com/v1/${spaceName}`, {
     headers: { Authorization: `Bearer ${accessToken}` }
   });
@@ -18394,7 +18252,7 @@ async function listGoogleChatSpaces(supabase: RatewareSupabaseClient, user: { ow
   if (connectionResult.error) throw connectionResult.error;
   if (!connectionResult.data) return { connected: false, rows: [], default_space_name: null };
 
-  const accessToken = await googleChatAccessToken(supabase, user);
+  const accessToken = await googleChatAccessToken(supabase, user.owner_email);
   const rows: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   let pageToken = "";
@@ -19992,7 +19850,7 @@ async function mirrorBidRoomCarrierDelivery(
     resolved_at: null,
     resolved_by: null
   }).eq("id", thread.id);
-  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, inserted.data, event);
+  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, inserted.data, event, { defaultSender: "Rateware" });
   return {
     thread,
     message: { ...inserted.data, google_chat_sync_status: sync.status },
@@ -23494,6 +23352,8 @@ async function launchRfxProcessPackageToBidRoom(supabase: RatewareSupabaseClient
       rfx_id: rfxId,
       name: cleanText(input.name) || project.title || pack.name,
       customer: project.customer_name,
+      // The CRM Shipper, not only its name: Shipper Ratebooks consolidate on this key.
+      customer_id: project.customer_id,
       event_type: "rfx",
       status: cleanText(input.open_now || input.status) === "open" || cleanOptionalBoolean(input.open_now) === true ? "open" : "draft",
       due_date: input.due_date || pack.bid_due_at || project.due_date,
@@ -25723,6 +25583,10 @@ export function createRatewareApiHandler(
     operationId = ratewareOperationId(request, body);
     const bodyParsedAt = performance.now();
 
+    // The team role gate: awards, archiving and the shared catalog are an Administrador's.
+    const roleDenial = teamRoleDenial("rateware-api", claims as Record<string, unknown>, body);
+    if (roleDenial) return jsonResponse(roleDenial, 403);
+
     const growthAction = typeof body.action === "string" ? body.action : "";
     if (isGrowthAction(growthAction)) {
       return jsonResponse(await handleGrowthAction(supabase, user, body));
@@ -27423,7 +27287,10 @@ export function createRatewareApiHandler(
       const maxLimit = lightweight ? 1000 : 250;
       const limit = Math.min(Math.max(Number(body.limit) || 75, 1), maxLimit);
       const vendorSelect = lightweight
-        ? "id,vendor_name,name,legal_name,contact_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,whatsapp_permission_basis,whatsapp_do_not_contact,whatsapp_opt_in_status,whatsapp_group_url,whatsapp_group_name,whatsapp_meta_group_id,whatsapp_group_status,whatsapp_notes,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at"
+        ? "id,vendor_name,name,legal_name,contact_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,whatsapp_permission_basis,whatsapp_do_not_contact,whatsapp_opt_in_status,whatsapp_group_url,whatsapp_group_name,whatsapp_meta_group_id,whatsapp_group_status,whatsapp_notes,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at," +
+          // The legal name a carrier typed in its profile, for lists that show
+          // "razón social" when the legal_name column is still empty.
+          "profile_legal_name:profile_data->identity->>legal_name"
         : "*";
       let searchTotal = 0;
       let filteredTotal = 0;
@@ -28786,12 +28653,13 @@ export function createRatewareApiHandler(
 
     if (body.action === "list_rfx_detail") {
       const event = await requireOwnedRfxEvent(supabase, user, body.event_id || body.id);
+      const compactVendors = body.compact_vendors === true;
       const invitationColumns = "*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)";
       // Benchmarks are independent of the event lanes and invitations. Load all
       // three concurrently so opening a Bid Room pays one database round trip.
       const [eventLanes, loadedInvitationRows, benchmarkLoad, comparisonFx] = await Promise.all([
         fetchAllRfxLaneRows(supabase, event.id, "*"),
-        fetchAllRfxLaneVendorRows(supabase, event.id, invitationColumns),
+        fetchAllRfxLaneVendorRows(supabase, event.id, invitationColumns, 3),
         fetchRfxDetailBenchmarkRates(supabase, user, event.id)
           .then((value) => ({ value, error: null as unknown }))
           .catch((error) => ({ value: null, error })),
@@ -28847,6 +28715,18 @@ export function createRatewareApiHandler(
       // Without this the board renders every "Open room" action disabled.
       invitationRows = await hydrateRfxBoardInvitationTokens(supabase, invitationRows);
 
+      // One carrier can participate in dozens of lanes. Compact responses keep
+      // one CRM profile per carrier instead of repeating it in every lane row.
+      // Older clients retain the original response shape unless they opt in.
+      const compactVendorRows = new Map<string, Record<string, unknown>>();
+      if (compactVendors) {
+        for (const invitation of invitationRows) {
+          const vendor = relationRecord(invitation.vendors);
+          const vendorId = cleanText(vendor.id) || cleanText(invitation.vendor_id);
+          if (vendorId && !compactVendorRows.has(vendorId)) compactVendorRows.set(vendorId, vendor);
+        }
+      }
+
       const invitationsByLane = new Map<string, Record<string, unknown>[]>();
       for (const invitation of invitationRows) {
         const laneId = cleanText(invitation.rfx_lane_id);
@@ -28859,7 +28739,11 @@ export function createRatewareApiHandler(
       const lanes = eventLanes.map((lane) => {
         const benchmark = bestRatewareBenchmark(lane, rates);
         const supplyDepth = supplyDepthForLane(lane, rates);
-        const invitations = (invitationsByLane.get(cleanText(lane.id) || "") || []).map((invitation) => invitationWithComparison(invitation, benchmark));
+        // An expression body keeps the action contract's scanner on this action's own
+        // block (with its requireOwnedRfxEvent check), not on the helper it calls.
+        const invitations = (invitationsByLane.get(cleanText(lane.id) || "") || []).map((invitation) =>
+          invitationWithComparison(compactVendors ? withoutVendorProfile(invitation) : invitation, benchmark)
+        );
         return {
           ...lane,
           benchmark,
@@ -28876,7 +28760,8 @@ export function createRatewareApiHandler(
         coverage_sync: { inserted: coverageInserted },
         coverage_warning: coverageWarning,
         rateware_benchmark: ratewareBenchmark,
-        comparison_fx: comparisonFx
+        comparison_fx: comparisonFx,
+        ...(compactVendors ? { vendors: [...compactVendorRows.values()] } : {})
       });
     }
 
@@ -29577,7 +29462,7 @@ export function createRatewareApiHandler(
       const eventLaneCount = eventLaneRows.length;
       const vendorIds = [...new Set(invitations.map((row) => cleanText(row.vendor_id)).filter(Boolean))] as string[];
       const [historyRows, suppressions] = await Promise.all([
-        allScopedOutreachMessages(supabase, user, { rfx_event_id: eventId, channel, include_archived: false }),
+        allScopedOutreachMessages(supabase, user, { rfx_event_id: eventId, channel, include_archived: false, view: "audience_history" }),
         outreachSuppressionsForVendors(supabase, user, vendorIds)
       ]);
       const historyByContact = outreachHistoryByContact(historyRows);
@@ -30001,33 +29886,25 @@ export function createRatewareApiHandler(
       let whatsappConnectionRow: Record<string, unknown> = {};
       if (wantsDirectWhatsapp) {
         try {
-          const notifier = await publishOutreachTemplateToWhatsapp(supabase, user, { template_id: template.id });
-          whatsappMapping = notifier.row as Record<string, unknown> | null;
-          whatsappNotifier = {
-            attempted: true,
-            status: cleanText(whatsappMapping?.meta_template_status)?.toLowerCase() || "pending",
-            ready: notifier.ready,
-            template_name: cleanText(whatsappMapping?.meta_template_name),
-            language: cleanText(whatsappMapping?.meta_template_language),
-            message: notifier.message
-          };
-        } catch (error) {
-          whatsappNotifier = {
-            attempted: true,
-            status: "error",
-            ready: false,
-            error: safeOperationalError(error)
-          };
-        }
-        try {
           const whatsappConnection = await listWhatsappConnections(supabase, user);
           whatsappConnectionRow = whatsappConnection.rows?.[0] || {};
-          if (!whatsappMapping && whatsappConnectionRow.id) {
+          if (whatsappConnectionRow.id) {
             whatsappMapping = await whatsappTemplateMapping(supabase, whatsappConnectionRow.id, template.id);
           }
+          const mappingStatus = cleanText(whatsappMapping?.meta_template_status)?.toLowerCase() || "not_published";
+          whatsappNotifier = {
+            attempted: false,
+            status: mappingStatus,
+            ready: mappingStatus === "approved",
+            template_name: cleanText(whatsappMapping?.meta_template_name),
+            language: cleanText(whatsappMapping?.meta_template_language),
+            message: whatsappMapping
+              ? "Existing Meta template status loaded."
+              : "No Meta template is published. Publish it explicitly before delivery."
+          };
         } catch (error) {
           whatsappNotifier = {
-            attempted: true,
+            attempted: false,
             status: "error",
             ready: false,
             error: safeOperationalError(error)
@@ -30066,7 +29943,9 @@ export function createRatewareApiHandler(
           batch.push(...page);
           if (chunk.length || page.length < 1000) break;
           offset += 1000;
-          if (offset >= 5000) throw new Error("Outreach invitation load exceeded 5000 active rows. Generate a narrower wave.");
+          if (offset >= RFX_OUTREACH_ALL_ELIGIBLE_LIMIT) {
+            throw new Error(`Outreach invitation load exceeded ${RFX_OUTREACH_ALL_ELIGIBLE_LIMIT} active rows. Generate a narrower wave.`);
+          }
         }
         return batch;
       });
@@ -30102,6 +29981,12 @@ export function createRatewareApiHandler(
         bucket.push(invitation);
         invitationGroups.set(key, bucket);
       }
+      const outreachMatrix = assertOutreachMatrixWithinLimit({
+        carrierCount: invitationGroups.size,
+        laneCount: eventLaneRows.length,
+        loadedRows: invitations.length,
+        limit: RFX_OUTREACH_INVITATION_ID_LIMIT
+      });
 
       // A carrier selected from the event audience is quoting the RFx business
       // book, not only the first lane on which it was originally shortlisted.
@@ -30121,25 +30006,26 @@ export function createRatewareApiHandler(
         const requestedGroupKeys = new Set(invitationGroups.keys());
         const requestedVendorIds = [...new Set(invitations.map((invitation) => cleanText(invitation.vendor_id)).filter(Boolean))] as string[];
         const completeBatches = await mapWithConcurrency(chunkValues(requestedVendorIds, 100), 4, async (vendorChunk) => {
-          const batch: Record<string, unknown>[] = [];
-          let offset = 0;
-          while (true) {
-            const completeResult = await supabase
-              .from("rfx_lane_vendors")
-              .select(invitationSelect)
-              .eq("rfx_event_id", campaign.rfx_event_id)
-              .eq("rfx_events.owner_email", user.owner_email)
-              .in("vendor_id", vendorChunk)
-              .neq("invitation_status", "archived")
-              .range(offset, offset + 999);
-            if (completeResult.error) throw new Error(`Outreach lane hydration failed: ${completeResult.error.message}`);
-            const page = (completeResult.data || []) as Record<string, unknown>[];
-            batch.push(...page);
-            if (page.length < 1000) break;
-            offset += 1000;
-            if (offset >= 25000) throw new Error("Outreach lane hydration exceeded the safe per-batch limit.");
-          }
-          return batch;
+          return await fetchBoundedKeysetRows({
+            label: "Outreach lane hydration",
+            limit: OUTREACH_RELATED_ROW_BATCH_LIMIT,
+            pageSize: OUTREACH_RELATED_ROW_PAGE_SIZE,
+            fetchPage: async ({ afterId, limit }: { afterId: string; limit: number }) => {
+              let completeQuery = supabase
+                .from("rfx_lane_vendors")
+                .select(invitationSelect)
+                .eq("rfx_event_id", campaign.rfx_event_id)
+                .eq("rfx_events.owner_email", user.owner_email)
+                .in("vendor_id", vendorChunk)
+                .neq("invitation_status", "archived")
+                .order("id", { ascending: true })
+                .limit(limit);
+              if (afterId) completeQuery = completeQuery.gt("id", afterId);
+              const pageResult = await completeQuery;
+              if (pageResult.error) throw new Error(`Outreach lane hydration failed: ${pageResult.error.message}`);
+              return (pageResult.data || []) as Record<string, unknown>[];
+            }
+          });
         });
         const completeInvitations = await requireHydratedRfxInvitationTokens(
           supabase,
@@ -30559,6 +30445,9 @@ export function createRatewareApiHandler(
           requested_invitation_ids: invitationIds.length,
           loaded_invitations: invitations.length,
           carrier_groups: invitationGroups.size,
+          lane_count: outreachMatrix.lane_count,
+          matrix_rows: outreachMatrix.matrix_rows,
+          matrix_limit: outreachMatrix.limit,
           candidate_drafts: 0,
           created: 0,
           refreshed: 0,
@@ -30573,27 +30462,31 @@ export function createRatewareApiHandler(
         const historicalMessagesByKey = new Map<string, Record<string, unknown>>();
         if (candidateChannels.length && candidateVendorIds.length) {
           const historicalBatches = await mapWithConcurrency(chunkValues(candidateVendorIds, 100), 4, async (vendorChunk) => {
-            const batch: Record<string, unknown>[] = [];
-            let offset = 0;
-            while (true) {
-              const historicalResult = await supabase
-                .from("outreach_messages")
-                .select("id,campaign_id,rfx_event_id,rfx_lane_vendor_id,vendor_id,channel,status,recipient_email,recipient_phone,normalized_recipient_phone,sent_at,bounce_detected_at,delivery_status,provider_response_status,updated_at,metadata")
-                .eq("owner_email", user.owner_email)
-                .eq("rfx_event_id", campaign.rfx_event_id)
-                .in("vendor_id", vendorChunk)
-                .in("channel", candidateChannels)
-                .neq("status", "archived")
-                .order("updated_at", { ascending: false })
-                .range(offset, offset + 999);
-              if (historicalResult.error) throw new Error(`Outreach history load failed: ${historicalResult.error.message}`);
-              const page = (historicalResult.data || []) as Record<string, unknown>[];
-              batch.push(...page);
-              if (page.length < 1000) break;
-              offset += 1000;
-              if (offset >= 25000) throw new Error("Outreach history load exceeded the safe per-batch limit.");
-            }
-            return batch;
+            const batch = await fetchBoundedKeysetRows({
+              label: "Outreach history load",
+              limit: OUTREACH_RELATED_ROW_BATCH_LIMIT,
+              pageSize: OUTREACH_RELATED_ROW_PAGE_SIZE,
+              fetchPage: async ({ afterId, limit }: { afterId: string; limit: number }) => {
+                let historyQuery = supabase
+                  .from("outreach_messages")
+                  .select("id,campaign_id,rfx_event_id,rfx_lane_vendor_id,vendor_id,channel,status,recipient_email,recipient_phone,normalized_recipient_phone,sent_at,bounce_detected_at,delivery_status,provider_response_status,updated_at,metadata")
+                  .eq("owner_email", user.owner_email)
+                  .eq("rfx_event_id", campaign.rfx_event_id)
+                  .in("vendor_id", vendorChunk)
+                  .in("channel", candidateChannels)
+                  .neq("status", "archived")
+                  .order("id", { ascending: true })
+                  .limit(limit);
+                if (afterId) historyQuery = historyQuery.gt("id", afterId);
+                const historicalResult = await historyQuery;
+                if (historicalResult.error) throw new Error(`Outreach history load failed: ${historicalResult.error.message}`);
+                return (historicalResult.data || []) as Record<string, unknown>[];
+              }
+            });
+            return batch.sort((left, right) => {
+              const updatedComparison = String(right.updated_at || "").localeCompare(String(left.updated_at || ""));
+              return updatedComparison || String(right.id || "").localeCompare(String(left.id || ""));
+            });
           });
           for (const historicalMessage of historicalBatches.flat()) {
             if (!outreachBlocksAutoDraft(historicalMessage)) continue;
@@ -30636,6 +30529,9 @@ export function createRatewareApiHandler(
           requested_invitation_ids: invitationIds.length,
           loaded_invitations: invitations.length,
           carrier_groups: invitationGroups.size,
+          lane_count: outreachMatrix.lane_count,
+          matrix_rows: outreachMatrix.matrix_rows,
+          matrix_limit: outreachMatrix.limit,
           candidate_drafts: 0,
           created: 0,
           refreshed: 0,
@@ -30813,6 +30709,9 @@ export function createRatewareApiHandler(
           requested_invitation_ids: invitationIds.length,
           loaded_invitations: invitations.length,
           carrier_groups: invitationGroups.size,
+          lane_count: outreachMatrix.lane_count,
+          matrix_rows: outreachMatrix.matrix_rows,
+          matrix_limit: outreachMatrix.limit,
           candidate_drafts: dailyLimitedRows.length,
           created: createdMessages.length,
           refreshed: generatedMessages.length - createdMessages.length,
@@ -32323,13 +32222,20 @@ export function createRatewareApiHandler(
       if (!body.id) return jsonResponse({ error: "Upload id is required." }, 400);
       const upload = await supabase
         .from("raw_uploads")
-        .select("id,original_filename,storage_bucket,storage_path,mime_type")
+        .select("id,original_filename,storage_provider,storage_bucket,storage_path,mime_type")
         .eq("id", body.id)
         .eq("owner_email", user.owner_email)
         .single();
       if (upload.error) throw upload.error;
       if (!upload.data?.storage_bucket || !upload.data?.storage_path) {
         return jsonResponse({ error: "Source file is missing from storage." }, 404);
+      }
+
+      // Files kept in Oracle are signed by rateware-storage-api, which holds the
+      // Oracle credentials and checks reviewed file access.
+      if (upload.data.storage_provider && upload.data.storage_provider !== "supabase") {
+        const forwarded = await forwardSourceDownload(request, body, SUPABASE_URL);
+        return jsonResponse(forwarded.payload, forwarded.status);
       }
 
       const signed = await supabase.storage
@@ -32351,11 +32257,16 @@ export function createRatewareApiHandler(
       requireBulkConfirmation(body, { action: "remove_upload", label: "Upload removal", count: 1 });
       const upload = await supabase
         .from("raw_uploads")
-        .select("id,original_filename,storage_bucket,storage_path")
+        .select("id,original_filename,storage_provider,storage_bucket,storage_path")
         .eq("id", body.id)
         .eq("owner_email", user.owner_email)
         .single();
       if (upload.error) throw upload.error;
+
+      if (upload.data?.storage_provider && upload.data.storage_provider !== "supabase") {
+        const forwarded = await forwardSourceRemoval(request, body, SUPABASE_URL);
+        return jsonResponse(forwarded.payload, forwarded.status);
+      }
 
       if (upload.data?.storage_bucket && upload.data?.storage_path) {
         const storage = await supabase.storage.from(upload.data.storage_bucket).remove([upload.data.storage_path]);

@@ -111,6 +111,46 @@ const productionOnlyMigrations = new Map([
     "20260825160000_carrier_list_templates.sql",
     "7cc3bf0787e428c6ceaf18facb3319e5e8fdd737f46a26d60036149e28e0527c",
   ],
+  [
+    "20260907062502_oracle_object_storage_contingency.sql",
+    "3297f780ebbb25d623b16fc3c42e09ca14cd6d41458c3c1625d6c2bb93255625",
+  ],
+  [
+    "20260908104144_raw_uploads_server_only.sql",
+    "365fd4ae0ebe804d1a38a5e34173e058d3519559cb68d2d3a83f7b65c9f26a0b",
+  ],
+  [
+    "20260925061821_restore_bi_rate_fact_writers.sql",
+    "4f92df8edd0b87fec391faf637582a9b8a752f6dd565b0d6764ce21db045fec5",
+  ],
+  [
+    "20260925062424_restore_bi_readers.sql",
+    "50de64b20fce7170a9d6d16b8f45f7fc3ce02946c337ada630f29f4e0c967710",
+  ],
+  [
+    "20260925062556_stop_turso_bi_sync.sql",
+    "979e46cdc9e1eade06ecc02ca95fce44120901f9de690d95fd34a3c1621b5897",
+  ],
+  [
+    "20260925161507_fcm_sync_engine_check.sql",
+    "5702a10f49e93a50b1d747281212b76389dfe4fdba7f02adce2fc4e64d6388c8",
+  ],
+  [
+    "20260925174054_schedule_ops_daily_watch.sql",
+    "e1b31cbbe9b4fab427f304275f439ed020194ff2514eb8d3dafe7a89b3525853",
+  ],
+  [
+    "20260925185917_team_workspace_membership.sql",
+    "3a0cc62ef1c5b5f9429ae4bcd11a7c660e35b63970062fb510c79cfdf71164d4",
+  ],
+  [
+    "20260926200753_rfi_template_catalog_values.sql",
+    "ed0b0a62282587bdabf497c4e5751fe1bcd14c64f23bcc37ab34740b984cfa48",
+  ],
+  [
+    "20260927142510_relink_launched_rfx_events_to_shippers.sql",
+    "f1084bcfff415f993f19f2c6c1329209df09ac7f9d1262cc08abe6347941005a",
+  ],
 ]);
 
 function migrationHash(contents) {
@@ -174,7 +214,7 @@ test("clean replay CI verifies pinned hashes, final ledger, and Provider Service
   assert.match(workflow, /run:\s+npm run test:migration-ledger/);
   assert.match(workflow, /tests\/supabase-migration-ledger\.test\.mjs/);
   assert.match(workflow, /count\(\*\).*max\(version\)/s);
-  assert.match(workflow, /374\|20260907120000/);
+  assert.match(workflow, /398\|20260927142510/);
   assert.match(workflow, /provider_legal_entity_fact_promotions/);
   assert.match(workflow, /provider_onboarding_readiness_evaluations/);
   assert.match(workflow, /provider_onboarding_readiness_results/);

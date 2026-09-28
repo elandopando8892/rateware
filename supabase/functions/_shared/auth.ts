@@ -19,7 +19,22 @@ async function requireSupabaseUser(token: string) {
     sub: user.id,
     email: user.email,
     auth_provider: "supabase",
-    organization_id: appMetadata.rateware_organization_id || appMetadata.organization_id
+    // Reviewed source-file access (_shared/source-file-access.ts) needs both.
+    email_confirmed: Boolean(user.email_confirmed_at),
+    rateware_organization_id: appMetadata.rateware_organization_id,
+    organization_id: appMetadata.rateware_organization_id || appMetadata.organization_id,
+    // Only server-managed metadata returned by Auth can grant capabilities.
+    permissions: Array.isArray(appMetadata.permissions)
+      ? appMetadata.permissions.filter((permission): permission is string =>
+        typeof permission === "string" && permission.trim().length > 0
+      ).map((permission) => permission.trim())
+      : [],
+    // The team role (admin | operator | viewer), server-managed too; see team-roles.ts.
+    roles: Array.isArray(appMetadata.roles)
+      ? appMetadata.roles.filter((role): role is string =>
+        typeof role === "string" && role.trim().length > 0
+      ).map((role) => role.trim().toLowerCase())
+      : []
   };
 }
 

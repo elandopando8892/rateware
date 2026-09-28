@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 
 const apiSource = readFileSync(new URL("../supabase/functions/rateware-api/index.ts", import.meta.url), "utf8");
@@ -214,6 +215,12 @@ assert.match(vendorsSource, /function duplicateHealthScore\(vendor\)/, "Carrier 
 assert.match(vendorsSource, /function vendorHasApolloSourceId\(vendor\)/, "Carrier CRM duplicate review should identify paid Apollo records from Source ID notes");
 assert.match(vendorsSource, /function duplicateQuoteEvidence\(vendor\)/, "Carrier CRM duplicate review should count linked quotation evidence before health");
 assert.match(vendorsSource, /Keep: Apollo Source ID/, "Carrier CRM duplicate review should explain why an Apollo-enriched record wins");
+// `status` only mirrors TMS activation and inactive carriers are still invited
+// to RFx, so a duplicate is set aside by archiving it, never by marking it inactive.
+assert.match(vendorsSource, /data-duplicate-archive="\$\{escapeHtml\(vendor\.id\)\}">Archive duplicate<\/button>/, "Carrier CRM duplicate review should offer to archive a duplicate");
+assert.match(vendorsSource, /window\.confirm\(`Archive \$\{vendorName\} as a duplicate\?[\s\S]{0,200}updateVendor\(vendorId, \{ base_stage: "archived" \}\)/, "Archiving a duplicate should be confirmed and keep it out of RFx audiences through base_stage");
+assert.doesNotMatch(vendorsSource, /data-duplicate-inactive|Mark inactive/, "Duplicate review must not park duplicates as inactive: inactive carriers stay invitable");
+assert.doesNotMatch(vendorsSource, /base_stage: "(sourcing|procurement)", status: "active"/, "Pipeline moves (restore from archive, send to Procurement) must not mark a carrier as activated in the TMS");
 assert.match(vendorsSource, /function uniqueVendorFunnelRows/, "Procurement Pipeline should de-duplicate vendor cards before rendering counts");
 assert.match(vendorsSource, /numberValue\(bidMetrics\.quoted\)/, "Procurement Pipeline should count Bid Room quotes with Rateware-linked quotes");
 assert.match(vendorsSource, /const stageNumber = funnelStages\(\)\.findIndex/, "Pipeline stage numbering should remain stable when empty stages are hidden");
@@ -689,7 +696,8 @@ assert.doesNotMatch(
   /listWhatsappConnections/,
   "Gmail-only draft generation must not resolve WhatsApp connections before the WhatsApp gate"
 );
-assert.match(generateOutreachDraftsSource, /if \(wantsDirectWhatsapp\) \{[\s\S]+publishOutreachTemplateToWhatsapp\(supabase, user, \{ template_id: template\.id \}\)/, "Generating a WhatsApp queue should automatically create or refresh the Meta notifier");
+assert.doesNotMatch(generateOutreachDraftsSource, /publishOutreachTemplateToWhatsapp\(supabase, user, \{ template_id: template\.id \}\)/, "Generating a WhatsApp queue should leave Meta publishing as an explicit action");
+assert.match(generateOutreachDraftsSource, /No Meta template is published\. Publish it explicitly before delivery\./, "Draft generation should explain the explicit Meta publishing step");
 assert.match(generateOutreachDraftsSource, /if \(wantsDirectWhatsapp\) \{[\s\S]+listWhatsappConnections/, "WhatsApp connection lookup should only run for direct WhatsApp queues");
 assert.match(apiSource, /whatsapp_notifier: whatsappNotifier/, "Draft generation should return the automatic Meta notifier state");
 assert.match(apiSource, /whatsapp_template_parameters: whatsappParameters/, "Generated WhatsApp drafts should persist rendered Meta parameter values");
@@ -858,6 +866,20 @@ assert.match(whatsappWebhookSource, /\.is\("whatsapp_connection_id", null\)[\s\S
 assert.doesNotMatch(whatsappWebhookSource, /whatsapp_connection_id\.eq\.\$\{connection\.id\},whatsapp_connection_id\.is\.null/, "WhatsApp webhook should not update exact and unscoped legacy messages in one query");
 assert.match(whatsappWebhookSource, /appSecrets\.size !== 1/, "WhatsApp webhook should reject a payload spanning different Meta apps");
 assert.match(whatsappWebhookSource, /webhook_phone_number_id:[\s\S]+webhook_waba_id:/, "WhatsApp webhook should persist the Meta routing identity with delivery results");
+assert.match(supabaseConfigSource, /\[functions\.whatsapp-webhook\]\s*verify_jwt\s*=\s*false/, "Meta calls the WhatsApp webhook without a Supabase JWT, so a deploy from the repo must keep gateway verification off");
+{
+  // Meta reports a reply's sender as bare digits (a Mexican mobile may carry the
+  // old "1" after 52) while outreach stores the number it sent to as "+52...".
+  const start = whatsappWebhookSource.indexOf("function inboundPhoneCandidates(");
+  assert.notEqual(start, -1, "WhatsApp webhook should expand the inbound sender into every stored phone spelling");
+  const helper = whatsappWebhookSource.slice(start, whatsappWebhookSource.indexOf("\n}\n", start) + 2).replace("fromPhone: string", "fromPhone");
+  const inboundPhoneCandidates = new Function(`${helper}\nreturn inboundPhoneCandidates;`)();
+  assert.ok(inboundPhoneCandidates("5215512345678").includes("+525512345678"), "A reply from a Mexican mobile reported as 521... must match the +52... number we sent to");
+  assert.ok(inboundPhoneCandidates("525512345678").includes("+525512345678"), "A reply reported as 52... must match the stored +52... number");
+  assert.ok(inboundPhoneCandidates("525512345678").includes("+5215512345678"), "A number saved with the old Mexican mobile 1 must still match");
+  assert.deepEqual(inboundPhoneCandidates("19565550123"), ["+19565550123", "19565550123"], "Non-Mexican numbers only differ by the plus sign");
+  assert.doesNotMatch(whatsappWebhookSource, /\.eq\("normalized_recipient_phone", fromPhone\)/, "WhatsApp replies must not be matched against the bare sender digits alone");
+}
 assert.match(whatsappWebhookRoutingMigration, /whatsapp_business_connections_webhook_route_idx/, "WhatsApp connection lookup should have a phone and WABA routing index");
 assert.match(whatsappWebhookRoutingMigration, /outreach_messages_whatsapp_webhook_route_idx/, "WhatsApp delivery callbacks should have a connection and provider message index");
 assert.match(rfxBidApiSource, /rfx_rfi_crossborder_details/, "Customer RFI API should persist structured crossborder details");
@@ -2445,7 +2467,15 @@ const bidSubmitSource = rfxBidApiSource.slice(
   rfxBidApiSource.indexOf('if (body.action === "submit_bid")') + 7000
 );
 assert.doesNotMatch(bidSubmitSource, /assertLaneFitComplete/, "Carrier bid submissions should accept quotes with optional fit answers");
-assert.match(rfxBidSource, /import \* as XLSX from "https:\/\/esm\.sh\/xlsx@0\.18\.5"/, "Carrier portal should load XLSX support for bid templates");
+assert.match(rfxBidSource, /import \* as XLSX from "https:\/\/cdn\.sheetjs\.com\/xlsx-0\.20\.3\/package\/xlsx\.mjs"/, "Carrier portal should load XLSX support for bid templates");
+// The Supabase bundler refuses cdn.sheetjs.com, so interpret-upload ships the
+// official build; its bytes must stay identical to the published file.
+assert.match(interpretUploadSource, /import \* as XLSX from "\.\/vendor\/xlsx-0\.20\.3\.mjs"/, "Upload interpretation should use the vendored SheetJS build");
+assert.equal(
+  createHash("sha256").update(readFileSync(new URL("../supabase/functions/interpret-upload/vendor/xlsx-0.20.3.mjs", import.meta.url))).digest("hex"),
+  "1a0fb062ee9781b13f6687371b202aaefc53b6ce55b530c027e01f9c087b77db",
+  "Vendored SheetJS must match the official 0.20.3 xlsx.mjs"
+);
 assert.match(rfxBidSource, /import\("https:\/\/esm\.sh\/exceljs@4\.4\.0\?bundle"\)/, "Carrier portal should use ExcelJS for XLSX dropdown data validations");
 assert.match(rfxBidSource, /const BID_TEMPLATE_COLUMNS = \[/, "Carrier portal should define a prefilled XLSX bid template schema");
 assert.match(rfxBidSource, /function downloadBidTemplate/, "Carrier portal should download a prefilled XLSX bid template");
@@ -2804,11 +2834,15 @@ assert.match(apiSource, /start_google_chat_oauth/, "API should start Google Chat
 assert.match(apiSource, /list_google_chat_spaces/, "API should list Google Chat spaces for the connected user");
 assert.match(apiSource, /chat\.messages\.create/, "Google Chat OAuth should request message creation scope");
 assert.match(apiSource, /chat\.messages\.readonly/, "Google Chat OAuth should request message read scope for inbound sync");
-assert.match(apiSource, /syncBidRoomMessageToGoogleChatApi/, "Bid Room chat should prefer Google Chat API sync over webhook-only mirroring");
-assert.match(apiSource, /function googleChatThreadTarget/, "Google Chat sync should target the persisted Chat thread name before creating a new thread");
-assert.match(apiSource, /REPLY_MESSAGE_OR_FAIL/, "Google Chat sync should fail instead of creating stray messages when a real thread already exists");
-assert.match(apiSource, /url\.searchParams\.set\("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"\)/, "Google Chat webhook fallback should include explicit thread reply behavior");
-assert.match(rfxBidApiSource, /function googleChatThreadTarget/, "Carrier portal Google Chat sync should use the same thread targeting rules");
+const bidRoomGoogleChatSource = readFileSync(new URL("../supabase/functions/_shared/bid-room-google-chat.ts", import.meta.url), "utf8");
+assert.match(bidRoomGoogleChatSource, /syncBidRoomMessageToGoogleChatApi/, "Bid Room chat should prefer Google Chat API sync over webhook-only mirroring");
+assert.match(bidRoomGoogleChatSource, /function googleChatThreadTarget/, "Google Chat sync should target the persisted Chat thread name before creating a new thread");
+assert.match(bidRoomGoogleChatSource, /REPLY_MESSAGE_OR_FAIL/, "Google Chat sync should fail instead of creating stray messages when a real thread already exists");
+assert.match(bidRoomGoogleChatSource, /url\.searchParams\.set\("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"\)/, "Google Chat webhook fallback should include explicit thread reply behavior");
+for (const [name, source] of [["rateware-api", apiSource], ["rfx-bid-api", rfxBidApiSource]]) {
+  assert.match(source, /import \{[^}]*\bsyncBidRoomMessageToGoogleChat\b[^}]*\} from "\.\.\/_shared\/bid-room-google-chat\.ts"/, `${name} should relay Bid Room messages through the shared Google Chat module so every sender follows the same thread rules`);
+  assert.doesNotMatch(source, /function (syncBidRoomMessageToGoogleChat|googleChatThreadTarget|googleChatAccessToken)\(/, `${name} should not keep its own copy of the Google Chat relay`);
+}
 assert.match(apiSource, /syncGoogleChatInboundMessagesForThreads/, "Internal Bid Room chat should import Google Chat replies back into Rateware");
 assert.match(rfxBidApiSource, /syncGoogleChatInboundMessagesForThreads/, "Carrier Bid Room portal should import Google Chat replies before rendering chat");
 assert.match(googleChatInboundMigration, /google_chat_thread_name text/, "Bid Room chat should persist the real Google Chat thread name for inbound matching");
@@ -3839,8 +3873,9 @@ assert.match(bidRoomChatSnapshotMigration, /message_row\.owner_email = p_owner_e
 assert.match(bidRoomChatSnapshotMigration, /vendor_row\.owner_email = p_owner_email/, "Bid Room snapshot vendor relations should not cross workspace boundaries");
 assert.match(bidRoomChatSnapshotMigration, /security invoker[\s\S]+set search_path = pg_catalog, public, pg_temp/, "Bid Room snapshot should use caller privileges and pin its search path");
 assert.match(bidRoomChatSnapshotMigration, /revoke all on function public\.rateware_bid_room_chat_snapshot[\s\S]+from public, anon, authenticated/, "Bid Room snapshot RPC should remain backend-only");
-assert.match(createRawUploadSource, /resolveRuntimeWorkspaceUser\(supabase, identity\)/, "Upload creation should enforce the reviewed tenant identity");
-assert.match(interpretUploadSource, /resolveRuntimeWorkspaceUser\(supabase, await requireRatewareUser/, "Interpretation should enforce the reviewed tenant identity through the staged provider verifier");
+assert.match(createRawUploadSource, /resolveSourceFileUser\(supabase, identity\)/, "Upload creation should enforce the reviewed tenant identity");
+assert.match(readFileSync(new URL("../supabase/functions/_shared/source-file-access.ts", import.meta.url), "utf8"), /resolveRuntimeWorkspaceUser\(client, sourceFileClaims\(claims\), \{\s*mode: "required"/, "Reviewed source-file access must resolve the canonical tenant in required mode");
+assert.match(interpretUploadSource, /resolveSourceFileUser\(supabase, await requireRatewareUser/, "Interpretation should enforce the reviewed tenant identity through the staged provider verifier");
 assert.match(canonicalWorkspaceMigration, /create table if not exists public\.workspace_registry/, "Canonical workspace ownership should be persisted");
 assert.match(canonicalWorkspaceMigration, /with recursive owner_edges as/, "Legacy owners should be discovered through existing vendor-rate relationships");
 assert.match(canonicalWorkspaceMigration, /rate_staging_vendor_workspace_guard/, "Staged rates should reject cross-workspace vendor links");
@@ -4197,11 +4232,7 @@ assert.match(apiSource, /fetchBiVendorMetricsSafe/, "Carrier recommendations sho
 assert.match(rfxEventsSource, /rfx_carrier_fit: true/, "Carrier fit should use the bounded RFx evidence path instead of the full recommendation workload");
 assert.match(apiSource, /fetchBiVendorMetricsForRfxCarrierFit/, "Carrier fit should enforce a bounded Rateware evidence lookup");
 assert.match(apiSource, /rfxCarrierFitMode[\s\S]*Promise\.resolve\(\{ summary: \{\}/, "Carrier fit should skip the unused BI summary workload");
-assert.match(rfxEventsSource, /const RFX_LANE_RENDER_PAGE_SIZE = 25;/, "Large Bid Room lane books should have a bounded initial render page");
-assert.match(rfxEventsSource, /filteredLanes\.slice\(0, laneRenderLimit\)/, "Bid Room should render only the visible lane page before expanding the book");
-assert.match(rfxEventsSource, /data-rfx-lane-load-more/, "Large lane books should expose an explicit incremental render control");
-assert.match(rfxEventsSource, /function scheduleRfxCarrierFitEvidence\(\)/, "Carrier Fit evidence should be scheduled separately from the initial RFx detail render");
-assert.match(rfxEventsSource, /if \(rfxLaunchWorkspace === "carrier"\) scheduleRfxCarrierFitEvidence\(\);/, "Carrier Fit evidence should wait until its workspace is active");
+assert.match(rfxEventsSource, /renderLanes\(\);[\s\S]+void loadRfxCarrierFitEvidence\(\{ force: eventChanged \|\| options\?\.force === true \}\);/, "Carrier Fit evidence should load after the core Bid Room render");
 assert.match(vendorsSource, /data-copy-profile-link/, "Vendor drawer should expose profile link creation");
 assert.match(carrierProfileHtml, /carrier-profile\.js/, "Carrier profile page should load the public profile script");
 assert.match(carrierProfileHtml, /carrier-profile-eyebrow/, "Carrier profile page header should be translatable");

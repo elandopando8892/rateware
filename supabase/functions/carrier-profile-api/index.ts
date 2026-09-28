@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
+import { syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -86,17 +87,80 @@ function normalizeProfileData(value: unknown) {
   return output;
 }
 
+// An answer the carrier explicitly emptied ("" / [] / null) must be cleared.
+// normalizeProfileData drops empties, so without this a saved answer could
+// never be removed. Answers the carrier did not send are left untouched.
+function clearedProfileFields(patchValue: unknown) {
+  const cleared: [string, string][] = [];
+  for (const [sectionKey, sectionValue] of Object.entries(objectRecord(patchValue))) {
+    for (const [fieldKey, fieldValue] of Object.entries(objectRecord(sectionValue))) {
+      const empty = fieldValue === null ||
+        (Array.isArray(fieldValue) ? normalizeArray(fieldValue).length === 0 : !cleanText(fieldValue));
+      if (empty) cleared.push([sectionKey, fieldKey]);
+    }
+  }
+  return cleared;
+}
+
+// profile_data also holds what the platform keeps about the carrier (bounce
+// history, merge lineage): the carrier's page writes answer sections only.
+// Anything already stored as a list or a single value is the platform's, and
+// in _meta the carrier sets just its response language.
+const INTERNAL_PROFILE_KEYS = new Set(["bounced_emails", "merged_vendor_ids", "last_duplicate_consolidation_at"]);
+const CARRIER_META_FIELDS = new Set(["response_language"]);
+
+function carrierMayWrite(base: Record<string, unknown>, sectionKey: string, fieldKey: string) {
+  if (INTERNAL_PROFILE_KEYS.has(sectionKey)) return false;
+  const current = base[sectionKey];
+  if (current !== undefined && (current === null || typeof current !== "object" || Array.isArray(current))) return false;
+  return sectionKey !== "_meta" || CARRIER_META_FIELDS.has(fieldKey);
+}
+
 function mergeProfileData(baseValue: unknown, patchValue: unknown) {
   const base = objectRecord(baseValue);
   const patch = normalizeProfileData(patchValue);
   const merged: Record<string, unknown> = { ...base };
   for (const [sectionKey, fields] of Object.entries(patch)) {
+    const allowed = Object.fromEntries(Object.entries(fields).filter(([fieldKey]) => carrierMayWrite(base, sectionKey, fieldKey)));
+    if (!Object.keys(allowed).length) continue;
     merged[sectionKey] = {
       ...objectRecord(merged[sectionKey]),
-      ...fields
+      ...allowed
     };
   }
+  for (const [sectionKey, fieldKey] of clearedProfileFields(patchValue)) {
+    if (!carrierMayWrite(base, sectionKey, fieldKey)) continue;
+    const section = { ...objectRecord(merged[sectionKey]) };
+    if (!(fieldKey in section)) continue;
+    delete section[fieldKey];
+    if (Object.keys(section).length) merged[sectionKey] = section;
+    else delete merged[sectionKey];
+  }
   return merged;
+}
+
+// vendors.notes is MARKSMAN's internal CRM field (it also carries system
+// markers such as the Apollo "Source ID"), so the carrier never reads or
+// writes it. The profile page's "notes" box is the carrier's own notes, kept
+// inside the profile.
+const CARRIER_NOTES_SECTION = "general";
+const CARRIER_NOTES_FIELD = "carrier_notes";
+
+function carrierNotes(profileData: unknown) {
+  const value = objectRecord(objectRecord(profileData)[CARRIER_NOTES_SECTION])[CARRIER_NOTES_FIELD];
+  return typeof value === "string" ? value : null;
+}
+
+function withCarrierNotes(profileInput: unknown, notes: unknown) {
+  const input = objectRecord(profileInput);
+  if (notes === undefined) return input;
+  return {
+    ...input,
+    [CARRIER_NOTES_SECTION]: {
+      ...objectRecord(input[CARRIER_NOTES_SECTION]),
+      [CARRIER_NOTES_FIELD]: notes ?? ""
+    }
+  };
 }
 
 function publicVendor(row: Record<string, unknown>) {
@@ -110,7 +174,8 @@ function publicVendor(row: Record<string, unknown>) {
     whatsapp_phone: row.whatsapp_phone,
     preferred_channel: row.preferred_channel,
     coverage_notes: row.coverage_notes,
-    notes: row.notes,
+    // The carrier's own notes, never the internal vendors.notes column.
+    notes: carrierNotes(row.profile_data),
     logo_url: row.logo_url,
     profile_data: objectRecord(row.profile_data)
   };
@@ -131,9 +196,17 @@ function publicSupportTicket(row: Record<string, unknown>) {
     followups: Array.isArray(metadata.followups) ? metadata.followups.slice(-5) : [],
     rfx_event_id: row.rfx_event_id,
     occurred_at: row.occurred_at,
-    updated_at: row.updated_at,
+    // contact_history has no updated_at column; the latest follow-up is the last change.
+    updated_at: metadata.latest_followup_at || row.occurred_at,
     google_chat_sync_status: metadata.google_chat_sync_status
   };
+}
+
+// The profile must still open if the support log cannot be read, but the
+// failure has to be visible: a swallowed error hid a broken query for months.
+function logSupportTicketError(error: unknown) {
+  console.error("carrier-profile-api support tickets failed:", publicErrorMessage(error));
+  return [];
 }
 
 async function loadSupportTickets(supabase: CarrierProfileSupabaseClient, request: Record<string, unknown>, vendor: Record<string, unknown>) {
@@ -141,7 +214,7 @@ async function loadSupportTickets(supabase: CarrierProfileSupabaseClient, reques
   if (!vendorId) return [];
   const result = await supabase
     .from("contact_history")
-    .select("id,subject,body_preview,status,metadata,rfx_event_id,occurred_at,updated_at")
+    .select("id,subject,body_preview,status,metadata,rfx_event_id,occurred_at")
     .eq("owner_email", request.owner_email)
     .eq("vendor_id", vendorId)
     .eq("status", "support_ticket")
@@ -190,6 +263,72 @@ async function loadRequest(supabase: CarrierProfileSupabaseClient, token: string
   return { request, vendor: objectRecord(request.vendors), status: 200 };
 }
 
+// A follow-up only helps if the team sees it. Post it to the Bid Room thread
+// the ticket was mirrored to (the carrier's private thread): that flags the
+// thread for a reply and relays the message to the same Google Chat thread,
+// exactly like a carrier message from the portal. Tickets without a
+// google_chat_thread_id were never mirrored, so there is nothing to reply to.
+async function notifyTeamOfFollowup(
+  supabase: CarrierProfileSupabaseClient,
+  request: Record<string, unknown>,
+  vendor: Record<string, unknown>,
+  ticket: Record<string, unknown>,
+  message: string
+) {
+  const threadId = cleanText(objectRecord(ticket.metadata).google_chat_thread_id);
+  if (!threadId) return { status: "skipped" };
+  const threadResult = await supabase
+    .from("bid_room_chat_threads")
+    .select("*")
+    .eq("id", threadId)
+    .eq("owner_email", request.owner_email)
+    .eq("vendor_id", vendor.id)
+    .neq("status", "archived")
+    .maybeSingle();
+  if (threadResult.error) throw threadResult.error;
+  const thread = threadResult.data as Record<string, unknown> | null;
+  if (!thread) return { status: "skipped" };
+
+  const messageResult = await supabase
+    .from("bid_room_chat_messages")
+    .insert({
+      owner_user_id: thread.owner_user_id,
+      owner_email: thread.owner_email,
+      thread_id: thread.id,
+      rfx_event_id: thread.rfx_event_id,
+      rfx_lane_id: thread.rfx_lane_id,
+      vendor_id: vendor.id,
+      sender_role: "carrier",
+      sender_name: cleanText(vendor.vendor_name || vendor.domain, 240) || "Carrier",
+      sender_email: cleanText(vendor.primary_email, 254),
+      body: `Follow-up on support ticket ${ticket.id}:\n${message}`,
+      google_chat_sync_status: "pending",
+      metadata: { source: "carrier_profile_followup", contact_history_id: ticket.id }
+    })
+    .select("*")
+    .single();
+  if (messageResult.error) throw messageResult.error;
+
+  await supabase.from("bid_room_chat_threads").update({
+    updated_at: new Date().toISOString(),
+    communication_status: "needs_reply",
+    needs_reply: true,
+    read_status: "unread",
+    last_action_at: new Date().toISOString()
+  }).eq("id", thread.id);
+
+  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data as Record<string, unknown>);
+  if (sync.status === "error") console.error("carrier-profile-api follow-up notice failed:", sync.error || "Google Chat rejected the message.");
+  return sync;
+}
+
+// The follow-up is already saved when the notice runs, so a failed notice is
+// logged instead of turning the carrier's save into an error.
+function logFollowupNoticeError(error: unknown) {
+  console.error("carrier-profile-api follow-up notice failed:", publicErrorMessage(error));
+  return { status: "error" };
+}
+
 Deno.serve(async (request) => {
   const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
@@ -211,7 +350,7 @@ Deno.serve(async (request) => {
         .from("vendor_profile_requests")
         .update({ status: String(requestRow.status) === "active" ? "viewed" : requestRow.status, viewed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq("id", requestRow.id);
-      const supportTickets = await loadSupportTickets(supabase, requestRow, vendor).catch(() => []);
+      const supportTickets = await loadSupportTickets(supabase, requestRow, vendor).catch(logSupportTicketError);
       return jsonResponse({
         request: {
           id: requestRow.id,
@@ -225,20 +364,26 @@ Deno.serve(async (request) => {
 
     if (action === "submit_profile") {
       const vendorPatchInput = objectRecord(body.vendor);
-      const profileData = mergeProfileData(vendor.profile_data, body.profile_data);
+      const profileData = mergeProfileData(
+        vendor.profile_data,
+        withCarrierNotes(body.profile_data, vendorPatchInput.notes)
+      );
       const patch: Record<string, unknown> = {
         profile_data: profileData,
         updated_at: new Date().toISOString()
       };
-      if (vendorPatchInput.vendor_name !== undefined) patch.vendor_name = cleanText(vendorPatchInput.vendor_name, 240);
+      // Name and email identify the carrier in the CRM: a blank box keeps the
+      // current value instead of erasing it.
+      const vendorName = cleanText(vendorPatchInput.vendor_name, 240);
+      if (vendorName) patch.vendor_name = vendorName;
       if (vendorPatchInput.legal_name !== undefined) patch.legal_name = cleanText(vendorPatchInput.legal_name, 240);
       if (vendorPatchInput.domain !== undefined) patch.domain = normalizeDomain(vendorPatchInput.domain);
       if (vendorPatchInput.contact_name !== undefined) patch.contact_name = cleanText(vendorPatchInput.contact_name, 180);
-      if (vendorPatchInput.primary_email !== undefined) patch.primary_email = normalizeEmail(vendorPatchInput.primary_email);
+      const primaryEmail = normalizeEmail(vendorPatchInput.primary_email);
+      if (primaryEmail) patch.primary_email = primaryEmail;
       if (vendorPatchInput.whatsapp_phone !== undefined) patch.whatsapp_phone = cleanText(vendorPatchInput.whatsapp_phone, 80);
       if (vendorPatchInput.preferred_channel !== undefined) patch.preferred_channel = normalizeChannel(vendorPatchInput.preferred_channel) || vendor.preferred_channel || "email";
       if (vendorPatchInput.coverage_notes !== undefined) patch.coverage_notes = cleanText(vendorPatchInput.coverage_notes);
-      if (vendorPatchInput.notes !== undefined) patch.notes = cleanText(vendorPatchInput.notes);
       if (!patch.vendor_name && !vendor.vendor_name) patch.vendor_name = patch.domain || patch.primary_email || "Carrier profile";
 
       const update = await supabase
@@ -264,7 +409,7 @@ Deno.serve(async (request) => {
         })
         .eq("id", requestRow.id);
 
-      const supportTickets = await loadSupportTickets(supabase, requestRow, update.data as Record<string, unknown>).catch(() => []);
+      const supportTickets = await loadSupportTickets(supabase, requestRow, update.data as Record<string, unknown>).catch(logSupportTicketError);
       return jsonResponse({ vendor: publicVendor(update.data), support_tickets: supportTickets, submitted: true });
     }
 
@@ -301,12 +446,12 @@ Deno.serve(async (request) => {
                 created_at: new Date().toISOString()
               }
             ]
-          },
-          updated_at: new Date().toISOString()
+          }
         })
         .eq("id", ticketId);
       if (update.error) throw update.error;
-      const supportTickets = await loadSupportTickets(supabase, requestRow, vendor).catch(() => []);
+      await notifyTeamOfFollowup(supabase, requestRow, vendor, ticketResult.data, message).catch(logFollowupNoticeError);
+      const supportTickets = await loadSupportTickets(supabase, requestRow, vendor).catch(logSupportTicketError);
       return jsonResponse({ support_tickets: supportTickets, saved: true });
     }
 

@@ -20,7 +20,16 @@ const FIXED_EDGE_OPERATIONS = new Map([
   ["provider-gmail-push", [["receive_provider_gmail_push", "POST /functions/v1/provider-gmail-push", "external-tokenized"]]],
   ["google-chat-app", [["health", "GET /functions/v1/google-chat-app", "public"], ["handle_chat_event", "POST /functions/v1/google-chat-app provider event", "public"]]],
   ["interpret-upload", [["interpret_upload", "POST /functions/v1/interpret-upload", "human"]]],
+  ["website-lead-intake", [
+    ["submit_web_lead", "POST /functions/v1/website-lead-intake signed website lead", "external-tokenized"],
+    ["submit_carrier_rate_sheet", "POST /functions/v1/website-lead-intake signed carrier rate sheet", "external-tokenized"],
+    ["view_follow_up", "POST /functions/v1/website-lead-intake signed follow-up view", "external-tokenized"],
+    ["record_quote_sent", "POST /functions/v1/website-lead-intake signed quote follow-up", "external-tokenized"]
+  ]],
   ["sync-banxico-fx", [["sync_banxico_fx", "POST /functions/v1/sync-banxico-fx x-cron-secret", "internal/service-role"]]],
+  ["sync-us-diesel", [["sync_us_diesel", "POST /functions/v1/sync-us-diesel x-cron-secret", "internal/service-role"]]],
+  ["sync-fcm-bases", [["sync_fcm_bases", "POST /functions/v1/sync-fcm-bases x-cron-secret", "internal/service-role"]]],
+  ["ops-daily-watch", [["ops_daily_watch", "POST /functions/v1/ops-daily-watch x-cron-secret", "internal/service-role"]]],
   ["sync-rateware-catalog", [["sync_rateware_catalog", "POST /functions/v1/sync-rateware-catalog", "human"]]],
   ["whatsapp-webhook", [["verify_webhook", "GET /functions/v1/whatsapp-webhook hub challenge", "external-tokenized"], ["ingest_webhook", "POST /functions/v1/whatsapp-webhook signed event", "external-tokenized"]]]
 ]);
@@ -1253,11 +1262,11 @@ function handlerAnalysis(dispatch, source, handlerHint = null, options = {}) {
   for (const match of allMatches(/\bawait\s+([A-Za-z_$][\w$]*)\s*\(/g, dispatch)) {
     const segment = functionSegment(source, match[1]);
     const imported = segment ? null : resolveImportedHandler(source, options.sourceFile, match[1], options.envelope);
-    if (segment || imported?.status === "resolved") plausible.push({ handler: match[1], sourceSegment: segment || imported.segment });
+    if (segment || imported?.status === "resolved") plausible.push({ handler: match[1], sourceSegment: segment || imported.segment, handlerResolution: segment ? "single-plausible-call" : "imported-static" });
     else if (imported?.status === "ambiguous") return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch, handlerResolution: imported.reason };
   }
   if (plausible.length === 1 && !/\.(?:from|insert|update|upsert|delete)\s*\(/.test(dispatch)) {
-    return { ...plausible[0], handlerStatus: "named-existing", handlerResolution: "single-plausible-call" };
+    return { ...plausible[0], handlerStatus: "named-existing" };
   }
   if (/\.(?:from|insert|update|upsert|delete)\s*\(|jsonResponse\s*\(|new\s+Response\s*\(/.test(dispatch)) {
     return { handler: "inline", handlerStatus: "inline-real", sourceSegment: dispatch };
@@ -1371,8 +1380,12 @@ function dependencyEnvelope(repoRoot, initialFiles, overrides = new Map()) {
   };
 }
 
+// Functions whose selector actions authenticate a person's Supabase session and
+// resolve it to a workspace (human exposure), rather than a token in the request.
+const HUMAN_SELECTOR_FUNCTIONS = new Set(["shipper-directory-api", "rateware-api", "quotedesk-api"]);
+
 function selectorExposure(functionName, actionName) {
-  if (functionName === "shipper-directory-api" || functionName === "rateware-api") return "human";
+  if (HUMAN_SELECTOR_FUNCTIONS.has(functionName)) return "human";
   if (functionName === "rfx-bid-api" && actionName.startsWith("public_")) return "public";
   return "external-tokenized";
 }

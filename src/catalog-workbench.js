@@ -1,4 +1,4 @@
-import * as XLSX from "https://esm.sh/xlsx@0.18.5";
+import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import {
   archiveCatalogValue,

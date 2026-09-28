@@ -190,7 +190,7 @@ export async function startIntelligenceAdminEvidenceServer({ rootDir = process.c
       if (!inside(root, realCandidate) || !(await stat(realCandidate)).isFile()) throw Object.assign(new Error("not a file"), { status: 404 });
       let body = await readFile(realCandidate);
       if (url.pathname === "/src/catalog-workbench.js") {
-        body = Buffer.from(body.toString("utf8").replace('import * as XLSX from "https://esm.sh/xlsx@0.18.5";', 'import * as XLSX from "./qa-xlsx.js";'));
+        body = Buffer.from(body.toString("utf8").replace('import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";', 'import * as XLSX from "./qa-xlsx.js";'));
       }
       response.writeHead(200, { "Content-Type": MIME[extname(realCandidate).toLowerCase()] || "application/octet-stream", "Cache-Control": "no-store", ...(url.pathname === "/src/catalog-workbench.js" ? { "X-Rateware-QA-Boundary": "true" } : {}) });
       response.end(request.method === "HEAD" ? undefined : body);

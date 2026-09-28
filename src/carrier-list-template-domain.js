@@ -420,11 +420,19 @@ export function carrierTemplateVendorHasUsableContact(vendor = {}) {
   );
 }
 
+/**
+ * Mirror of the server rule. `inactive` is NOT blocking: it only means the
+ * carrier has not been activated in the TMS, which does not affect whether they
+ * may bid. Keep this list identical to CARRIER_RFX_BLOCKING_STATUSES in
+ * supabase/functions/rateware-api/index.ts — the contract test asserts they agree.
+ */
+export const CARRIER_RFX_BLOCKING_STATUSES = ["blocked", "archived", "deleted"];
+
 export function carrierTemplateVendorIsAvailable(vendor = {}) {
   const status = trimmedText(vendor?.status).toLowerCase();
   const baseStage = trimmedText(vendor?.base_stage).toLowerCase();
   return Boolean(trimmedText(vendor?.id)) &&
-    !["blocked", "inactive", "archived", "deleted"].includes(status) &&
+    !CARRIER_RFX_BLOCKING_STATUSES.includes(status) &&
     baseStage !== "archived";
 }
 

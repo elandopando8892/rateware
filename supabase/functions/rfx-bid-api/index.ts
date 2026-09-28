@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
+import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -844,193 +845,11 @@ function normalizeBidRoomThreadType(value: unknown) {
   return BID_ROOM_CHAT_THREAD_TYPES.has(threadType) ? threadType : "carrier_private";
 }
 
-function bidRoomGoogleThreadKey(eventId: unknown, threadType: string, laneId: unknown, vendorId: unknown) {
-  return [
-    "rateware",
-    "bid-room",
-    cleanText(eventId) || "event",
-    threadType,
-    cleanText(laneId) || "event",
-    cleanText(vendorId) || "group"
-  ].join("-").replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 190);
-}
-
 function bidRoomThreadTitle(threadType: string, event: Record<string, unknown>, lane?: Record<string, unknown> | null, vendor?: Record<string, unknown> | null) {
   const eventRef = [cleanText(event.rfx_id), cleanText(event.name)].filter(Boolean).join(" | ") || "Bid Room";
   if (threadType === "carrier_private") return `${eventRef} | Private: ${cleanText(vendor?.vendor_name || vendor?.domain) || "Carrier"}`;
   if (threadType === "lane_group") return `${eventRef} | Lane: ${[lane?.origin, lane?.destination].filter(Boolean).join(" -> ") || lane?.lane_number || "Selected lane"}`;
   return `${eventRef} | Event group`;
-}
-
-function googleChatThreadTarget(thread: Record<string, unknown>, threadKey: string) {
-  const threadName = cleanText(thread.google_chat_thread_name);
-  return {
-    replyOption: threadName ? "REPLY_MESSAGE_OR_FAIL" : "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD",
-    thread: threadName ? { name: threadName } : { threadKey }
-  };
-}
-
-async function googleChatAccessToken(supabase: RfxBidSupabaseClient, ownerEmail: string) {
-  const result = await supabase
-    .from("google_chat_connections")
-    .select("*")
-    .eq("owner_email", ownerEmail)
-    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
-    .eq("status", "connected")
-    .maybeSingle();
-  if (result.error) throw result.error;
-  const connection = result.data;
-  if (!connection) throw new Error(`Connect ${GOOGLE_CHAT_ALLOWED_ACCOUNT} in Settings before using Google Chat.`);
-
-  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
-  if (connection.access_token_encrypted && expiresAt > Date.now() + 120_000) {
-    return await decryptGoogleToken(connection.access_token_encrypted);
-  }
-
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) throw new Error("Google OAuth client is not configured.");
-  const refreshToken = await decryptGoogleToken(connection.refresh_token_encrypted);
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token"
-    })
-  });
-  const tokenData = await tokenResponse.json();
-  if (!tokenResponse.ok || !tokenData.access_token) {
-    const message = cleanText(tokenData.error_description) || cleanText(tokenData.error) || "Google Chat token refresh failed.";
-    await supabase
-      .from("google_chat_connections")
-      .update({ status: "error", last_error: message, updated_at: new Date().toISOString() })
-      .eq("owner_email", ownerEmail)
-      .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
-    throw new Error(message);
-  }
-
-  const accessToken = String(tokenData.access_token);
-  const expiresIn = Number(tokenData.expires_in) || 3600;
-  const update = await supabase
-    .from("google_chat_connections")
-    .update({
-      access_token_encrypted: await encryptGoogleToken(accessToken),
-      token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
-      last_error: null,
-      updated_at: new Date().toISOString()
-    })
-    .eq("owner_email", ownerEmail)
-    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
-  if (update.error) throw update.error;
-  return accessToken;
-}
-
-async function syncBidRoomMessageToGoogleChatApi(
-  supabase: RfxBidSupabaseClient,
-  thread: Record<string, unknown>,
-  message: Record<string, unknown>,
-  event: Record<string, unknown>
-) {
-  const ownerEmail = cleanText(message.owner_email || thread.owner_email || event.owner_email);
-  if (!ownerEmail) return { status: "not_configured", name: null };
-  const connectionResult = await supabase
-    .from("google_chat_connections")
-    .select("default_space_name,status")
-    .eq("owner_email", ownerEmail)
-    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
-    .eq("status", "connected")
-    .maybeSingle();
-  if (connectionResult.error) throw connectionResult.error;
-  const spaceName = cleanText(connectionResult.data?.default_space_name);
-  if (!spaceName) return { status: "not_configured", name: null };
-
-  const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
-  const sender = cleanText(message.sender_name || message.sender_email) || "Carrier";
-  const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
-  const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
-  try {
-    const accessToken = await googleChatAccessToken(supabase, ownerEmail);
-    const target = googleChatThreadTarget(thread, threadKey);
-    const params = new URLSearchParams({ messageReplyOption: target.replyOption });
-    const response = await fetch(`https://chat.googleapis.com/v1/${spaceName}/messages?${params.toString()}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        text,
-        thread: target.thread
-      })
-    });
-    const payload = await response.json().catch(() => ({}));
-    const status = response.ok ? "synced" : "error";
-    await supabase.from("bid_room_chat_messages").update({
-      google_chat_message_name: cleanText(payload.name),
-      google_chat_sync_status: status
-    }).eq("id", message.id);
-    await supabase.from("bid_room_chat_threads").update({
-      google_chat_space: spaceName,
-      google_chat_thread_key: threadKey,
-      google_chat_thread_name: cleanText(payload?.thread?.name) || cleanText(thread.google_chat_thread_name),
-      google_chat_sync_status: status,
-      updated_at: new Date().toISOString()
-    }).eq("id", thread.id);
-    if (!response.ok) {
-      await supabase.from("google_chat_connections").update({
-        last_error: cleanText(payload?.error?.message) || `Google Chat send failed (${response.status}).`,
-        updated_at: new Date().toISOString()
-      }).eq("owner_email", ownerEmail).eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
-    }
-    return { status, name: cleanText(payload.name), space_name: spaceName };
-  } catch (error) {
-    await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
-    await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
-    return { status: "error", name: null, error: publicErrorMessage(error) };
-  }
-}
-
-async function syncBidRoomMessageToGoogleChat(
-  supabase: RfxBidSupabaseClient,
-  thread: Record<string, unknown>,
-  message: Record<string, unknown>,
-  event: Record<string, unknown>
-) {
-  const apiSync = await syncBidRoomMessageToGoogleChatApi(supabase, thread, message, event);
-  if (apiSync.status !== "not_configured") return apiSync;
-  if (!GOOGLE_CHAT_WEBHOOK_URL) return { status: "not_configured", name: null };
-  const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
-  const url = new URL(GOOGLE_CHAT_WEBHOOK_URL);
-  url.searchParams.set("threadKey", threadKey);
-  url.searchParams.set("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD");
-  const sender = cleanText(message.sender_name || message.sender_email) || "Carrier";
-  const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
-  const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
-  try {
-    const response = await fetch(url.toString(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text })
-    });
-    const payload = await response.json().catch(() => ({}));
-    const status = response.ok ? "synced" : "error";
-    await supabase.from("bid_room_chat_messages").update({
-      google_chat_message_name: cleanText(payload.name),
-      google_chat_sync_status: status
-    }).eq("id", message.id);
-    await supabase.from("bid_room_chat_threads").update({
-      google_chat_thread_key: threadKey,
-      google_chat_thread_name: cleanText(payload?.thread?.name),
-      google_chat_sync_status: status,
-      updated_at: new Date().toISOString()
-    }).eq("id", thread.id);
-    return { status, name: cleanText(payload.name) };
-  } catch (error) {
-    await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
-    await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
-    return { status: "error", name: null, error: publicErrorMessage(error) };
-  }
 }
 
 function googleChatConnectionCanReadMessages(connection: Record<string, unknown> | null | undefined) {
@@ -1618,6 +1437,47 @@ function liveBoardRowScore(row: Record<string, unknown>, context: Record<string,
   };
 }
 
+// What a carrier may learn about the others depends on the event's mode, and
+// every rank, score, badge and signal here is computed against competitors:
+// - open_leaderboard: everything, rates included.
+// - anonymous_rank: rank, score and the distance to the lowest offer as a
+//   range; never the exact distance, since own offer - distance = best price.
+// - private: only the carrier's own offer. No rank, score, badge, signal or
+//   activity, each of which says where the carrier stands.
+function applyLiveBoardVisibility(
+  board: Record<string, unknown>,
+  visibility: { mode: string; competitor_rates_visible: boolean; competitor_activity_visible: boolean }
+) {
+  const out: Record<string, unknown> = { ...board };
+  if (!visibility.competitor_rates_visible) out.delta_to_leader = null;
+  if (!visibility.competitor_activity_visible) out.latest_competitor_activity_at = null;
+  if (visibility.mode !== "private") return out;
+  const rows = Array.isArray(out.rows) ? out.rows as Record<string, unknown>[] : [];
+  return {
+    ...out,
+    best_rate: null,
+    best_rate_visible: false,
+    position_signal: "Private event",
+    marketplace_signal: "Private event",
+    current_score: null,
+    current_score_bucket: null,
+    current_badges: [],
+    leader_score: null,
+    score_gap_to_leader: null,
+    delta_bucket: null,
+    rows: rows.map((row) => ({
+      ...row,
+      marketplace_score: null,
+      score_bucket: null,
+      marketplace_badges: [],
+      risk_flags: [],
+      price_signal: null,
+      capacity_signal: null,
+      eta_signal: null
+    }))
+  };
+}
+
 function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows: Record<string, unknown>[]) {
   const event = relationRecord(currentInvitation.rfx_events);
   const visibility = bidRoomVisibility(event);
@@ -1722,7 +1582,7 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
   const latestCompetitorActivity = rows
     .filter((row) => !row.is_current && row.offer_revision_at)
     .sort((left, right) => new Date(right.offer_revision_at || 0).getTime() - new Date(left.offer_revision_at || 0).getTime())[0] || null;
-  return {
+  return applyLiveBoardVisibility({
     updated_at: new Date().toISOString(),
     current_invitation_id: cleanText(currentInvitation.id) || null,
     current_invitation_token: cleanText(currentInvitation.invitation_token) || null,
@@ -1810,7 +1670,7 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       responded_at: row.responded_at,
       is_current: row.is_current
     }))
-  };
+  }, visibility);
 }
 
 function carrierBusinessBook(currentInvitation: Record<string, unknown>, invitedRows: Record<string, unknown>[], openLaneRows: Record<string, unknown>[]) {
@@ -3971,7 +3831,9 @@ function bidRateStagingInput(
     ].filter(Boolean).join(" | "),
     carrier_cost_rate: economics.carrier_rate,
     customer_board_rate: economics.board_rate,
-    commercial_model: economics.commercial_model,
+    // rate_staging only accepts the canonical vocabulary (fee_plus, cost_plus,
+    // sell_share, brokerage); economics carries the legacy names for scoring.
+    commercial_model: normalizeCommercialModel(updatedBid.commercial_model),
     commission_fee: economics.commission_fee,
     commission_pct: economics.commission_pct,
     markup_fee: economics.markup_fee,
@@ -4646,6 +4508,113 @@ async function getCustomerRfi(supabase: RfxBidSupabaseClient, token: unknown) {
   };
 }
 
+// The shipper's own form looks places and freight lists up behind its link:
+// the same catalogs QuoteDesk uses, read-only. Other workspaces' manual items
+// and internal service values (a backhaul is our cost assumption) stay out.
+const CUSTOMER_RFI_OPTION_CATEGORIES = ["equipment", "trailer", "config", "operation", "service"];
+const CUSTOMER_RFI_HIDDEN_OPTIONS: Record<string, Set<string>> = { service: new Set(["BACKHAUL"]) };
+
+function customerRfiLocationSearch(value: unknown) {
+  return (cleanText(value) || "").replace(/[(),%_"\\*]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+function customerRfiLocationOption(location: Record<string, unknown>) {
+  const value = cleanText(location.raw_value || location.metro_city || [location.city, location.state_code].filter(Boolean).join(", ")) || "";
+  const geography = [location.zip_prefix, location.market, location.region, location.country].filter(Boolean).join(" | ");
+  return {
+    id: location.id,
+    value,
+    label: [location.metro_city || value, geography].filter(Boolean).join(" | "),
+    zip_prefix: location.zip_prefix || null,
+    city: location.city || null,
+    state_code: location.state_code || null,
+    state_name: location.state_name || null,
+    country: location.country || null,
+    market: location.market || null,
+    region: location.region || null
+  };
+}
+
+function customerRfiCatalogOptions(rows: Record<string, unknown>[], ownerEmail: string | null) {
+  const categories: Record<string, string[]> = Object.fromEntries(CUSTOMER_RFI_OPTION_CATEGORIES.map((category) => [category, []]));
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const category = cleanText(row.category);
+    if (!category || !categories[category] || row.active === false) continue;
+    if (cleanText(row.source) === "rateware_manual_catalog") {
+      const owner = cleanText(objectRecord(row.metadata).owner_email);
+      if (owner && owner !== ownerEmail) continue;
+    }
+    const value = cleanText(row.normalized_value || row.raw_value || row.code);
+    const key = value?.toUpperCase();
+    if (!value || !key || seen.has(`${category}|${key}`) || CUSTOMER_RFI_HIDDEN_OPTIONS[category]?.has(key)) continue;
+    seen.add(`${category}|${key}`);
+    categories[category].push(value);
+  }
+  for (const values of Object.values(categories)) values.sort((a, b) => a.localeCompare(b));
+  return categories;
+}
+
+async function customerRfiSearchLocations(supabase: RfxBidSupabaseClient, input: Record<string, unknown>) {
+  await currentCustomerRfiContext(supabase, input.token);
+  const search = customerRfiLocationSearch(input.search);
+  if (search.length < 2) return { rows: [] };
+  const limit = Math.min(Math.max(Number(input.limit) || 12, 1), 20);
+  const country = cleanText(input.country)?.toUpperCase();
+  let query = supabase
+    .from("rateware_locations")
+    .select("id,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region")
+    .eq("active", true)
+    .or([
+      `raw_value.ilike.%${search}%`,
+      `zip_prefix.ilike.%${search}%`,
+      `city.ilike.%${search}%`,
+      `metro_city.ilike.%${search}%`,
+      `state_code.ilike.%${search}%`,
+      `state_name.ilike.%${search}%`
+    ].join(","))
+    .order("raw_value", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(limit * 4);
+  if (country && ["MX", "US", "CA"].includes(country)) query = query.eq("country", country);
+  const result = await query;
+  if (result.error) throw result.error;
+  const unique = new Map<string, ReturnType<typeof customerRfiLocationOption>>();
+  for (const location of (result.data || []) as Record<string, unknown>[]) {
+    const option = customerRfiLocationOption(location);
+    const key = [option.country, option.city, option.state_code, option.zip_prefix, option.market].map(cleanText).join("|");
+    if (!unique.has(key)) unique.set(key, option);
+    if (unique.size >= limit) break;
+  }
+  return { rows: [...unique.values()] };
+}
+
+async function customerRfiOptions(supabase: RfxBidSupabaseClient, input: Record<string, unknown>) {
+  const { project } = await currentCustomerRfiContext(supabase, input.token);
+  const [catalog, crossings] = await Promise.all([
+    supabase
+      .from("rateware_catalog_items")
+      .select("category,source,raw_value,normalized_value,code,metadata,active")
+      .in("category", CUSTOMER_RFI_OPTION_CATEGORIES)
+      .limit(2000),
+    supabase
+      .from("border_crossing_pairs")
+      .select("crossing_name,mx_city,us_city")
+      .eq("active", true)
+      .order("default_rank", { ascending: true })
+      .limit(50)
+  ]);
+  if (catalog.error) throw catalog.error;
+  if (crossings.error) throw crossings.error;
+  const borderCrossings = ((crossings.data || []) as Record<string, unknown>[])
+    .map((pair) => cleanText(pair.crossing_name) || [pair.mx_city, pair.us_city].map(cleanText).filter(Boolean).join(" / "))
+    .filter(Boolean);
+  return {
+    categories: customerRfiCatalogOptions((catalog.data || []) as Record<string, unknown>[], cleanText(project.owner_email)),
+    border_crossings: [...new Set(borderCrossings)]
+  };
+}
+
 async function saveCustomerRfi(supabase: RfxBidSupabaseClient, input: Record<string, unknown>, submitting = false) {
   const context = await currentCustomerRfiContext(supabase, input.token);
   const projectId = cleanText(context.project.id) || "";
@@ -4829,6 +4798,14 @@ Deno.serve(async (request) => {
 
     if (body.action === "submit_customer_rfi") {
       return jsonResponse(await saveCustomerRfi(supabase, body, true));
+    }
+
+    if (body.action === "customer_rfi_search_locations") {
+      return jsonResponse(await customerRfiSearchLocations(supabase, body));
+    }
+
+    if (body.action === "customer_rfi_options") {
+      return jsonResponse(await customerRfiOptions(supabase, body));
     }
 
     const token = cleanText(body.token);
