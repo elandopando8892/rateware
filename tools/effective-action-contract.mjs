@@ -129,7 +129,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
   'edge.rateware-api.': '4d0f3b39f9ccbb489dacc94e63df8486942080b3ad42b59c18e71126e93cb90d',
-  'edge.rfx-bid-api.': '0e6c1ada4af585591fc0b8d5f3d33b74cf7ae10c730211d32395132015daab7b',
+  'edge.rfx-bid-api.': 'd27acf035f7a40724a4878abc2a8b538251b796781b7a44bcad568892cde2d94',
   'edge.shipper-directory-api.': '529b561a078707872c24b999e1ed60c61ad2b024fcbfbdc4b9d3f121dca942cf',
   'edge.shipper-profile-api.': 'f1a6315de6fa26940c274745a944f93577a7179c7465fc015f00a4fbd90d762e',
   'edge.sync-banxico-fx.': '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc',

@@ -20,8 +20,9 @@ const record = (value) => {
   return item && typeof item === "object" ? item : null;
 };
 
-// The team posts under its workspace key or an address when no name is given.
-const privateName = (name) => !name || name.includes("@") || name.toLowerCase().startsWith("org:");
+// The team posts under its workspace key or an address when no name is given,
+// and messages mirrored from Google Chat carry the Google user id (users/…).
+const privateName = (name) => !name || name.includes("@") || /^(org:|users\/)/i.test(name);
 
 export function carrierChatThread(thread) {
   const vendor = record(thread?.vendors);

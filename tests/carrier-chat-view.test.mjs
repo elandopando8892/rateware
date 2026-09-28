@@ -37,6 +37,7 @@ assert.equal(team.sender_name, "MARKSMAN", "the workspace key never shows as the
 assert.ok(!("sender_email" in team) && !("google_chat_message_name" in team) && !("metadata" in team));
 assert.equal(carrierChatMessage({ sender_role: "procurement", sender_name: "ana@marksman.example" }).sender_name, "MARKSMAN", "nor a team address");
 assert.equal(carrierChatMessage({ sender_role: "procurement", sender_name: "Ana (MARKSMAN)" }).sender_name, "Ana (MARKSMAN)");
+assert.equal(carrierChatMessage({ sender_role: "procurement", sender_name: "users/101284191944259113414" }).sender_name, "MARKSMAN", "nor a Google Chat user id");
 
 const other = carrierChatMessage({ id: "m-2", sender_role: "carrier", sender_name: "Transportes Dos", sender_email: "ventas@dos.mx", body: "Sí incluye", vendors: { vendor_name: "Transportes Dos", domain: "dos.mx" } });
 assert.equal(other.sender_name, "Transportes Dos");
