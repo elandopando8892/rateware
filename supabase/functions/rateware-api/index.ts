@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
-import { teamRoleDenial } from "../_shared/team-roles.ts";
+import { adminOnlyDenial, RATE_BASE_REMOVAL_ERROR, SHIPPER_ARCHIVE_ERROR, teamRoleDenial } from "../_shared/team-roles.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import { forwardSourceDownload, forwardSourceRemoval } from "../_shared/source-download-routing.mjs";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
@@ -9244,6 +9244,25 @@ function trailerWithFlags(trailer: unknown, hazmat: unknown, temperatureControll
   ].filter(Boolean).join(" ");
   const base = baseTrailerName(trailer);
   return suffix ? `${base} - ${suffix}` : base;
+}
+
+/** How many of these staged rates are approved, that is, in the rate base. */
+async function countApprovedRates(
+  supabase: RatewareSupabaseClient,
+  ownerEmail: string | null,
+  scope: { ids?: string[]; rawUploadId?: string }
+) {
+  const count = async (ids?: string[]) => {
+    const query = supabase.from("rate_staging").select("id", { count: "exact", head: true })
+      .eq("owner_email", ownerEmail).eq("status", "approved");
+    const result = await (ids ? query.in("id", ids) : query.eq("raw_upload_id", scope.rawUploadId || ""));
+    if (result.error) throw result.error;
+    return result.count || 0;
+  };
+  if (!scope.ids) return await count();
+  let total = 0;
+  for (const chunk of chunkValues(scope.ids, 500)) total += await count(chunk);
+  return total;
 }
 
 function normalizeStagingPatch(input: Record<string, unknown>, current: Record<string, unknown> = {}) {
@@ -26936,6 +26955,11 @@ export function createRatewareApiHandler(
         }
       }
 
+      if (updates.some((item) => cleanText(item.row.status)?.toLowerCase() === "archived")) {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "import_shippers", SHIPPER_ARCHIVE_ERROR);
+        if (denial) return jsonResponse(denial, 403);
+      }
+
       let inserted = 0;
       for (const insertChunk of chunkValues(inserts, 100)) {
         if (!insertChunk.length) continue;
@@ -27043,6 +27067,10 @@ export function createRatewareApiHandler(
         } else {
           accountInserts.push({ ...withOwner(item.insert, user), organization_id: user.organization_id });
         }
+      }
+      if (accountUpdates.some((item) => cleanText(item.row.status)?.toLowerCase() === "archived")) {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "import_shipper_crm_workbook", SHIPPER_ARCHIVE_ERROR);
+        if (denial) return jsonResponse(denial, 403);
       }
       const accountRows: Record<string, unknown>[] = [];
       for (const insertChunk of chunkValues(accountInserts, 100)) {
@@ -27169,6 +27197,11 @@ export function createRatewareApiHandler(
     if (body.action === "update_shipper") {
       const current = await requireOwnedShipper(supabase, user, body.id || body.shipper_id);
       const patch = normalizeShipper(objectRecord(body.patch), true);
+      const nextShipperStatus = cleanText(patch.status)?.toLowerCase();
+      if (cleanText(current.status)?.toLowerCase() === "archived" && nextShipperStatus && nextShipperStatus !== "archived") {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "update_shipper", SHIPPER_ARCHIVE_ERROR);
+        if (denial) return jsonResponse(denial, 403);
+      }
       if (Object.prototype.hasOwnProperty.call(patch, "shipper_name") && !cleanText(patch.shipper_name)) {
         return jsonResponse({ error: "Shipper name is required." }, 400);
       }
@@ -32255,6 +32288,11 @@ export function createRatewareApiHandler(
     if (body.action === "remove_upload") {
       if (!body.id) return jsonResponse({ error: "Upload id is required." }, 400);
       requireBulkConfirmation(body, { action: "remove_upload", label: "Upload removal", count: 1 });
+      // Its rates are deleted with it, approved ones included.
+      if (await countApprovedRates(supabase, user.owner_email, { rawUploadId: cleanText(body.id) || "" }) > 0) {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "remove_upload", RATE_BASE_REMOVAL_ERROR);
+        if (denial) return jsonResponse(denial, 403);
+      }
       const upload = await supabase
         .from("raw_uploads")
         .select("id,original_filename,storage_provider,storage_bucket,storage_path")
@@ -32880,6 +32918,13 @@ export function createRatewareApiHandler(
         });
       }
 
+      const nextStatus = cleanText(normalizeStagingPatch(patchInput, {}).status);
+      if (mode === "staging" && nextStatus && nextStatus !== "approved"
+        && await countApprovedRates(supabase, user.owner_email, { ids }) > 0) {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "bulk_update_rate_rows_by_filter", RATE_BASE_REMOVAL_ERROR);
+        if (denial) return jsonResponse(denial, 403);
+      }
+
       const requiresRowSpecificPatch = patchInput.vendor_domain !== undefined
         || patchInput.trailer !== undefined
         || patchInput.hazmat !== undefined
@@ -32958,6 +33003,10 @@ export function createRatewareApiHandler(
         label: "Staging archive",
         count: ids.length
       });
+      if (await countApprovedRates(supabase, user.owner_email, { ids }) > 0) {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "archive_staging", RATE_BASE_REMOVAL_ERROR);
+        if (denial) return jsonResponse(denial, 403);
+      }
 
       const result = await supabase
         .from("rate_staging")
@@ -32979,6 +33028,10 @@ export function createRatewareApiHandler(
         label: "Staging remove",
         count: ids.length
       });
+      if (await countApprovedRates(supabase, user.owner_email, { ids }) > 0) {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "remove_staging", RATE_BASE_REMOVAL_ERROR);
+        if (denial) return jsonResponse(denial, 403);
+      }
 
       const result = await supabase
         .from("rate_staging")
@@ -33144,6 +33197,10 @@ export function createRatewareApiHandler(
       const patchInput = objectRecord(body.patch);
       const currentRow = objectRecord(currentResult.data);
       const patch = normalizeStagingPatch(patchInput, currentRow);
+      if (cleanText(currentRow.status) === "approved" && patch.status && patch.status !== "approved") {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "update_staging", RATE_BASE_REMOVAL_ERROR);
+        if (denial) return jsonResponse(denial, 403);
+      }
       Object.assign(patch, await vendorLinkPatch(supabase, user, patchInput, currentRow));
       if (!Object.keys(patch).length) return jsonResponse({ error: "No staging updates provided." }, 400);
 
@@ -33192,6 +33249,11 @@ export function createRatewareApiHandler(
         "id,trailer,hazmat,temperature_controlled,vendor_id,vendor_domain,status",
         user.owner_email
       );
+      const nextStatus = cleanText(normalizeStagingPatch(patchInput, {}).status);
+      if (nextStatus && nextStatus !== "approved" && currentRows.some((row) => cleanText(row.status) === "approved")) {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "bulk_update_staging", RATE_BASE_REMOVAL_ERROR);
+        if (denial) return jsonResponse(denial, 403);
+      }
       const updatedRows: Record<string, unknown>[] = [];
       for (const current of currentRows) {
         const patch = normalizeStagingPatch(patchInput, current || {});

@@ -3,7 +3,7 @@
  * Supabase Storage or Oracle Object Storage behind one authenticated service.
  * Deployed to production on 2026-09-08; reviewed fingerprints are static.
  */
-const authorizationFingerprint = "84a5a8c3e4deff619c72900edf41398a3d7cf53d91e5b6c16f160b1c10d470cb";
+const authorizationFingerprint = "c7265d4478217e7eae9e385ec5f688d6e3c387a5ba31ebdf469f70aa4f334a13";
 const surfaces = [
   {
     "contractVersion": "1.3.0",
@@ -64,7 +64,7 @@ const surfaces = [
     "decisionStatus": "pending_human_approval",
     "lifecycle": "active",
     "replacementAction": null,
-    "sourceFingerprint": "94a9fe78414d5fee7f27331697092d47f10382bfcf0879a19887034c817c0013",
+    "sourceFingerprint": "88b3fd7577496011e45c7526095f525e05a936aa9ecbef3e67cbb65ede32d0b6",
     "notes": "Authenticated operator action behind reviewed source-file access (confirmed email + rateware_organization_id); ownership is checked against the canonical workspace before any object access. rateware-api forwards get_upload_source_url, and remove_upload for files outside Supabase Storage, with the caller's own bearer.",
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [

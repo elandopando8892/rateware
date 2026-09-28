@@ -1,6 +1,9 @@
 import { assert, assertEquals } from "jsr:@std/assert@1.0.14";
 import {
+  adminOnlyDenial,
   belongsToOrganization,
+  RATE_BASE_REMOVAL_ERROR,
+  SHIPPER_ARCHIVE_ERROR,
   teamRoleAllows,
   teamRoleDenial,
   teamRoleFromClaims,
@@ -44,6 +47,10 @@ Deno.test("what each action asks of the role", () => {
   assertEquals(teamRoleNeed("rateware-api", "update_staging", { id: "r-1", patch: { currency: "USD" } }), "operate", "correcting a staged rate");
   assertEquals(teamRoleNeed("rateware-api", "bulk_update_staging", { ids: ["r-1"], patch: { status: "rejected" } }), "operate");
   assertEquals(teamRoleNeed("rateware-api", "archive_staging", { ids: ["r-1"] }), "operate");
+  assertEquals(teamRoleNeed("rateware-api", "return_rateware_to_staging", { ids: ["r-1"] }), "admin", "reopening approved rates takes them out of the rate base");
+  assertEquals(teamRoleNeed("rateware-api", "merge_shipper_accounts"), "admin", "merging archives the duplicate");
+  assertEquals(teamRoleNeed("rateware-api", "update_shipper", { id: "s-1", patch: { status: "archived" } }), "admin");
+  assertEquals(teamRoleNeed("rateware-api", "update_shipper", { id: "s-1", patch: { industry: "Food" } }), "operate");
   assertEquals(teamRoleNeed("quotedesk-api", "set_quote_status", { status: "archived" }), "admin");
   assertEquals(teamRoleNeed("quotedesk-api", "set_quote_status", { status: "won" }), "operate");
   assertEquals(teamRoleNeed("quotedesk-api", "get_quote"), "read");
@@ -56,6 +63,15 @@ Deno.test("who may do what", () => {
   assert(teamRoleAllows("admin", "admin"));
   assert(belongsToOrganization(org) && belongsToOrganization({ organization_id: "org-a" }));
   assert(!belongsToOrganization({ sub: "outsider" }));
+});
+
+Deno.test("what only the rows can tell is an Administrador's too", () => {
+  assertEquals(adminOnlyDenial("rateware-api", { sub: "outsider" }, "archive_staging", RATE_BASE_REMOVAL_ERROR), null);
+  assertEquals(adminOnlyDenial("rateware-api", { ...org, roles: ["admin"] }, "archive_staging", RATE_BASE_REMOVAL_ERROR), null);
+  const operator = adminOnlyDenial("rateware-api", { ...org, roles: ["operator"] }, "update_shipper", SHIPPER_ARCHIVE_ERROR);
+  assertEquals(operator?.code, "role_forbidden");
+  assertEquals(operator?.required, "admin");
+  assertEquals(operator?.error, SHIPPER_ARCHIVE_ERROR);
 });
 
 Deno.test("only accounts of an organization are held to a role", () => {
@@ -96,6 +112,71 @@ async function call(claims: Record<string, unknown>, body: Record<string, unknow
   }));
   return { status: response.status, body: await response.json(), touched };
 }
+
+/** A database whose every query answers `result`, recording what was asked of it. */
+function answeringClient(result: Record<string, unknown>) {
+  const touched: string[] = [];
+  const chain: unknown = new Proxy(() => chain, {
+    get: (_target, name) => {
+      if (name === "then") return (resolve: (value: unknown) => void) => resolve(result);
+      touched.push(String(name));
+      return chain;
+    },
+    apply: () => chain,
+  });
+  return { client: chain, touched };
+}
+
+async function callWith(result: Record<string, unknown>, claims: Record<string, unknown>, body: Record<string, unknown>) {
+  const { client, touched } = answeringClient(result);
+  const handler = ratewareApi.createRatewareApiHandler({
+    getClient: () => client as never,
+    authenticate: () => Promise.resolve(claims as never),
+    resolveUser: () => Promise.resolve({ owner_user_id: "user-1", owner_email: "org:org-a", organization_id: "org-a" } as never),
+  });
+  const response = await handler(new Request("https://rateware.test/functions/v1/rateware-api", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  }));
+  return { status: response.status, body: await response.json(), touched };
+}
+
+const RATE = "00000000-0000-4000-8000-000000000001";
+const approvedRate = { data: { id: RATE, status: "approved" }, count: 1, error: null };
+const pendingRate = { data: { id: RATE, status: "pending_review" }, count: 0, error: null };
+const archiving = { action: "archive_staging", ids: [RATE], confirmed: true, confirmation_action: "archive_staging" };
+
+Deno.test("an operator can't take approved rates out of the rate base", async () => {
+  const archived = await callWith(approvedRate, { ...org, roles: ["operator"] }, archiving);
+  assertEquals(archived.status, 403);
+  assertEquals(archived.body.error, RATE_BASE_REMOVAL_ERROR);
+  assert(!archived.touched.includes("update"), "nothing was archived");
+  const reopened = await callWith(approvedRate, { ...org, roles: ["operator"] }, { action: "update_staging", id: RATE, patch: { status: "pending_review" } });
+  assertEquals(reopened.status, 403);
+  assert(!reopened.touched.includes("update"));
+  const removed = await callWith(approvedRate, { ...org, roles: ["operator"] }, { action: "remove_upload", id: RATE, confirmed: true, confirmation_action: "remove_upload" });
+  assertEquals(removed.status, 403, "its approved rates would be deleted with the upload");
+  assert(!removed.touched.includes("delete") && !removed.touched.includes("storage"));
+});
+
+Deno.test("an operator still archives rates in review, and an admin takes approved ones out", async () => {
+  const pending = await callWith(pendingRate, { ...org, roles: ["operator"] }, archiving);
+  assert(pending.status !== 403 && pending.touched.includes("update"), "archiving a rate in review is day-to-day work");
+  const admin = await callWith(approvedRate, { ...org, roles: ["admin"] }, archiving);
+  assert(admin.status !== 403 && admin.touched.includes("update"));
+});
+
+Deno.test("an operator can't restore an archived shipper", async () => {
+  const SHIPPER = "00000000-0000-4000-8000-000000000002";
+  const archivedShipper = { data: { id: SHIPPER, status: "archived", shipper_name: "Ejemplo" }, error: null };
+  const restored = await callWith(archivedShipper, { ...org, roles: ["operator"] }, { action: "update_shipper", id: SHIPPER, patch: { status: "prospect" } });
+  assertEquals(restored.status, 403);
+  assertEquals(restored.body.error, SHIPPER_ARCHIVE_ERROR);
+  assert(!restored.touched.includes("update"));
+  const edited = await callWith(archivedShipper, { ...org, roles: ["operator"] }, { action: "update_shipper", id: SHIPPER, patch: { notes: "Llamar el lunes" } });
+  assert(edited.status !== 403 && edited.touched.includes("update"), "editing an archived shipper's notes is not restoring it");
+});
 
 Deno.test("rateware-api refuses an operator's award before touching the database", async () => {
   const result = await call({ ...org, roles: ["operator"] }, { action: "award_rfx_lane_vendor", invitation_id: "i-1" });
