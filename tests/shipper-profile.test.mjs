@@ -41,6 +41,8 @@ assert.match(portalApi, /function publicErrorMessage/);
 assert.doesNotMatch(portalApi, /error instanceof Error \? error\.message/);
 assert.match(portalApi, /shipper_locations/);
 assert.match(portalApi, /contact_name/);
+// submit_profile writes a site's contact back, so get_profile has to return it or a save erases it.
+assert.match(portalApi, /function publicLocation[\s\S]*?contact_name: row\.contact_name, contact_email: row\.contact_email, contact_phone: row\.contact_phone/);
 assert.doesNotMatch(portalApi, /token_hash:\s*request/);
 
 console.log("Shipper profile magic-link contracts passed.");
