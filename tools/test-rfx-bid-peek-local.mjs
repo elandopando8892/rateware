@@ -47,6 +47,7 @@ async function peek(token) {
 }
 
 async function waitForFunction() {
+  let lastResult = 'no response';
   for (let attempt = 0; attempt < 60; attempt++) {
     if (serve.exitCode !== null) {
       const safeDiagnostics = serveDiagnostics.replaceAll(serviceKey, '[redacted]').slice(-3000);
@@ -55,10 +56,12 @@ async function waitForFunction() {
     try {
       const result = await peek('ci-probe-invalid-token');
       if (result.status === 404) return;
-    } catch { /* Edge runtime still starting. */ }
+      lastResult = `${result.status} ${JSON.stringify(result.body)}`;
+    } catch (error) { lastResult = String(error); }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  throw new Error('Local rfx-bid-api did not become ready within 60 seconds');
+  const safeDiagnostics = `${lastResult}\n${serveDiagnostics}`.replaceAll(serviceKey, '[redacted]').slice(-3000);
+  throw new Error(`Local rfx-bid-api did not become ready within 60 seconds: ${safeDiagnostics}`);
 }
 
 async function invitationSnapshot(id) {
