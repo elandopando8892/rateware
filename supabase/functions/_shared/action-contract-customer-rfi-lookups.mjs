@@ -1,5 +1,5 @@
 /** Reviewed customer RFI lookups (supabase/functions/rfx-bid-api): the shipper's own form reads places and freight lists behind its link. Static reviewed fingerprints. */
-const authorizationFingerprint = "3a4394c4405cf9c4f1a3b60d2ac653a09c2492fcb3b54bf89bffa834a9c47c4e";
+const authorizationFingerprint = "d27acf035f7a40724a4878abc2a8b538251b796781b7a44bcad568892cde2d94";
 const surfaces = [
   {
     "contractVersion": "1.3.0",
