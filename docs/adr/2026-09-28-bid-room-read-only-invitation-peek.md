@@ -26,6 +26,8 @@ El resultado de `peek_invitation` omite los tokens de invitación del objeto pri
 ## Evidencia y consecuencias
 
 - Prueba Deno con un PostgREST simulado: lectura `refresh_only` y lectura completa con token legado; cualquier método distinto de `GET` provoca fallo. Ambas pasaron sin escritura.
+- La prueba sintética incorpora dos vendors y comprueba que cada token devuelve únicamente las invitaciones de su propio vendor. No sustituye la prueba integrada no productiva.
+- La nueva acción se registra en el contrato gobernado como lectura tokenizada con aprobación humana pendiente; el registro no autoriza despliegue productivo.
 - `deno check` y regresiones de Bid Room pasaron. Esto **no** prueba integración contra Supabase/Rateware desplegados.
 - No hay inserción de tarifas, bids, awards o cambios de perfil; tampoco se altera el estado de las invitaciones.
 - La lectura sin escritura no elimina el carácter sensible del token ni sustituye revocación, caducidad y la comprobación de vendor en Loads.

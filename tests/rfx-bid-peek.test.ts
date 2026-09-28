@@ -27,6 +27,11 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
     rfx_lanes: { id: "lane-a", rfx_event_id: "event-a", lane_number: 1,
       origin: "Test Origin", destination: "Test Destination", equipment: "Dry Van", currency: "USD" },
   };
+  const foreignRow = {
+    ...row, id: "invitation-b", vendor_id: "vendor-b",
+    invitation_token: "legacy-test-token-b",
+    vendors: { vendor_name: "Foreign Carrier", domain: "foreign.example", primary_email: "foreign@carrier.example" },
+  };
   try {
     Deno.env.set("SUPABASE_URL", "https://supabase-mock.invalid");
     Deno.env.set("RATEWARE_SUPABASE_SERVICE_ROLE_KEY", "synthetic-service-role-test-only");
@@ -45,13 +50,19 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
         return new Response(JSON.stringify([]), { status: 200, headers });
       }
       if (url.pathname.endsWith("/rfx_lane_vendors") && url.searchParams.has("invitation_token")) {
-        return new Response(JSON.stringify(row), { status: 200, headers });
+        const requested = url.searchParams.get("invitation_token");
+        const found = [row, foreignRow].find((candidate) => requested === `eq.${candidate.invitation_token}`);
+        return new Response(JSON.stringify(found || null), { status: 200, headers });
       }
       if (url.pathname.endsWith("/rfx_lane_vendors") && url.searchParams.has("rfx_lane_id")) {
         return new Response(JSON.stringify([]), { status: 200, headers });
       }
       if (url.pathname.endsWith("/rfx_lane_vendors") && url.searchParams.has("vendor_id")) {
-        return new Response(JSON.stringify([row]), { status: 200, headers });
+        const vendorId = url.searchParams.get("vendor_id");
+        const ownerEmail = url.searchParams.get("rfx_events.owner_email");
+        return new Response(JSON.stringify([row, foreignRow].filter((candidate) =>
+          vendorId === `eq.${candidate.vendor_id}` && ownerEmail === `eq.${candidate.rfx_events.owner_email}`
+        )), { status: 200, headers });
       }
       if (["rfx_lanes", "contact_history", "rfx_segment_confirmations"].some((table) =>
         url.pathname.endsWith(`/${table}`))) {
@@ -78,10 +89,21 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
     assertEquals(fullResponse.status, 200);
     const fullPayload = await fullResponse.json();
     assertEquals(fullPayload.carrier_book.invited[0].invitation_id, "invitation-a");
+    assertEquals(fullPayload.carrier_book.invited.length, 1);
     assertEquals(tokenPaths(fullPayload).join(","), "");
     assertEquals("bid_history" in fullPayload, false);
     assertEquals("segment_confirmations" in fullPayload, false);
     assertEquals(fullResponse.headers.get("Cache-Control"), "private, no-store, max-age=0");
+    const foreignResponse = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token-b" }),
+    }));
+    assertEquals(foreignResponse.status, 200);
+    const foreignPayload = await foreignResponse.json();
+    assertEquals(foreignPayload.invitation.id, "invitation-b");
+    assertEquals(foreignPayload.carrier_book.invited.length, 1);
+    assertEquals(foreignPayload.carrier_book.invited[0].invitation_id, "invitation-b");
+    assertEquals(tokenPaths(foreignPayload).join(","), "");
     row.invitation_status = "revoked";
     const revoked = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
       method: "POST", headers: { "Content-Type": "application/json" },

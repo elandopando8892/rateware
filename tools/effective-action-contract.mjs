@@ -12,6 +12,17 @@ const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 const carrierTemplateDelta = carrierTemplateExtension.expectedCountsDelta;
 const rfxInvitationReviewDelta = rfxInvitationReviewExtension.expectedCountsDelta;
+// Token possession scopes this no-write projection to a single carrier book.
+// It does not grant the carrier the mutating Bid Room actions.
+const rfxBidPeekSurface = {
+  ...BASE_ACTION_CONTRACT.surfaces.find((entry) => entry.canonicalId === 'edge.rfx-bid-api.get_invitation'),
+  contractVersion,
+  canonicalId: 'edge.rfx-bid-api.peek_invitation',
+  actionName: 'peek_invitation',
+  sourceFingerprint: '72bf3e0148d5a8319244f72bb87b8a8c2297a729b978f7d9ecb9465da4ac3b83',
+  decisionStatus: 'pending_human_approval',
+  notes: 'No-write, token-scoped carrier invitation projection for Loads Preview. Production activation remains pending human approval.',
+};
 
 // Provider Service is hosted inside the authenticated shipper-directory-api runtime.
 // Its local dependency changes that function's shared authorization envelope for
@@ -313,13 +324,14 @@ export const ACTION_CONTRACT = {
   contractVersion,
   methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + 1,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + 1,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi,
   },
   reviewedMetadataFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedMetadataFingerprints,
+    'edge.rfx-bid-api.peek_invitation': '24fa4f2496a0b577a10bdb6e691c617ddc9dbbbbae8a7ad79d8a7def7b81cfca',
     ...extension.reviewedMetadataFingerprints,
     ...providerMetadataOverrides,
     ...gmailMetadataFingerprints,
@@ -330,6 +342,7 @@ export const ACTION_CONTRACT = {
   },
   reviewedAuthorizationFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedAuthorizationFingerprints,
+    'edge.rfx-bid-api.peek_invitation': '876811e8c5a91c3f68a3b268ce094362a38c9875b3038ac0d88868c712c3f5a1',
     ...legacyAuthorizationOverrides,
     ...extension.reviewedAuthorizationFingerprints,
     ...gmailAuthorizationFingerprints,
@@ -358,5 +371,6 @@ export const ACTION_CONTRACT = {
     ...carrierTemplateExtension.surfaces,
     ...rfxInvitationReviewExtension.surfaces,
     ...rfxAtomicAwardExtension.surfaces,
+    rfxBidPeekSurface,
   ],
 };
