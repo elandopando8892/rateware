@@ -113,6 +113,11 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // 2026-09-28 (later): shipper-profile-api returns a site's contact in
 // get_profile, which submit_profile already writes back; the token still
 // scopes every read and write to its own shipper.
+// 2026-09-28 (chat): rfx-bid-api answers a carrier's chat through
+// _shared/carrier-chat-view.mjs, which keeps what the carrier's page shows and
+// leaves out the team's notes, assignment, addresses and workspace key, other
+// carriers' emails, Google Chat ids and the lane's internal fields. The
+// invitation token still scopes every read and write.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': '47344307ceef4b051008850e8211fad1e395c7fd5830e3a3f011a10d5a36ccf3',
@@ -124,7 +129,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
   'edge.rateware-api.': '4d0f3b39f9ccbb489dacc94e63df8486942080b3ad42b59c18e71126e93cb90d',
-  'edge.rfx-bid-api.': '3a4394c4405cf9c4f1a3b60d2ac653a09c2492fcb3b54bf89bffa834a9c47c4e',
+  'edge.rfx-bid-api.': '0e6c1ada4af585591fc0b8d5f3d33b74cf7ae10c730211d32395132015daab7b',
   'edge.shipper-directory-api.': '529b561a078707872c24b999e1ed60c61ad2b024fcbfbdc4b9d3f121dca942cf',
   'edge.shipper-profile-api.': 'f1a6315de6fa26940c274745a944f93577a7179c7465fc015f00a4fbd90d762e',
   'edge.sync-banxico-fx.': '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc',
@@ -213,6 +218,12 @@ const rateBaseAdminSourceFingerprintOverrides = {
   'edge.rateware-api.remove_staging': '66725240f06dff9331ea193c9e1a6063f3efa9eefcf8ab2efc10c1b591cbb6f5',
   'edge.rateware-api.update_shipper': '79f16ecad98739a920f35e5d7206b7585ee7a6a18c5688d32b553bc42c9c6a87',
   'edge.rateware-api.update_staging': '22a302e2ff4f73213c0a419b960cdf16bde43ceb0195597ce5fc039ae63920e7',
+};
+
+// The carrier chat handlers answer through the carrier chat view (2026-09-28).
+const carrierChatSourceFingerprintOverrides = {
+  'edge.rfx-bid-api.list_bid_room_chat': '98f7183ad4b5dd4d8080f01123b9a7dca4dec07fd2ca268b99a88312d9ed2645',
+  'edge.rfx-bid-api.post_bid_room_chat_message': '459d7a128900a4a7a0f43f14b34af543064304095b35970bc02a4bae905aad33',
 };
 
 const quotedeskAuthEnvelope = 'ab4b06fd808d9c6c80363163455c6843bbbd31e0a1c694cae17e1aeadd169c18';
@@ -456,8 +467,8 @@ export const ACTION_CONTRACT = {
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
       ...entry,
       contractVersion,
-      ...((ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId] || whatsappWebhookSourceFingerprintOverrides[entry.canonicalId] || rateBaseAdminSourceFingerprintOverrides[entry.canonicalId])
-        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId] || whatsappWebhookSourceFingerprintOverrides[entry.canonicalId] || rateBaseAdminSourceFingerprintOverrides[entry.canonicalId] }
+      ...((ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId] || whatsappWebhookSourceFingerprintOverrides[entry.canonicalId] || rateBaseAdminSourceFingerprintOverrides[entry.canonicalId] || carrierChatSourceFingerprintOverrides[entry.canonicalId])
+        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId] || whatsappWebhookSourceFingerprintOverrides[entry.canonicalId] || rateBaseAdminSourceFingerprintOverrides[entry.canonicalId] || carrierChatSourceFingerprintOverrides[entry.canonicalId] }
         : {}),
       ...(entry.canonicalId.startsWith('edge.google-chat-app.')
         ? { analysisCoverage: 'shared-observed', coverageSignals: ['shared_dependency_observed'] }

@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
+import { carrierChatMessage, carrierChatThread } from "../_shared/carrier-chat-view.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -1237,9 +1238,10 @@ async function listCarrierBidRoomChat(supabase: RfxBidSupabaseClient, invitation
   return {
     google_chat_configured: Boolean(chatConnection.data?.default_space_name || GOOGLE_CHAT_WEBHOOK_URL),
     google_chat_inbound: googleChatInbound,
+    // Only what the carrier's page shows; the team's notes and addresses stay out.
     rows: threads.map((thread) => ({
-      ...thread,
-      messages: messagesByThread.get(String(thread.id)) || []
+      ...carrierChatThread(thread),
+      messages: (messagesByThread.get(String(thread.id)) || []).map(carrierChatMessage)
     }))
   };
 }
@@ -1278,7 +1280,11 @@ async function postCarrierBidRoomChatMessage(
     last_action_at: new Date().toISOString()
   }).eq("id", thread.id);
   const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data, event);
-  return { thread, message: { ...messageResult.data, google_chat_sync_status: sync.status }, google_chat_configured: sync.status !== "not_configured" || Boolean(GOOGLE_CHAT_WEBHOOK_URL) };
+  return {
+    thread: carrierChatThread(thread),
+    message: carrierChatMessage(messageResult.data),
+    google_chat_configured: sync.status !== "not_configured" || Boolean(GOOGLE_CHAT_WEBHOOK_URL)
+  };
 }
 
 function rangeScore(value: number | null, best: number | null, worst: number | null, weight: number, lowerIsBetter = true) {
