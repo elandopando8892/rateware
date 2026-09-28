@@ -60,7 +60,7 @@ async function waitForFunction() {
     } catch (error) { lastResult = String(error); }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  const safeDiagnostics = `${lastResult}\n${serveDiagnostics}`.replaceAll(serviceKey, '[redacted]').slice(-3000);
+  const safeDiagnostics = `LAST_RESPONSE: ${lastResult}`.replaceAll(serviceKey, '[redacted]').slice(-3000);
   throw new Error(`Local rfx-bid-api did not become ready within 60 seconds: ${safeDiagnostics}`);
 }
 
