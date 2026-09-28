@@ -73,7 +73,7 @@ try {
   await writeFile(envPath,
     `RATEWARE_SUPABASE_SERVICE_ROLE_KEY=${serviceKey}\nRFX_INVITATION_TOKEN_ENCRYPTION_KEY=${randomUUID()}\n`,
     { mode: 0o600 });
-  serve = spawn('supabase', ['functions', 'serve', 'rfx-bid-api', '--no-verify-jwt', '--env-file', envPath], {
+  serve = spawn('supabase', ['functions', 'serve', '--no-verify-jwt', '--env-file', envPath], {
     stdio: ['ignore', 'pipe', 'pipe']
   });
   // Retain only a short, redacted diagnostic if startup fails.
