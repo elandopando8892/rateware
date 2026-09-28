@@ -26,6 +26,7 @@ const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Co
 const tempDir = await mkdtemp(join(tmpdir(), 'rateware-peek-'));
 const envPath = join(tempDir, 'edge.env');
 let serve;
+let serveDiagnostics = '';
 
 async function rest(table, { method = 'GET', query = '', body } = {}) {
   const response = await fetch(new URL(`/rest/v1/${table}${query}`, apiUrl), {
@@ -47,7 +48,10 @@ async function peek(token) {
 
 async function waitForFunction() {
   for (let attempt = 0; attempt < 60; attempt++) {
-    if (serve.exitCode !== null) throw new Error(`Edge server exited with ${serve.exitCode}`);
+    if (serve.exitCode !== null) {
+      const safeDiagnostics = serveDiagnostics.replaceAll(serviceKey, '[redacted]').slice(-3000);
+      throw new Error(`Edge server exited with ${serve.exitCode}: ${safeDiagnostics}`);
+    }
     try {
       const result = await peek('ci-probe-invalid-token');
       if (result.status === 404) return;
@@ -72,9 +76,10 @@ try {
   serve = spawn('supabase', ['functions', 'serve', 'rfx-bid-api', '--no-verify-jwt', '--env-file', envPath], {
     stdio: ['ignore', 'pipe', 'pipe']
   });
-  // Do not forward Edge output; it can include runtime configuration.
-  serve.stdout.resume();
-  serve.stderr.resume();
+  // Retain only a short, redacted diagnostic if startup fails.
+  for (const stream of [serve.stdout, serve.stderr]) {
+    stream.on('data', (chunk) => { serveDiagnostics = (serveDiagnostics + String(chunk)).slice(-6000); });
+  }
   await waitForFunction();
 
   await rest('vendors', { method: 'POST', body: [
