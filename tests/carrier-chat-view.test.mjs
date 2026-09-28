@@ -2,7 +2,7 @@
 // never the team's notes, addresses or workspace keys, nor another carrier's email.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { carrierChatMessage, carrierChatThread } from "../supabase/functions/_shared/carrier-chat-view.mjs";
+import { belongsToThread, carrierChatMessage, carrierChatThread } from "../supabase/functions/_shared/carrier-chat-view.mjs";
 
 const thread = carrierChatThread({
   id: "t-1",
@@ -44,9 +44,33 @@ assert.equal(other.sender_name, "Transportes Dos");
 assert.ok(!JSON.stringify(other).includes("ventas@dos.mx"), "a carrier's email never reaches another carrier in a group thread");
 assert.equal(carrierChatMessage({ sender_role: "carrier", vendors: { vendor_name: "Tres" } }).sender_name, "Tres");
 
+// Messages copied in from the team's Google Chat space: only the thread's own
+// conversation reaches the carrier, never the space's other conversations.
+const mirrored = { google_chat_thread_name: "spaces/S/threads/own" };
+const inbound = (conversation) => ({ body: "x", metadata: { source: "google_chat_inbound", google_chat_thread_name: conversation } });
+assert.equal(belongsToThread(mirrored, { body: "hola", metadata: { source: "rateware_internal" } }), true, "messages written in the Bid Room always show");
+assert.equal(belongsToThread(mirrored, { body: "hola" }), true);
+assert.equal(belongsToThread(mirrored, inbound("spaces/S/threads/own")), true, "a team reply in the thread's own conversation");
+assert.equal(belongsToThread(mirrored, inbound("spaces/S/threads/other-event")), false, "another event's or carrier's conversation");
+assert.equal(belongsToThread(mirrored, inbound(undefined)), false, "a message with no conversation");
+assert.equal(belongsToThread({}, inbound("spaces/S/threads/own")), false, "a thread never mirrored to Google Chat has no replies from it");
+
 // The carrier API answers through these, both when listing and when posting.
 const api = readFileSync(new URL("../supabase/functions/rfx-bid-api/index.ts", import.meta.url), "utf8");
-assert.match(api, /\.\.\.carrierChatThread\(thread\),\s*messages: \(messagesByThread\.get\(String\(thread\.id\)\) \|\| \[\]\)\.map\(carrierChatMessage\)/);
+assert.match(api, /\.\.\.carrierChatThread\(thread\),\s*messages: \(messagesByThread\.get\(String\(thread\.id\)\) \|\| \[\]\)\.filter\(\(message\) => belongsToThread\(thread, message\)\)\.map\(carrierChatMessage\)/);
 assert.match(api, /thread: carrierChatThread\(thread\),\s*message: carrierChatMessage\(messageResult\.data\)/);
+
+// Both syncs copy a Google Chat message only into the thread of its own
+// conversation: no fallback to the event's shared thread, and an inbound
+// message never moves a thread to another conversation.
+for (const fn of ["rfx-bid-api", "rateware-api"]) {
+  const source = readFileSync(new URL(`../supabase/functions/${fn}/index.ts`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const start = source.indexOf("async function syncGoogleChatInboundMessagesForThreads(");
+  assert.ok(start >= 0, `${fn} keeps its Google Chat sync`);
+  const sync = source.slice(start, source.indexOf("\n}\n", start));
+  assert.match(sync, /const targetThread = googleThreadName \? threadsByGoogleThreadName\.get\(googleThreadName\) : null;/, `${fn} matches by conversation only`);
+  assert.doesNotMatch(sync, /event_group/, `${fn} never falls back to the event's shared thread`);
+  assert.doesNotMatch(sync, /"bid_room_chat_threads"\)\.update\(\{[^}]*google_chat_thread_name/, `${fn} never repoints a thread from an inbound message`);
+}
 
 console.log("carrier chat view checks passed");

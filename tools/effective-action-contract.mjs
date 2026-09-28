@@ -128,8 +128,8 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': '4d0f3b39f9ccbb489dacc94e63df8486942080b3ad42b59c18e71126e93cb90d',
-  'edge.rfx-bid-api.': 'd27acf035f7a40724a4878abc2a8b538251b796781b7a44bcad568892cde2d94',
+  'edge.rateware-api.': 'b324515298a19661bfe1a1ab78c4e1ac04114cae23375abaf02b9bea51033b71',
+  'edge.rfx-bid-api.': 'd1eaa54e42be02fb748f95ebc8190c899474c57e99b7256ed26dd61ebb184278',
   'edge.shipper-directory-api.': '529b561a078707872c24b999e1ed60c61ad2b024fcbfbdc4b9d3f121dca942cf',
   'edge.shipper-profile-api.': 'f1a6315de6fa26940c274745a944f93577a7179c7465fc015f00a4fbd90d762e',
   'edge.sync-banxico-fx.': '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc',
@@ -220,9 +220,10 @@ const rateBaseAdminSourceFingerprintOverrides = {
   'edge.rateware-api.update_staging': '22a302e2ff4f73213c0a419b960cdf16bde43ceb0195597ce5fc039ae63920e7',
 };
 
-// The carrier chat handlers answer through the carrier chat view (2026-09-28).
+// The carrier chat handlers answer through the carrier chat view (2026-09-28),
+// and the listing keeps out Google Chat messages from other conversations.
 const carrierChatSourceFingerprintOverrides = {
-  'edge.rfx-bid-api.list_bid_room_chat': '98f7183ad4b5dd4d8080f01123b9a7dca4dec07fd2ca268b99a88312d9ed2645',
+  'edge.rfx-bid-api.list_bid_room_chat': '97d7adc27a3440b4d1e13fd6610500787221267e000f3b6c787ba76582844db5',
   'edge.rfx-bid-api.post_bid_room_chat_message': '459d7a128900a4a7a0f43f14b34af543064304095b35970bc02a4bae905aad33',
 };
 
