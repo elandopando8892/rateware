@@ -85,10 +85,12 @@ try {
   }
   await waitForFunction();
 
-  await rest('vendors', { method: 'POST', body: [
-    { id: ids.vendorA, vendor_name: `CI Carrier A ${runId}`, domain: 'carrier-a.example.invalid', primary_email: 'a@example.invalid' },
-    { id: ids.vendorB, vendor_name: `CI Carrier B ${runId}`, domain: 'carrier-b.example.invalid', primary_email: 'b@example.invalid' }
-  ] });
+  // Vendor CRM intentionally does not grant service_role INSERT in a clean replay.
+  // Seed fixtures as the ephemeral database administrator, not via an app grant.
+  execFileSync('docker', ['exec', 'supabase_db_alqjqzqagdmcywpjtnnr', 'psql', '-U', 'postgres', '-d', 'postgres', '-c',
+    `insert into public.vendors (id,vendor_name,domain,primary_email) values
+     ('${ids.vendorA}','CI Carrier A ${runId}','carrier-a.example.invalid','a@example.invalid'),
+     ('${ids.vendorB}','CI Carrier B ${runId}','carrier-b.example.invalid','b@example.invalid')`], { stdio: 'pipe' });
   await rest('rfx_events', { method: 'POST', body: {
     id: ids.event, rfx_id: `CI-PEEK-${runId}`, name: 'Isolated private-book test',
     owner_email: 'owner@example.invalid', customer: 'Synthetic CI customer', status: 'open',
