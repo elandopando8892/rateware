@@ -110,6 +110,9 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // rateware-api, rateware-storage-api and interpret-upload read the rows first
 // and refuse an operator (_shared/team-roles.ts adminOnlyDenial). Ownership
 // and tenant checks are unchanged.
+// 2026-09-28 (later): shipper-profile-api returns a site's contact in
+// get_profile, which submit_profile already writes back; the token still
+// scopes every read and write to its own shipper.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': '47344307ceef4b051008850e8211fad1e395c7fd5830e3a3f011a10d5a36ccf3',
@@ -123,7 +126,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.rateware-api.': '4d0f3b39f9ccbb489dacc94e63df8486942080b3ad42b59c18e71126e93cb90d',
   'edge.rfx-bid-api.': '3a4394c4405cf9c4f1a3b60d2ac653a09c2492fcb3b54bf89bffa834a9c47c4e',
   'edge.shipper-directory-api.': '529b561a078707872c24b999e1ed60c61ad2b024fcbfbdc4b9d3f121dca942cf',
-  'edge.shipper-profile-api.': '501f2bec390dab9ecce5b9e6aac016683fb51d2c9f8afc0217b097912fe36949',
+  'edge.shipper-profile-api.': 'f1a6315de6fa26940c274745a944f93577a7179c7465fc015f00a4fbd90d762e',
   'edge.sync-banxico-fx.': '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc',
   'edge.sync-rateware-catalog.': '3d0999b983698fe5157ad223da8772130d6c769c9e55e06ebb4efa8c92f1bd95',
   'edge.whatsapp-webhook.': '8b8236be223a75d8da2d109ed9a28b7ea6f4d6031f458051d0c5c49b203e5da1',
