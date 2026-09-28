@@ -115,9 +115,20 @@ try {
     assert.equal(result.status, 200, `Expected private-book response: ${JSON.stringify(result.body)}`);
     assert.match(result.cache || '', /no-store/);
     assert.equal(result.body.invitation.id, ownId);
+    assert.equal(result.body.invitation.vendor_id, ownId === ids.invitationA ? ids.vendorA : ids.vendorB);
+    assert.equal(result.body.invitation.rfx_events?.id, ids.event);
+    assert.equal(result.body.invitation.rfx_lanes?.id, ids.lane);
+    assert.ok(result.body.invitation.vendors?.vendor_name, 'Loads needs the carrier name');
     assert.ok(Array.isArray(result.body.carrier_book?.invited));
     assert.ok(result.body.carrier_book.invited.some((row) => row.invitation_id === ownId));
     assert.ok(result.body.carrier_book.invited.every((row) => row.invitation_id !== otherId));
+    for (const row of result.body.carrier_book.invited) {
+      assert.equal(row.is_invited, true);
+      assert.equal(row.rfx_event_id, row.event?.id);
+      assert.equal(row.rfx_lane_id, row.lane?.id);
+      assert.equal(row.event?.status, 'open');
+      assert.ok(Date.parse(row.event?.due_date) > Date.now());
+    }
     assert.deepEqual(result.body.carrier_book.open_not_invited, []);
     assert.equal(result.body.carrier_book.summary.not_invited_open, 0);
     if (ownId === ids.invitationA) {
@@ -129,6 +140,7 @@ try {
     assert.ok(!JSON.stringify(result.body).includes(tokens.a));
     assert.ok(!JSON.stringify(result.body).includes(tokens.b));
     assert.ok(!JSON.stringify(result.body).includes(`ci-peek-b2-${runId}`));
+    assert.doesNotMatch(JSON.stringify(result.body), /invitation_token(?:_hash|_encrypted)?/);
     assert.ok(!('segment_confirmations' in result.body));
     assert.ok(!('bid_history' in result.body));
   }

@@ -134,7 +134,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.rateware-api.': '4d0f3b39f9ccbb489dacc94e63df8486942080b3ad42b59c18e71126e93cb90d',
   // The read-only peek now omits non-invited open lanes. The common handler
   // envelope changes, while mutating actions retain their prior behavior.
-  'edge.rfx-bid-api.': '6ee65c70a408fba2c15aacdca8444460e958055a609d9be2c2056195c36138ed',
+  'edge.rfx-bid-api.': '8e624c0cfbfa82228f7248815faeb39e9759c249a6ccd1137eef79949b3dd18e',
   'edge.shipper-directory-api.': '529b561a078707872c24b999e1ed60c61ad2b024fcbfbdc4b9d3f121dca942cf',
   'edge.shipper-profile-api.': '501f2bec390dab9ecce5b9e6aac016683fb51d2c9f8afc0217b097912fe36949',
   'edge.sync-banxico-fx.': '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc',
@@ -441,7 +441,7 @@ export const ACTION_CONTRACT = {
   },
   reviewedAuthorizationFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedAuthorizationFingerprints,
-    'edge.rfx-bid-api.peek_invitation': '6ee65c70a408fba2c15aacdca8444460e958055a609d9be2c2056195c36138ed',
+    'edge.rfx-bid-api.peek_invitation': '8e624c0cfbfa82228f7248815faeb39e9759c249a6ccd1137eef79949b3dd18e',
     ...legacyAuthorizationOverrides,
     ...extension.reviewedAuthorizationFingerprints,
     ...gmailAuthorizationFingerprints,

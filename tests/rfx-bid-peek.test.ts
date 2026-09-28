@@ -80,6 +80,7 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
     const payload = await response.json();
     assertEquals(payload.invitation.id, "invitation-a");
     assertEquals(tokenPaths(payload).join(","), "");
+    assertEquals(/invitation_token(?:_hash|_encrypted)?/.test(JSON.stringify(payload)), false);
     assertEquals(payload.current_book_row.invitation_id, "invitation-a");
     assertEquals(response.headers.get("Cache-Control"), "private, no-store, max-age=0");
     const fullResponse = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
@@ -94,6 +95,7 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
     assertEquals(fullPayload.carrier_book.summary.not_invited_open, 0);
     assertEquals(queries.some((query) => new URL(query.url).pathname.endsWith("/rfx_lanes")), false);
     assertEquals(tokenPaths(fullPayload).join(","), "");
+    assertEquals(/invitation_token(?:_hash|_encrypted)?/.test(JSON.stringify(fullPayload)), false);
     assertEquals("bid_history" in fullPayload, false);
     assertEquals("segment_confirmations" in fullPayload, false);
     assertEquals(fullResponse.headers.get("Cache-Control"), "private, no-store, max-age=0");

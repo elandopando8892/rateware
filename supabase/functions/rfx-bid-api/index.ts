@@ -424,7 +424,12 @@ function invitationWithToken(row: Record<string, unknown>, token: string): Recor
 }
 
 function invitationWithoutToken(row: Record<string, unknown>): Record<string, unknown> {
-  const { invitation_token: _token, ...safeRow } = row;
+  const {
+    invitation_token: _token,
+    invitation_token_hash: _hash,
+    invitation_token_encrypted: _encrypted,
+    ...safeRow
+  } = row;
   return safeRow;
 }
 
