@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
-import { adminOnlyDenial, RATE_BASE_REMOVAL_ERROR, SHIPPER_ARCHIVE_ERROR, teamRoleDenial } from "../_shared/team-roles.ts";
+import { adminOnlyDenial, CARRIER_ARCHIVE_ERROR, RATE_BASE_REMOVAL_ERROR, SHIPPER_ARCHIVE_ERROR, teamRoleDenial } from "../_shared/team-roles.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import { forwardSourceDownload, forwardSourceRemoval } from "../_shared/source-download-routing.mjs";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
@@ -8955,6 +8955,8 @@ async function resolveVendorImportRows(
 
   const payload: Record<string, unknown>[] = [];
   let matched = 0;
+  // Existing carriers the import would archive; that is an Administrador's call.
+  let archiving = 0;
   for (const { row, source } of incoming) {
     const existing = existingByKey.get(vendorNaturalKey(row));
     if (!existing) {
@@ -8966,10 +8968,11 @@ async function resolveVendorImportRows(
     for (const field of VENDOR_IMPORT_PRESERVED_FIELDS) {
       if (cleanText(source[field]) === null) merged[field] = existing[field];
     }
+    if (cleanText(merged.base_stage) === "archived" && cleanText(existing.base_stage) !== "archived") archiving += 1;
     payload.push(merged);
   }
 
-  return { payload, matched, created: payload.length - matched };
+  return { payload, matched, created: payload.length - matched, archiving };
 }
 
 function normalizeVendorPatch(input: Record<string, unknown>, current: Record<string, unknown> = {}) {
@@ -27568,7 +27571,11 @@ export function createRatewareApiHandler(
       // Upsert on the primary key: matched rows carry their existing id and are
       // updated in place. A plain insert here re-created every carrier on each
       // run, which is how the CRM filled with duplicates.
-      const { payload, matched, created } = await resolveVendorImportRows(supabase, user, incoming);
+      const { payload, matched, created, archiving } = await resolveVendorImportRows(supabase, user, incoming);
+      if (archiving) {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "import_vendors", CARRIER_ARCHIVE_ERROR);
+        if (denial) return jsonResponse(denial, 403);
+      }
       const result = await supabase.from("vendors").upsert(payload).select();
 
       if (result.error) throw result.error;
@@ -27603,7 +27610,11 @@ export function createRatewareApiHandler(
       // vendors has eleven ON DELETE CASCADE children, so each re-sync silently
       // destroyed those carriers' invitations, bids, quotes and scorecards, and
       // gave the rebuilt rows new ids. Match and update in place instead.
-      const { payload, matched, created } = await resolveVendorImportRows(supabase, user, validRows);
+      const { payload, matched, created, archiving } = await resolveVendorImportRows(supabase, user, validRows);
+      if (archiving) {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "import_vendors_google_sheet", CARRIER_ARCHIVE_ERROR);
+        if (denial) return jsonResponse(denial, 403);
+      }
       const result = await supabase.from("vendors").upsert(payload).select();
       if (result.error) throw result.error;
       return jsonResponse({
@@ -27881,6 +27892,15 @@ export function createRatewareApiHandler(
           skipped: rawRows.length - validUpdates.length,
           rows: previewRows
         });
+      }
+
+      const archivesCarrier = validUpdates.some((item) =>
+        cleanText(item.patch.base_stage) === "archived" &&
+        cleanText(templateCurrentById.get(item.id)?.base_stage) !== "archived"
+      );
+      if (archivesCarrier) {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "apply_vendor_template_updates", CARRIER_ARCHIVE_ERROR);
+        if (denial) return jsonResponse(denial, 403);
       }
 
       const updatedRows: Record<string, unknown>[] = [];
