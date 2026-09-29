@@ -8,9 +8,9 @@
  *   admin     everything.
  *   operator  day-to-day work: builds and runs events and quotes, talks to
  *             carriers and shippers. Doesn't award or hand awards to rateware,
- *             publish a Ratebook, archive, restore or delete records, change the
- *             shared catalog, revoke what a shipper was given, or disconnect an
- *             integration.
+ *             publish a Ratebook, archive, restore, merge or delete records,
+ *             change the shared catalog, revoke what a shipper was given, or
+ *             disconnect an integration.
  *   viewer    reads only.
  *
  * Only accounts that belong to an organization are held to a role, and one of
@@ -101,6 +101,25 @@ const ADMIN_STATUSES: Record<string, ReadonlySet<string>> = {
   "quotedesk-api.set_quote_status": new Set(["archived", "new"]),
 };
 
+/**
+ * Carrier stages only an Administrador sets (decided 2026-09-29). A carrier is
+ * archived through its base stage, not its status, so ADMIN_STATUSES can't
+ * see it.
+ */
+const ADMIN_BASE_STAGES: Record<string, ReadonlySet<string>> = {
+  "rateware-api.bulk_update_vendors": new Set(["archived"]),
+  "rateware-api.update_vendor": new Set(["archived"]),
+};
+
+/**
+ * Actions whose preview only reads and whose confirmed run (`dry_run: false`)
+ * is an Administrador's. Merging duplicate carriers deletes the duplicate
+ * (decided 2026-09-29), like merging shippers archives it.
+ */
+const ADMIN_UNLESS_PREVIEW: Record<string, ReadonlySet<string>> = {
+  "rateware-api": new Set(["consolidate_exact_vendor_duplicates"]),
+};
+
 const record = (value: unknown) =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
@@ -114,8 +133,11 @@ function statusesIn(body: Record<string, unknown>) {
 /** What calling `action` on `fn` asks of the role. Anything unlisted is day-to-day work. */
 export function teamRoleNeed(fn: string, action: string, body: Record<string, unknown> = {}): TeamNeed {
   if (ADMIN[fn]?.has(action)) return "admin";
+  if (ADMIN_UNLESS_PREVIEW[fn]?.has(action)) return body.dry_run === false ? "admin" : "read";
   const statuses = ADMIN_STATUSES[`${fn}.${action}`];
   if (statuses && statusesIn(body).some((status) => statuses.has(status))) return "admin";
+  const stages = ADMIN_BASE_STAGES[`${fn}.${action}`];
+  if (stages?.has(String(record(body.patch).base_stage ?? "").trim().toLowerCase())) return "admin";
   if (READS[fn]?.has(action)) return "read";
   return "operate";
 }
@@ -141,8 +163,9 @@ export const teamRoleAllows = (role: TeamRole, need: TeamNeed) =>
  * What only a row can tell, the handler checks after reading it: taking
  * approved rates out of the rate base (archiving, deleting or reopening them,
  * directly or through their upload) and restoring an archived shipper
- * (decided 2026-09-28). The 403 body when the account isn't an
- * Administrador, otherwise null.
+ * (decided 2026-09-28), and archiving a carrier through the CRM template or
+ * when importing carriers, decided 2026-09-29. The 403 body when the account
+ * isn't an Administrador, otherwise null.
  */
 export function adminOnlyDenial(fn: string, claims: Record<string, unknown>, action: string, error: string) {
   if (!belongsToOrganization(claims)) return null;
@@ -154,6 +177,7 @@ export function adminOnlyDenial(fn: string, claims: Record<string, unknown>, act
 
 export const RATE_BASE_REMOVAL_ERROR = "Solo un Administrador puede sacar tarifas del tarifario.";
 export const SHIPPER_ARCHIVE_ERROR = "Solo un Administrador puede archivar o restaurar un shipper.";
+export const CARRIER_ARCHIVE_ERROR = "Solo un Administrador puede archivar un carrier.";
 
 /** The 403 body when the account's role doesn't allow the call, otherwise null. */
 export function teamRoleDenial(fn: string, claims: Record<string, unknown>, body: Record<string, unknown>) {

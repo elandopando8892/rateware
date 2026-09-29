@@ -31,6 +31,10 @@ for (const action of ["return_rateware_to_staging", "merge_shipper_accounts"]) {
   assert.match(roles, new RegExp(`"${action}"`), `${action} is an Administrador's`);
 }
 assert.match(roles, /"rateware-api\.update_shipper": new Set\(\["archived"\]\)/, "archiving a shipper by editing it is an Administrador's");
+for (const action of ["bulk_update_vendors", "update_vendor"]) {
+  assert.match(roles, new RegExp(`"rateware-api\\.${action}": new Set\\(\\["archived"\\]\\)`), `archiving a carrier through ${action} is an Administrador's`);
+}
+assert.match(roles, /ADMIN_UNLESS_PREVIEW[^]*"consolidate_exact_vendor_duplicates"/, "merging duplicate carriers is an Administrador's");
 
 // What only the rows can tell is checked in the handler, before it writes.
 const checkedBeforeWrite = (source, start, write, label) => {
@@ -51,6 +55,9 @@ for (const [action, write] of [
   ["update_shipper", ".update(patch)"],
   ["import_shippers", ".insert(insertChunk)"],
   ["import_shipper_crm_workbook", ".insert(insertChunk)"],
+  ["apply_vendor_template_updates", ".update(item.patch)"],
+  ["import_vendors", ".upsert(payload)"],
+  ["import_vendors_google_sheet", ".upsert(payload)"],
 ]) {
   checkedBeforeWrite(apiSource, `body.action === "${action}"`, write, action);
 }

@@ -2,6 +2,7 @@ import { assert, assertEquals } from "jsr:@std/assert@1.0.14";
 import {
   adminOnlyDenial,
   belongsToOrganization,
+  CARRIER_ARCHIVE_ERROR,
   RATE_BASE_REMOVAL_ERROR,
   SHIPPER_ARCHIVE_ERROR,
   teamRoleAllows,
@@ -51,6 +52,13 @@ Deno.test("what each action asks of the role", () => {
   assertEquals(teamRoleNeed("rateware-api", "merge_shipper_accounts"), "admin", "merging archives the duplicate");
   assertEquals(teamRoleNeed("rateware-api", "update_shipper", { id: "s-1", patch: { status: "archived" } }), "admin");
   assertEquals(teamRoleNeed("rateware-api", "update_shipper", { id: "s-1", patch: { industry: "Food" } }), "operate");
+  assertEquals(teamRoleNeed("rateware-api", "consolidate_exact_vendor_duplicates", { dry_run: true }), "read", "the merge preview only reads");
+  assertEquals(teamRoleNeed("rateware-api", "consolidate_exact_vendor_duplicates"), "read");
+  assertEquals(teamRoleNeed("rateware-api", "consolidate_exact_vendor_duplicates", { dry_run: false, preview_count: 1 }), "admin", "merging deletes the duplicate carrier");
+  assertEquals(teamRoleNeed("rateware-api", "bulk_update_vendors", { ids: ["v-1"], patch: { base_stage: " Archived " } }), "admin", "archiving carriers");
+  assertEquals(teamRoleNeed("rateware-api", "update_vendor", { id: "v-1", patch: { base_stage: "archived" } }), "admin");
+  assertEquals(teamRoleNeed("rateware-api", "bulk_update_vendors", { ids: ["v-1"], patch: { base_stage: "procurement", funnel_stage: "invited" } }), "operate", "moving carriers through the pipeline");
+  assertEquals(teamRoleNeed("rateware-api", "bulk_update_vendors", { ids: ["v-1"], patch: { status: "inactive" } }), "operate", "the TMS status is not archiving");
   assertEquals(teamRoleNeed("quotedesk-api", "set_quote_status", { status: "archived" }), "admin");
   assertEquals(teamRoleNeed("quotedesk-api", "set_quote_status", { status: "won" }), "operate");
   assertEquals(teamRoleNeed("quotedesk-api", "get_quote"), "read");
@@ -143,6 +151,7 @@ async function callWith(result: Record<string, unknown>, claims: Record<string, 
 }
 
 const RATE = "00000000-0000-4000-8000-000000000001";
+const CARRIER = "00000000-0000-4000-8000-000000000003";
 const approvedRate = { data: { id: RATE, status: "approved" }, count: 1, error: null };
 const pendingRate = { data: { id: RATE, status: "pending_review" }, count: 0, error: null };
 const archiving = { action: "archive_staging", ids: [RATE], confirmed: true, confirmation_action: "archive_staging" };
@@ -176,6 +185,54 @@ Deno.test("an operator can't restore an archived shipper", async () => {
   assert(!restored.touched.includes("update"));
   const edited = await callWith(archivedShipper, { ...org, roles: ["operator"] }, { action: "update_shipper", id: SHIPPER, patch: { notes: "Llamar el lunes" } });
   assert(edited.status !== 403 && edited.touched.includes("update"), "editing an archived shipper's notes is not restoring it");
+});
+
+Deno.test("an operator can't merge duplicate carriers or archive one, and still previews and moves them", async () => {
+  const operator = { ...org, roles: ["operator"] };
+  const merge = await call(operator, {
+    action: "consolidate_exact_vendor_duplicates", dry_run: false, preview_count: 1,
+    confirmed: true, confirmation_action: "consolidate_exact_vendor_duplicates",
+  });
+  assertEquals(merge.status, 403);
+  assertEquals(merge.body.required, "admin");
+  assertEquals(merge.touched, []);
+  const preview = await call(org, { action: "consolidate_exact_vendor_duplicates", dry_run: true });
+  assert(preview.status !== 403 && preview.touched.length > 0, "anyone may look at the duplicates");
+  const archive = await call(operator, {
+    action: "bulk_update_vendors", ids: [CARRIER], patch: { base_stage: "archived" },
+    confirmed: true, confirmation_action: "bulk_update_vendors",
+  });
+  assertEquals(archive.status, 403);
+  assertEquals(archive.touched, []);
+  const edit = await call(operator, { action: "update_vendor", id: CARRIER, patch: { base_stage: "archived" } });
+  assertEquals(edit.status, 403);
+  assertEquals(edit.touched, []);
+  const move = await call(operator, { action: "bulk_update_vendors", ids: [CARRIER], patch: { base_stage: "procurement", funnel_stage: "invited" } });
+  assert(move.status !== 403 && move.touched.length > 0, "moving a carrier through the pipeline is day-to-day work");
+});
+
+Deno.test("an operator can't archive a carrier through the CRM template or an import", async () => {
+  const carrier = { data: [{ id: CARRIER, vendor_name: "Ejemplo SA", domain: "ejemplo.mx", base_stage: "procurement", status: "active" }], error: null };
+  const template = {
+    action: "apply_vendor_template_updates", dry_run: false,
+    rows: [{ vendor_id: CARRIER, base_stage: "archived" }],
+    confirmed: true, confirmation_action: "apply_vendor_template_updates",
+  };
+  const byOperator = await callWith(carrier, { ...org, roles: ["operator"] }, template);
+  assertEquals(byOperator.status, 403);
+  assertEquals(byOperator.body.error, CARRIER_ARCHIVE_ERROR);
+  assert(!byOperator.touched.includes("update"), "nothing was archived");
+  const byAdmin = await callWith(carrier, { ...org, roles: ["admin"] }, template);
+  assert(byAdmin.status !== 403 && byAdmin.touched.includes("update"));
+  const notes = await callWith(carrier, { ...org, roles: ["operator"] }, { ...template, rows: [{ vendor_id: CARRIER, notes: "Llamar el lunes" }] });
+  assert(notes.status !== 403 && notes.touched.includes("update"), "the template still edits carriers");
+
+  const imported = await callWith(carrier, { ...org, roles: ["operator"] }, {
+    action: "import_vendors", vendors: [{ vendor_name: "Ejemplo SA", domain: "ejemplo.mx", base_stage: "archived" }],
+  });
+  assertEquals(imported.status, 403);
+  assertEquals(imported.body.error, CARRIER_ARCHIVE_ERROR);
+  assert(!imported.touched.includes("upsert"), "nothing was imported");
 });
 
 Deno.test("rateware-api refuses an operator's award before touching the database", async () => {
