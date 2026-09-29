@@ -2171,6 +2171,13 @@ assert.match(apiSource, /body\.action === "set_rfx_lane_no_award"/, "An Administ
 assert.match(rfxBidApiSource, /function hiddenVoidLane/, "A void lane should stay out of the carrier's book while its event takes bids");
 assert.match(rfxBidApiSource, /\.filter\(\(lane\) => !cleanText\(lane\.no_award_at\)\)/, "The public board should never show a void lane");
 assert.match(rfxBidApiSource, /invitation: readOnlyPeek \? invitationWithoutToken\(carrierInvitation\(result\.data\)\) : carrierInvitation\(result\.data\)/, "The carrier's own lane should arrive without the internal void reason");
+assert.match(rfxBidApiSource, /rfx_lanes: publicLane\(lane\)/, "The carrier's own lane should go out in the public shape, without the target rate or the incumbent carrier");
+assert.match(rfxBidApiSource, /rfx_events: publicEvent\(event\)/, "The carrier's own event should go out without the team's notes or the owning account");
+assert.deepEqual(
+  rfxBidApiSource.split("\n").filter((line) => line.includes("target_rate")).map((line) => line.trim()),
+  ["target_rate: cleanNumber(row.target_rate),"],
+  "Only the shipper's own RFI form reads a target rate; carriers and their support assistant never get it"
+);
 assert.match(rfxBidApiSource, /Esta ruta se cerró sin adjudicar; ya no recibe ofertas/, "A void lane should refuse new offers");
 assert.match(rfxBidApiSource, /operation_start_date: row\.operation_start_date \?\? null/, "Carriers should see the event's operation start date");
 assert.match(apiSource, /operation_start_date: cleanDate\(input\.operation_start_date\)/, "An event should keep its operation start date");

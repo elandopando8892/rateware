@@ -688,6 +688,8 @@ function publicLane(row: Record<string, unknown>) {
     destination_state: row.destination_state,
     destination_market: row.destination_market,
     destination_region: row.destination_region,
+    origin_country: row.origin_country,
+    destination_country: row.destination_country,
     equipment: row.equipment,
     trailer: row.trailer,
     config: row.config,
@@ -715,12 +717,21 @@ function hiddenVoidLane(lane: Record<string, unknown>, event: Record<string, unk
   return Boolean(cleanText(lane.no_award_at)) && !["closed", "awarded", "archived"].includes(status);
 }
 
-/** The link's own invitation as the carrier receives it: the lane's void reason and who decided stay out. */
+/**
+ * The link's own invitation as the carrier receives it. Its lane and event go
+ * out in the same public shape as the rest of the carrier's book, so what the
+ * team keeps to itself never leaves: the target rate, the incumbent carrier,
+ * the event's own notes, the account that owns it, and why a lane was
+ * declared void and who decided (decided 2026-09-29).
+ */
 function carrierInvitation(row: Record<string, unknown>) {
   const lane = relationRecord(row.rfx_lanes);
-  if (!Object.keys(lane).length) return row;
-  const { no_award_reason: _reason, no_award_by: _decidedBy, ...visible } = lane;
-  return { ...row, rfx_lanes: { ...visible, no_award: Boolean(cleanText(lane.no_award_at)) } };
+  const event = relationRecord(row.rfx_events);
+  return {
+    ...row,
+    ...(Object.keys(lane).length ? { rfx_lanes: publicLane(lane) } : {}),
+    ...(Object.keys(event).length ? { rfx_events: publicEvent(event) } : {})
+  };
 }
 
 function publicEvent(row: Record<string, unknown>) {
@@ -2568,8 +2579,7 @@ function supportLaneSummary(lane: Record<string, unknown>, language: string, ind
     supportLaneNumberLabel(lane, index),
     supportRouteLabel(lane),
     [lane.equipment, lane.trailer, lane.config, lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / "),
-    lane.weekly_volume !== null && lane.weekly_volume !== undefined ? `${lane.weekly_volume}/wk` : null,
-    lane.target_rate ? `${lane.target_rate} ${cleanText(lane.currency) || ""}`.trim() : null
+    lane.weekly_volume !== null && lane.weekly_volume !== undefined ? `${lane.weekly_volume}/wk` : null
   ].filter(Boolean);
   return language === "es" ? pieces.join(" | ") : pieces.join(" | ");
 }
@@ -3046,7 +3056,6 @@ function supportLanePayload(lane: Record<string, unknown>, language: string, ind
     operation: cleanText(lane.operation),
     service: cleanText(lane.service),
     weekly_volume: lane.weekly_volume ?? null,
-    target_rate: lane.target_rate ?? null,
     currency: cleanText(lane.currency),
     logistics_model: supportCleanDetailText(lane.logistics_model, 800),
     operation_criteria: supportCleanDetailText(lane.operation_criteria, 800),
@@ -3206,7 +3215,6 @@ async function loadPublicSupportLane(supabase: RfxBidSupabaseClient, input: Reco
       operation,
       service,
       weekly_volume,
-      target_rate,
       currency,
       logistics_model,
       operation_criteria,
@@ -5010,7 +5018,6 @@ Deno.serve(async (request) => {
               operation,
               service,
               weekly_volume,
-              target_rate,
               currency,
               logistics_model,
               operation_criteria,
