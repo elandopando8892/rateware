@@ -28,6 +28,17 @@ const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 const carrierTemplateDelta = carrierTemplateExtension.expectedCountsDelta;
 const rfxInvitationReviewDelta = rfxInvitationReviewExtension.expectedCountsDelta;
+// Token possession scopes this no-write projection to a single carrier book.
+// It does not grant the carrier the mutating Bid Room actions.
+const rfxBidPeekSurface = {
+  ...BASE_ACTION_CONTRACT.surfaces.find((entry) => entry.canonicalId === 'edge.rfx-bid-api.get_invitation'),
+  contractVersion,
+  canonicalId: 'edge.rfx-bid-api.peek_invitation',
+  actionName: 'peek_invitation',
+  sourceFingerprint: '65e612a3d91eae30f098ff85c2d22e67693377622a1eb34c765d28f8c0c1d8cf',
+  decisionStatus: 'pending_human_approval',
+  notes: 'No-write, token-scoped carrier invitation projection for Loads Preview. Production activation remains pending human approval.',
+};
 
 // Provider Service is hosted inside the authenticated shipper-directory-api runtime.
 // Its local dependency changes that function's shared authorization envelope for
@@ -129,7 +140,11 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
   'edge.rateware-api.': 'b324515298a19661bfe1a1ab78c4e1ac04114cae23375abaf02b9bea51033b71',
-  'edge.rfx-bid-api.': 'd1eaa54e42be02fb748f95ebc8190c899474c57e99b7256ed26dd61ebb184278',
+  // Reviewed after merging the no-write invitation peek with the stricter
+  // Google Chat conversation isolation in main. The peek now includes
+  // same-vendor encrypted-token rows without decrypting or exposing tokens;
+  // the ordinary invitation path still hydrates tokens for quoting.
+  'edge.rfx-bid-api.': 'e647f6c131de42998e4804da82849ba6b8d456265df2be68f91d4abc63d516ad',
   'edge.shipper-directory-api.': '529b561a078707872c24b999e1ed60c61ad2b024fcbfbdc4b9d3f121dca942cf',
   'edge.shipper-profile-api.': 'f1a6315de6fa26940c274745a944f93577a7179c7465fc015f00a4fbd90d762e',
   'edge.sync-banxico-fx.': '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc',
@@ -187,7 +202,7 @@ const whatsappWebhookSourceFingerprintOverrides = {
 // and Unix checkouts without changing executable behavior.
 const portableRfxBidSourceFingerprintOverrides = {
   'edge.rfx-bid-api.decline_invitation': '6ec9d89d98ca2bbcceed7b697fa1acd22929d29d4519c4f31e5ffc7d72fd28c0',
-  'edge.rfx-bid-api.get_invitation': 'ee9eaae5b385393fbe889a2a6a374aea3b8ae1a48c29b18848e116427cdaacbf',
+  'edge.rfx-bid-api.get_invitation': '65e612a3d91eae30f098ff85c2d22e67693377622a1eb34c765d28f8c0c1d8cf',
   'edge.rfx-bid-api.public_bid_room_find_invitations': '789fd150c4ca512fa07374cc0eab1d9b53081861a3c2425691fc5c63300237b8',
   'edge.rfx-bid-api.public_bid_room_request_invite': '1d6b135fde12db3a88cc64efd2e5c5c39ce1dafbc3c79eb94cb0216425f40907',
   'edge.rfx-bid-api.submit_bid': 'd60402a1c008a8b884b84c6436010d55e3fcac0457fff6cf0c592b51547b4934',
@@ -404,6 +419,7 @@ const brandedDomainAuthorizationOverrides = Object.fromEntries(
     ...carrierTemplateExtension.surfaces,
     ...rfxInvitationReviewExtension.surfaces,
     ...rfxAtomicAwardExtension.surfaces,
+    ...customerRfiLookupsExtension.surfaces,
   ].flatMap((entry) => {
     const match = Object.entries(brandedDomainAuthorizationEnvelopes)
       .find(([prefix]) => entry.canonicalId.startsWith(prefix));
@@ -416,13 +432,14 @@ export const ACTION_CONTRACT = {
   contractVersion,
   methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award+website-intake+quotedesk+us-diesel`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + opsWatchExtension.expectedCountsDelta.governable + teamMembershipExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable + customerRfiLookupsExtension.expectedCountsDelta.governable,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + opsWatchExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge + customerRfiLookupsExtension.expectedCountsDelta.edge,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + opsWatchExtension.expectedCountsDelta.governable + teamMembershipExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable + customerRfiLookupsExtension.expectedCountsDelta.governable + 1,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + opsWatchExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge + customerRfiLookupsExtension.expectedCountsDelta.edge + 1,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres + websiteIntakeExtension.expectedCountsDelta.postgres + quotedeskExtension.expectedCountsDelta.postgres + teamMembershipExtension.expectedCountsDelta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi,
   },
   reviewedMetadataFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedMetadataFingerprints,
+    'edge.rfx-bid-api.peek_invitation': '24fa4f2496a0b577a10bdb6e691c617ddc9dbbbbae8a7ad79d8a7def7b81cfca',
     ...extension.reviewedMetadataFingerprints,
     ...providerMetadataOverrides,
     ...gmailMetadataFingerprints,
@@ -441,6 +458,7 @@ export const ACTION_CONTRACT = {
   },
   reviewedAuthorizationFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedAuthorizationFingerprints,
+    'edge.rfx-bid-api.peek_invitation': 'e647f6c131de42998e4804da82849ba6b8d456265df2be68f91d4abc63d516ad',
     ...legacyAuthorizationOverrides,
     ...extension.reviewedAuthorizationFingerprints,
     ...gmailAuthorizationFingerprints,
@@ -489,5 +507,6 @@ export const ACTION_CONTRACT = {
     ...teamMembershipExtension.surfaces,
     ...objectStorageExtension.surfaces,
     ...customerRfiLookupsExtension.surfaces,
+    rfxBidPeekSurface,
   ],
 };

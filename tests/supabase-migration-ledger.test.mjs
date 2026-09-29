@@ -214,10 +214,22 @@ test("clean replay CI verifies pinned hashes, final ledger, and Provider Service
   assert.match(workflow, /run:\s+npm run test:migration-ledger/);
   assert.match(workflow, /tests\/supabase-migration-ledger\.test\.mjs/);
   assert.match(workflow, /count\(\*\).*max\(version\)/s);
-  assert.match(workflow, /398\|20260927142510/);
+  assert.match(workflow, /399\|20260928173000/);
   assert.match(workflow, /provider_legal_entity_fact_promotions/);
   assert.match(workflow, /provider_onboarding_readiness_evaluations/);
   assert.match(workflow, /provider_onboarding_readiness_results/);
   assert.match(workflow, /provider_onboarding_release_package_approvals/);
   assert.match(workflow, /t\|t\|t\|t\|t/);
+});
+
+test("Bid Room service-role grants survive a clean replay without browser grants", () => {
+  const migration = readFileSync(
+    path.join(repoRoot, "supabase", "migrations", "20260928173000_restore_bid_room_service_role_grants.sql"),
+    "utf8",
+  );
+  for (const table of ["rfx_events", "rfx_lanes", "rfx_lane_vendors"]) {
+    assert.match(migration, new RegExp(`grant select, insert, update on table public\\.${table} to service_role;`, "i"));
+  }
+  assert.match(migration, /grant update on table public\.vendors to service_role;/i);
+  assert.doesNotMatch(migration, /\bgrant\b[^;]*\bto (anon|authenticated)\b/i);
 });

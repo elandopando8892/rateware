@@ -424,6 +424,16 @@ function invitationWithToken(row: Record<string, unknown>, token: string): Recor
   return { ...publicRow, invitation_token: token };
 }
 
+function invitationWithoutToken(row: Record<string, unknown>): Record<string, unknown> {
+  const {
+    invitation_token: _token,
+    invitation_token_hash: _hash,
+    invitation_token_encrypted: _encrypted,
+    ...safeRow
+  } = row;
+  return safeRow;
+}
+
 async function migrateLegacyInvitationToken(
   supabase: RfxBidSupabaseClient,
   row: Record<string, unknown>,
@@ -451,7 +461,8 @@ async function migrateLegacyInvitationToken(
 async function findInvitationByToken(
   supabase: RfxBidSupabaseClient,
   token: string,
-  columns: string
+  columns: string,
+  migrateLegacy = true
 ): Promise<Record<string, unknown> | null> {
   const selectColumns = `${columns},invitation_token_hash,invitation_token_encrypted`;
   const tokenHash = await hashRfxInvitationToken(token);
@@ -471,20 +482,21 @@ async function findInvitationByToken(
   if (legacy.error) throw legacy.error;
   if (!legacy.data) return null;
   const row = legacy.data as unknown as Record<string, unknown>;
-  await migrateLegacyInvitationToken(supabase, row, token);
+  if (migrateLegacy) await migrateLegacyInvitationToken(supabase, row, token);
   return invitationWithToken(row, token);
 }
 
 async function hydrateInvitationTokens(
   supabase: RfxBidSupabaseClient,
-  rows: Record<string, unknown>[]
+  rows: Record<string, unknown>[],
+  migrateLegacy = true
 ) {
   const hydrated: Record<string, unknown>[] = [];
   for (const row of rows) {
     const legacyToken = cleanText(row.invitation_token);
     const token = legacyToken || await decryptRfxInvitationToken(row.invitation_token_encrypted);
     if (!token) continue;
-    if (legacyToken) await migrateLegacyInvitationToken(supabase, row, token);
+    if (legacyToken && migrateLegacy) await migrateLegacyInvitationToken(supabase, row, token);
     hydrated.push(invitationWithToken(row, token));
   }
   return hydrated;
@@ -4788,7 +4800,10 @@ Deno.serve(async (request) => {
     const token = cleanText(body.token);
     if (!token) return jsonResponse({ error: "Invitation token is required." }, 400);
 
-    if (body.action === "get_invitation") {
+    if (body.action === "get_invitation" || body.action === "peek_invitation") {
+      // Loads may verify a carrier's private book without recording a view or
+      // opportunistically migrating legacy tokens. The token remains required.
+      const readOnlyPeek = body.action === "peek_invitation";
       const invitation = await findInvitationByToken(supabase, token, `
           id,
           rfx_event_id,
@@ -4833,11 +4848,15 @@ Deno.serve(async (request) => {
           vendors(vendor_name,domain,primary_email),
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,notes,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
       rfx_lanes(*)
-        `);
+        `, !readOnlyPeek);
       if (!invitation) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
       const result = { data: invitation };
+      if (readOnlyPeek && (
+        ["archived", "revoked", "declined"].includes(String(cleanText(result.data.invitation_status) || "").toLowerCase()) ||
+        cleanText(relationRecord(result.data.rfx_events).status) !== "open"
+      )) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
 
-      if (!result.data.viewed_at) {
+      if (!readOnlyPeek && !result.data.viewed_at) {
         await supabase
           .from("rfx_lane_vendors")
           .update({
@@ -4859,17 +4878,21 @@ Deno.serve(async (request) => {
 
       const currentEvent = relationRecord(result.data.rfx_events);
       const ownerEmail = cleanText(currentEvent.owner_email);
-      const bidHistory = body.refresh_only !== true || body.include_history === true
+      const bidHistory = !readOnlyPeek && (body.refresh_only !== true || body.include_history === true)
         ? await invitationBidHistory(supabase, result.data)
         : [];
       if (body.refresh_only === true) {
         const currentBook = carrierBusinessBook(result.data, [result.data], []);
-        return jsonResponse({
-          invitation: result.data,
-          live_board: liveBoardFromRows(result.data, peersResult.data || []),
-          current_book_row: currentBook.invited[0] || null,
-          ...(body.include_history === true ? { bid_history: bidHistory } : {})
+        const currentRow = currentBook.invited[0] || null;
+        const liveBoard = liveBoardFromRows(result.data, peersResult.data || []);
+        const response = jsonResponse({
+          invitation: readOnlyPeek ? invitationWithoutToken(result.data) : result.data,
+          live_board: readOnlyPeek ? { ...liveBoard, current_invitation_token: undefined } : liveBoard,
+          current_book_row: readOnlyPeek && currentRow ? invitationWithoutToken(currentRow) : currentRow,
+          ...(!readOnlyPeek && body.include_history === true ? { bid_history: bidHistory } : {})
         });
+        if (readOnlyPeek) response.headers.set("Cache-Control", "private, no-store, max-age=0");
+        return response;
       }
       const invitedResult = ownerEmail
         ? await supabase
@@ -4925,12 +4948,16 @@ Deno.serve(async (request) => {
       if (invitedResult.error) throw invitedResult.error;
       // The private book is scoped to this carrier. Hydrate every lane token so
       // each active invitation in the same RFx can be opened and quoted in place.
-      const hydratedInvitedRows = await hydrateInvitationTokens(
-        supabase,
-        (invitedResult.data || []) as Record<string, unknown>[]
-      );
+      const invitedRows = (invitedResult.data || []) as Record<string, unknown>[];
+      // A peek never returns invitation tokens, so it must not depend on the
+      // encryption key merely to include a carrier's encrypted-token rows.
+      // Keep the ordinary Bid Room path's token hydration unchanged.
+      const hydratedInvitedRows = readOnlyPeek ? invitedRows
+        : await hydrateInvitationTokens(supabase, invitedRows);
 
-      const openLanesResult = ownerEmail
+      // A Loads peek is strictly vendor-bound: unrelated open lanes from the
+      // same RFx owner are not part of this carrier's private invitation book.
+      const openLanesResult = readOnlyPeek ? { data: [], error: null } : ownerEmail
         ? await supabase
             .from("rfx_lanes")
             .select(`
@@ -4976,15 +5003,20 @@ Deno.serve(async (request) => {
           .filter((row) => cleanText(row.rfx_event_id) === cleanText(result.data.rfx_event_id))
           .map((row) => cleanText(row.id))
       ].filter((id): id is string => Boolean(id));
-      const segmentConfirmations = await listSegmentConfirmations(supabase, invitationIdsForEvent);
+      const segmentConfirmations = readOnlyPeek ? undefined
+        : await listSegmentConfirmations(supabase, invitationIdsForEvent);
 
-      return jsonResponse({
-        invitation: result.data,
-        live_board: liveBoardFromRows(result.data, peersResult.data || []),
-        carrier_book: carrierBusinessBook(result.data, hydratedInvitedRows, openLanesResult.data || []),
-        bid_history: bidHistory,
-        segment_confirmations: segmentConfirmations
+      const book = carrierBusinessBook(result.data, hydratedInvitedRows, openLanesResult.data || []);
+      const liveBoard = liveBoardFromRows(result.data, peersResult.data || []);
+      const response = jsonResponse({
+        invitation: readOnlyPeek ? invitationWithoutToken(result.data) : result.data,
+        live_board: readOnlyPeek ? { ...liveBoard, current_invitation_token: undefined } : liveBoard,
+        carrier_book: readOnlyPeek ? { ...book, invited: book.invited.map(invitationWithoutToken),
+          quoted: book.quoted.map(invitationWithoutToken) } : book,
+        ...(!readOnlyPeek ? { bid_history: bidHistory, segment_confirmations: segmentConfirmations } : {})
       });
+      if (readOnlyPeek) response.headers.set("Cache-Control", "private, no-store, max-age=0");
+      return response;
     }
 
     if (body.action === "list_bid_room_chat") {

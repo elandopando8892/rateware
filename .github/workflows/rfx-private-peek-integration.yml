@@ -1,0 +1,51 @@
+name: rfx-private-peek-integration
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/rfx-bid-api/**"
+      - "supabase/functions/_shared/**"
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
+      - "tools/test-rfx-bid-peek-local.mjs"
+      - ".github/workflows/rfx-private-peek-integration.yml"
+  workflow_dispatch:
+
+jobs:
+  private-peek:
+    name: Isolated private invitation integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
+        with:
+          version: 2.114.0
+
+      - name: Start isolated local Supabase stack
+        env:
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
+        run: supabase start
+
+      - name: Gate service-role grants used by the private book
+        run: |
+          grants="$(docker exec supabase_db_alqjqzqagdmcywpjtnnr psql -U postgres -d postgres -Atc \
+            "select has_table_privilege('service_role','public.rfx_events','SELECT'),
+                    has_table_privilege('service_role','public.rfx_lanes','SELECT'),
+                    has_table_privilege('service_role','public.rfx_lane_vendors','SELECT'),
+                    has_table_privilege('service_role','public.vendors','UPDATE'),
+                    has_table_privilege('anon','public.rfx_lane_vendors','SELECT')")"
+          test "$grants" = 't|t|t|t|f'
+          echo 'Server-side RFx reads PASS; browser role denied.'
+
+      - name: Exercise real Edge function and local database
+        env:
+          RFX_PEEK_LOCAL_ONLY: "1"
+        run: node tools/test-rfx-bid-peek-local.mjs
+
+      - name: Stop isolated Supabase stack
+        if: always()
+        run: supabase stop --no-backup || true
