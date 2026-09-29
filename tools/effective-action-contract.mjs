@@ -133,18 +133,20 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // archiving a carrier became an Administrador's in _shared/team-roles.ts; the
 // merge preview became a read. rateware-api also refuses an operator when a
 // CRM template or an import would archive a carrier. Ownership and tenant
-// checks are unchanged.
+// checks are unchanged. Later that day, taking a carrier out of the archive
+// became an Administrador's too; the handlers check it after reading the
+// rows.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': '47344307ceef4b051008850e8211fad1e395c7fd5830e3a3f011a10d5a36ccf3',
   'edge.gmail-oauth-callback.': '9cd3a3329bdb82d139b988dc7503fc3676b744157bd9a1063ce579fa4c8b178c',
   'edge.google-chat-app.': '0d81b2db1ca1d0442814d2e07264c967b1a1999a70be60bd1ed641fbe675475b',
-  'edge.interpret-upload.': '71c91b9edc55f379eb9140a34b1d828482fc53de962666e05d2137bd15956d3d',
+  'edge.interpret-upload.': 'ab123a53bd978648ce27bbcc9d85f6c08a9a25afe13f9bc6442250fe4dd7d924',
   'edge.provider-gmail-intake-api.': '51f613ef43bb666a2bbe81fd09ab99af18315677a6210119bc105bafc7f5f9b6',
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': '696bb4e966f26ba094537ff89f3f560f73f66924dbe86f69bad6f7423c219f4e',
+  'edge.rateware-api.': 'd18f14ff628b0eda32ad3ae77f492a97bc7dc7fb1520284354f181f237098a80',
   // Reviewed after merging the no-write invitation peek with the stricter
   // Google Chat conversation isolation in main. The peek now includes
   // same-vendor encrypted-token rows without decrypting or exposing tokens;
@@ -228,21 +230,22 @@ const oracleStorageSurfaceOverrides = {
 // are unchanged.
 // The handlers that now read the rows they touch and refuse an operator
 // before writing when that would take approved rates out of the rate base or
-// archive or restore a shipper (2026-09-28), or archive a carrier through the
-// CRM template or when importing carriers, 2026-09-29. Nothing else in them
-// changed.
+// archive or restore a shipper (2026-09-28), or archive or restore a carrier
+// (2026-09-29). Nothing else in them changed.
 const rateBaseAdminSourceFingerprintOverrides = {
-  'edge.rateware-api.apply_vendor_template_updates': '818a691e669fb8b594107cc3d26b62fb7c3a5fff27751ee63db38b65eef61606',
+  'edge.rateware-api.apply_vendor_template_updates': '1736e4e393ea499edc607e05b73c03c1cfb05a61344f7ab0bedef270dcadf3b0',
   'edge.rateware-api.archive_staging': 'ee15cc468134c653aa7cc137ad282817c48b3d1671dc913214776a06cfc5c2ed',
   'edge.rateware-api.bulk_update_rate_rows_by_filter': 'd5da4dbd5a3552eb72a925c5e25e52369b089b5a8d525ebf0267f18e22739b78',
+  'edge.rateware-api.bulk_update_vendors': '059619d359cd444dd5ec7f3928dc353ac99d965989062939dc0499e4a4e017dc',
   'edge.rateware-api.bulk_update_staging': '0dd135b2f38e45a1de0c1e07d46d1c2f554f24bcefceedd870981779af13e86e',
   'edge.rateware-api.import_shipper_crm_workbook': 'd2c6779661af8a5b86480788555ed405e7446d3c8ac50278c860bb2ab3769134',
   'edge.rateware-api.import_shippers': 'c0036b4d417a877be000a1e1162c969c1d79cbe6fef8bd2aadd0d00336ced9fd',
-  'edge.rateware-api.import_vendors': 'ac7ddaa93b34a14a074e167f099d95f9060b980cf85dc152be9ba7d4ba91e4ea',
-  'edge.rateware-api.import_vendors_google_sheet': 'a01b9483bcfd6b93bea81b44d6e158363c0628bcb93d0f0b45cc8c3c7c11ebe8',
+  'edge.rateware-api.import_vendors': 'ea7082107340654ba955137f17a3634646611a85e86f8639d2c58da659e24e09',
+  'edge.rateware-api.import_vendors_google_sheet': '8fa6cba341b0c363db72d1819eb31e8baf03815eca8db1719237c5a898864aec',
   'edge.rateware-api.remove_staging': '66725240f06dff9331ea193c9e1a6063f3efa9eefcf8ab2efc10c1b591cbb6f5',
   'edge.rateware-api.update_shipper': '79f16ecad98739a920f35e5d7206b7585ee7a6a18c5688d32b553bc42c9c6a87',
   'edge.rateware-api.update_staging': '22a302e2ff4f73213c0a419b960cdf16bde43ceb0195597ce5fc039ae63920e7',
+  'edge.rateware-api.update_vendor': 'f8493125dbf55ae56680ae7933e02c07385f3a55d149ab18a658dafcc3c5fd88',
 };
 
 // The carrier chat handlers answer through the carrier chat view (2026-09-28),
@@ -252,7 +255,7 @@ const carrierChatSourceFingerprintOverrides = {
   'edge.rfx-bid-api.post_bid_room_chat_message': '459d7a128900a4a7a0f43f14b34af543064304095b35970bc02a4bae905aad33',
 };
 
-const quotedeskAuthEnvelope = 'ff23f8cf4ab63db4d1212731869ea27111393f05acea64b0b355f97c9533e1f3';
+const quotedeskAuthEnvelope = '227cd58bc25b1097cfc1340b7ecaae0966d9e55b835b44a2efa9590191e1bbc9';
 
 const supabaseAuthMetadataOverrides = {
   'edge.google-chat-app.handle_chat_event': 'fd759bead6f0bfed76d9f70c962399ba7d815ef30f7a85491d68c4d5b088accf',

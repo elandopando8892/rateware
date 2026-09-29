@@ -235,6 +235,43 @@ Deno.test("an operator can't archive a carrier through the CRM template or an im
   assert(!imported.touched.includes("upsert"), "nothing was imported");
 });
 
+Deno.test("an operator can't take a carrier out of the archive, however it's asked", async () => {
+  const operator = { ...org, roles: ["operator"] };
+  const archivedRows = { data: [{ id: CARRIER, vendor_name: "Ejemplo SA", domain: "ejemplo.mx", base_stage: "archived", status: "active" }], error: null };
+  const liveRows = { data: [{ id: CARRIER, vendor_name: "Ejemplo SA", domain: "ejemplo.mx", base_stage: "sourcing", status: "active" }], error: null };
+  const move = { action: "bulk_update_vendors", ids: [CARRIER], patch: { base_stage: "sourcing" } };
+
+  const moved = await callWith(archivedRows, operator, move);
+  assertEquals(moved.status, 403);
+  assertEquals(moved.body.error, CARRIER_ARCHIVE_ERROR);
+  assert(!moved.touched.includes("update"), "nothing was restored");
+  const promoted = await callWith(liveRows, operator, { ...move, patch: { base_stage: "procurement", funnel_stage: "targeted" } });
+  assert(promoted.status !== 403 && promoted.touched.includes("update"), "moving a live carrier between bases is day-to-day work");
+  const byAdmin = await callWith(archivedRows, { ...org, roles: ["admin"] }, move);
+  assert(byAdmin.status !== 403 && byAdmin.touched.includes("update"));
+
+  const archivedOne = { data: archivedRows.data[0], error: null };
+  const edited = await callWith(archivedOne, operator, { action: "update_vendor", id: CARRIER, patch: { base_stage: "procurement" } });
+  assertEquals(edited.status, 403);
+  assert(!edited.touched.includes("update"));
+  const notes = await callWith(archivedOne, operator, { action: "update_vendor", id: CARRIER, patch: { notes: "Sigue archivado" } });
+  assert(notes.status !== 403 && notes.touched.includes("update"), "editing an archived carrier's notes is not restoring it");
+
+  const template = await callWith(archivedRows, operator, {
+    action: "apply_vendor_template_updates", dry_run: false,
+    rows: [{ vendor_id: CARRIER, base_stage: "sourcing" }],
+    confirmed: true, confirmation_action: "apply_vendor_template_updates",
+  });
+  assertEquals(template.status, 403);
+  assert(!template.touched.includes("update"));
+
+  const imported = await callWith(archivedRows, operator, {
+    action: "import_vendors", vendors: [{ vendor_name: "Ejemplo SA", domain: "ejemplo.mx", base_stage: "sourcing" }],
+  });
+  assertEquals(imported.status, 403);
+  assert(!imported.touched.includes("upsert"));
+});
+
 Deno.test("rateware-api refuses an operator's award before touching the database", async () => {
   const result = await call({ ...org, roles: ["operator"] }, { action: "award_rfx_lane_vendor", invitation_id: "i-1" });
   assertEquals(result.status, 403);
