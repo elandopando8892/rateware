@@ -155,6 +155,10 @@ const productionOnlyMigrations = new Map([
     "20260929183625_rfx_lane_no_award.sql",
     "3a2324fd1d0829616cd0492ca6d0e59e24b63498fa2e04de9277faf853680a86",
   ],
+  [
+    "20260929203415_rfx_event_operation_start_date.sql",
+    "18ecb3868152a5541b6c18dfc57534160ae7a050215bf66872070a11d783cabe",
+  ],
 ]);
 
 function migrationHash(contents) {
@@ -218,7 +222,7 @@ test("clean replay CI verifies pinned hashes, final ledger, and Provider Service
   assert.match(workflow, /run:\s+npm run test:migration-ledger/);
   assert.match(workflow, /tests\/supabase-migration-ledger\.test\.mjs/);
   assert.match(workflow, /count\(\*\).*max\(version\)/s);
-  assert.match(workflow, /400\|20260929183625/);
+  assert.match(workflow, /401\|20260929203415/);
   assert.match(workflow, /provider_legal_entity_fact_promotions/);
   assert.match(workflow, /provider_onboarding_readiness_evaluations/);
   assert.match(workflow, /provider_onboarding_readiness_results/);
