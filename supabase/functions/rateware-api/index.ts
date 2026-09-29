@@ -13322,6 +13322,54 @@ async function fetchAllRfxLaneRows(
   });
 }
 
+// Messages that did not reach the carrier: rejected, failed or never confirmed.
+const RFX_UNSENT_OUTREACH_STATUSES = ["bounced", "failed", "delivery_unknown"];
+
+/**
+ * When each invitation's message really went out: the latest one Gmail or
+ * WhatsApp accepted (or the team marked sent) among the event's messages.
+ * Authorizing an invitation stamps invited_at without sending anything, so
+ * this is what tells an invitation that was sent from one that was only
+ * cleared to go (decided 2026-09-29).
+ */
+async function fetchRfxInvitationSentAt(
+  supabase: RatewareSupabaseClient,
+  ownerEmail: string,
+  eventId: string
+) {
+  const sentAt = new Map<string, string>();
+  for (let offset = 0; offset < RFX_LANE_VENDOR_MAX_ROWS; offset += RFX_LANE_VENDOR_PAGE_SIZE) {
+    const result = await supabase
+      .from("outreach_messages")
+      .select("id,status,sent_at,rfx_lane_vendor_id,metadata")
+      .eq("owner_email", ownerEmail)
+      .eq("rfx_event_id", eventId)
+      .not("sent_at", "is", null)
+      .not("status", "in", `(${RFX_UNSENT_OUTREACH_STATUSES.join(",")})`)
+      .order("id", { ascending: true })
+      .range(offset, offset + RFX_LANE_VENDOR_PAGE_SIZE - 1);
+    if (result.error) throw new Error(`RFx outreach load failed: ${result.error.message}`);
+    const rows = (result.data || []) as unknown as Record<string, unknown>[];
+    for (const message of rows) {
+      const at = cleanText(message.sent_at);
+      if (!at || RFX_UNSENT_OUTREACH_STATUSES.includes(cleanText(message.status)?.toLowerCase() || "")) continue;
+      for (const invitationId of messageInvitationIds(message)) {
+        if (!invitationId) continue;
+        const previous = sentAt.get(invitationId);
+        if (!previous || Date.parse(previous) < Date.parse(at)) sentAt.set(invitationId, at);
+      }
+    }
+    if (rows.length < RFX_LANE_VENDOR_PAGE_SIZE) break;
+  }
+  return sentAt;
+}
+
+/** The invitation with when its message really went out; left as is when the sends could not be read. */
+function withOutreachSentAt(invitation: Record<string, unknown>, sentAt: Map<string, string> | null) {
+  if (!sentAt) return invitation;
+  return { ...invitation, outreach_sent_at: sentAt.get(cleanText(invitation.id) || "") ?? null };
+}
+
 async function fetchAllRfxLaneVendorRows(
   supabase: RatewareSupabaseClient,
   eventId: string,
@@ -28838,13 +28886,17 @@ export function createRatewareApiHandler(
       const invitationColumns = "*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)";
       // Benchmarks are independent of the event lanes and invitations. Load all
       // three concurrently so opening a Bid Room pays one database round trip.
-      const [eventLanes, loadedInvitationRows, benchmarkLoad, comparisonFx] = await Promise.all([
+      const [eventLanes, loadedInvitationRows, benchmarkLoad, comparisonFx, sentLoad] = await Promise.all([
         fetchAllRfxLaneRows(supabase, event.id, "*"),
         fetchAllRfxLaneVendorRows(supabase, event.id, invitationColumns, 3),
         fetchRfxDetailBenchmarkRates(supabase, user, event.id)
           .then((value) => ({ value, error: null as unknown }))
           .catch((error) => ({ value: null, error })),
-        loadBidComparisonFxRate(supabase)
+        loadBidComparisonFxRate(supabase),
+        // Like the benchmarks, the sends enrich the view and never make an RFx unavailable.
+        fetchRfxInvitationSentAt(supabase, String(user.owner_email || ""), event.id)
+          .then((value) => ({ value, error: null as unknown }))
+          .catch((error) => ({ value: null, error }))
       ]);
 
       // Benchmarks enrich the lane view but must never make an RFx unavailable.
@@ -28923,7 +28975,10 @@ export function createRatewareApiHandler(
         // An expression body keeps the action contract's scanner on this action's own
         // block (with its requireOwnedRfxEvent check), not on the helper it calls.
         const invitations = (invitationsByLane.get(cleanText(lane.id) || "") || []).map((invitation) =>
-          invitationWithComparison(compactVendors ? withoutVendorProfile(invitation) : invitation, benchmark)
+          withOutreachSentAt(
+            invitationWithComparison(compactVendors ? withoutVendorProfile(invitation) : invitation, benchmark),
+            sentLoad.value
+          )
         );
         return {
           ...lane,
@@ -28942,6 +28997,9 @@ export function createRatewareApiHandler(
         coverage_warning: coverageWarning,
         rateware_benchmark: ratewareBenchmark,
         comparison_fx: comparisonFx,
+        outreach_sends: sentLoad.error
+          ? { available: false, warning: safeOperationalError(sentLoad.error) }
+          : { available: true, warning: null },
         ...(compactVendors ? { vendors: [...compactVendorRows.values()] } : {})
       });
     }

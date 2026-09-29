@@ -152,6 +152,9 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // and event in the same public shape as its book, so the target rate, the
 // incumbent carrier, the event's notes and the owning account stay internal;
 // the support assistant is no longer told the target. Access is unchanged.
+// 2026-09-29 (sent): list_rfx_detail tells, per invitation, when its message
+// really went out (the latest outreach message the provider accepted, bounced
+// and failed ones left out), read from the owner's own messages of the event.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': '47344307ceef4b051008850e8211fad1e395c7fd5830e3a3f011a10d5a36ccf3',
@@ -162,7 +165,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': '983dcea9e9a5c138fa06f6307e4211aea9e753a2181ac83acc05f259731070c6',
+  'edge.rateware-api.': 'afc4e5e582308c37a3d73fad40a148bdfb4e1304a4e35377de99bdbb63638fc0',
   // Reviewed after merging the no-write invitation peek with the stricter
   // Google Chat conversation isolation in main. The peek now includes
   // same-vendor encrypted-token rows without decrypting or exposing tokens;
@@ -184,7 +187,7 @@ const ratewareApiSourceFingerprintOverrides = {
   'edge.rateware-api.delete_vendor_segment': '792ce2b10566c1be41064ef07f5e818088fb1f16596433d88fdb7c0fbec972d2',
   'edge.rateware-api.generate_outreach_drafts': 'a94ce49aabdbfa2a891518d7972a3001b4f74e7aaeb0bfbd0eac85a3043592c4',
   'edge.rateware-api.list_vendor_segments': '79d6ff15b7b7a0bcbf8e580baaed1b11575d56c38cc4034fb9b80a8891814128',
-  'edge.rateware-api.list_rfx_detail': '804cb4b6bea17e29d056b16ce7528c35c93d2555ea8cfe0930843ad3a1134707',
+  'edge.rateware-api.list_rfx_detail': '8321e92a1551ba11ceb19dfea535c61e78ab0121bbcb891b6d8852912fe8eb0c',
   'edge.rateware-api.list_vendors': 'd245449ecef4d230b05aa58a58014fe432538c98aa303c8f6d23235806ba3c38',
   'edge.rateware-api.preview_outreach_audience': '3743b26bac151fc0e4985e7706decd95b79b7db291c56adaaf7f16bd356d60bd',
   'edge.rateware-api.send_bid_room_carrier_message': '3a8bc0f06e4f577effffd6e35350e73925fd9153db71a25266b35f40b81b7fe0',
