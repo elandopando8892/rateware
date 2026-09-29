@@ -8955,8 +8955,9 @@ async function resolveVendorImportRows(
 
   const payload: Record<string, unknown>[] = [];
   let matched = 0;
-  // Existing carriers the import would archive; that is an Administrador's call.
-  let archiving = 0;
+  // Existing carriers the import would archive or take out of the archive:
+  // either is an Administrador's call.
+  let archiveChanges = 0;
   for (const { row, source } of incoming) {
     const existing = existingByKey.get(vendorNaturalKey(row));
     if (!existing) {
@@ -8968,11 +8969,11 @@ async function resolveVendorImportRows(
     for (const field of VENDOR_IMPORT_PRESERVED_FIELDS) {
       if (cleanText(source[field]) === null) merged[field] = existing[field];
     }
-    if (cleanText(merged.base_stage) === "archived" && cleanText(existing.base_stage) !== "archived") archiving += 1;
+    if ((cleanText(merged.base_stage) === "archived") !== (cleanText(existing.base_stage) === "archived")) archiveChanges += 1;
     payload.push(merged);
   }
 
-  return { payload, matched, created: payload.length - matched, archiving };
+  return { payload, matched, created: payload.length - matched, archiveChanges };
 }
 
 function normalizeVendorPatch(input: Record<string, unknown>, current: Record<string, unknown> = {}) {
@@ -27571,8 +27572,8 @@ export function createRatewareApiHandler(
       // Upsert on the primary key: matched rows carry their existing id and are
       // updated in place. A plain insert here re-created every carrier on each
       // run, which is how the CRM filled with duplicates.
-      const { payload, matched, created, archiving } = await resolveVendorImportRows(supabase, user, incoming);
-      if (archiving) {
+      const { payload, matched, created, archiveChanges } = await resolveVendorImportRows(supabase, user, incoming);
+      if (archiveChanges) {
         const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "import_vendors", CARRIER_ARCHIVE_ERROR);
         if (denial) return jsonResponse(denial, 403);
       }
@@ -27610,8 +27611,8 @@ export function createRatewareApiHandler(
       // vendors has eleven ON DELETE CASCADE children, so each re-sync silently
       // destroyed those carriers' invitations, bids, quotes and scorecards, and
       // gave the rebuilt rows new ids. Match and update in place instead.
-      const { payload, matched, created, archiving } = await resolveVendorImportRows(supabase, user, validRows);
-      if (archiving) {
+      const { payload, matched, created, archiveChanges } = await resolveVendorImportRows(supabase, user, validRows);
+      if (archiveChanges) {
         const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "import_vendors_google_sheet", CARRIER_ARCHIVE_ERROR);
         if (denial) return jsonResponse(denial, 403);
       }
@@ -27638,6 +27639,20 @@ export function createRatewareApiHandler(
           count: ids.length,
           threshold: 1
         });
+      }
+      const nextBaseStage = cleanText(patchInput.base_stage)?.toLowerCase();
+      if (nextBaseStage === "sourcing" || nextBaseStage === "procurement") {
+        // Taking a carrier out of the archive is an Administrador's (2026-09-29).
+        // Read every row first, so nothing is written before a refusal.
+        for (const idBatch of chunkValues(ids, 100)) {
+          const stages = await supabase.from("vendors").select("id,base_stage").eq("owner_email", user.owner_email).in("id", idBatch);
+          if (stages.error) throw stages.error;
+          if ((stages.data || []).some((row) => cleanText(row.base_stage)?.toLowerCase() === "archived")) {
+            const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "bulk_update_vendors", CARRIER_ARCHIVE_ERROR);
+            if (denial) return jsonResponse(denial, 403);
+            break;
+          }
+        }
       }
       const addTags = normalizeTags(patchInput.add_tags);
       const updatedRows: Record<string, unknown>[] = [];
@@ -27894,11 +27909,11 @@ export function createRatewareApiHandler(
         });
       }
 
-      const archivesCarrier = validUpdates.some((item) =>
-        cleanText(item.patch.base_stage) === "archived" &&
-        cleanText(templateCurrentById.get(item.id)?.base_stage) !== "archived"
-      );
-      if (archivesCarrier) {
+      const changesArchive = validUpdates.some((item) => {
+        const next = cleanText(item.patch.base_stage);
+        return Boolean(next) && (next === "archived") !== (cleanText(templateCurrentById.get(item.id)?.base_stage) === "archived");
+      });
+      if (changesArchive) {
         const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "apply_vendor_template_updates", CARRIER_ARCHIVE_ERROR);
         if (denial) return jsonResponse(denial, 403);
       }
@@ -28019,6 +28034,10 @@ export function createRatewareApiHandler(
       if (current.error) throw current.error;
       const patch = normalizeVendorPatch(objectRecord(body.patch), objectRecord(current.data));
       if (patch.vendor_name === null) return jsonResponse({ error: "Vendor name is required." }, 400);
+      if (cleanText(current.data?.base_stage)?.toLowerCase() === "archived" && patch.base_stage && patch.base_stage !== "archived") {
+        const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "update_vendor", CARRIER_ARCHIVE_ERROR);
+        if (denial) return jsonResponse(denial, 403);
+      }
       const result = await supabase.from("vendors").update(patch).eq("owner_email", user.owner_email).eq("id", body.id).select().single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });

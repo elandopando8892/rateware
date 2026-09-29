@@ -104,7 +104,8 @@ const ADMIN_STATUSES: Record<string, ReadonlySet<string>> = {
 /**
  * Carrier stages only an Administrador sets (decided 2026-09-29). A carrier is
  * archived through its base stage, not its status, so ADMIN_STATUSES can't
- * see it.
+ * see it. Taking one out of the archive depends on the row, so the handlers
+ * check that after reading it.
  */
 const ADMIN_BASE_STAGES: Record<string, ReadonlySet<string>> = {
   "rateware-api.bulk_update_vendors": new Set(["archived"]),
@@ -163,9 +164,10 @@ export const teamRoleAllows = (role: TeamRole, need: TeamNeed) =>
  * What only a row can tell, the handler checks after reading it: taking
  * approved rates out of the rate base (archiving, deleting or reopening them,
  * directly or through their upload) and restoring an archived shipper
- * (decided 2026-09-28), and archiving a carrier through the CRM template or
- * when importing carriers, decided 2026-09-29. The 403 body when the account
- * isn't an Administrador, otherwise null.
+ * (decided 2026-09-28), and archiving or restoring a carrier through the CRM
+ * template or when importing carriers, or restoring one by moving or editing
+ * it, decided 2026-09-29. The 403 body when the account isn't an
+ * Administrador, otherwise null.
  */
 export function adminOnlyDenial(fn: string, claims: Record<string, unknown>, action: string, error: string) {
   if (!belongsToOrganization(claims)) return null;
@@ -177,7 +179,7 @@ export function adminOnlyDenial(fn: string, claims: Record<string, unknown>, act
 
 export const RATE_BASE_REMOVAL_ERROR = "Solo un Administrador puede sacar tarifas del tarifario.";
 export const SHIPPER_ARCHIVE_ERROR = "Solo un Administrador puede archivar o restaurar un shipper.";
-export const CARRIER_ARCHIVE_ERROR = "Solo un Administrador puede archivar un carrier.";
+export const CARRIER_ARCHIVE_ERROR = "Solo un Administrador puede archivar o restaurar un carrier.";
 
 /** The 403 body when the account's role doesn't allow the call, otherwise null. */
 export function teamRoleDenial(fn: string, claims: Record<string, unknown>, body: Record<string, unknown>) {

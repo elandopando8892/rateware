@@ -58,6 +58,8 @@ for (const [action, write] of [
   ["apply_vendor_template_updates", ".update(item.patch)"],
   ["import_vendors", ".upsert(payload)"],
   ["import_vendors_google_sheet", ".upsert(payload)"],
+  ["bulk_update_vendors", ".update(patch)"],
+  ["update_vendor", ".update(patch)"],
 ]) {
   checkedBeforeWrite(apiSource, `body.action === "${action}"`, write, action);
 }
