@@ -3,7 +3,7 @@
  * Supabase Storage or Oracle Object Storage behind one authenticated service.
  * Deployed to production on 2026-09-08; reviewed fingerprints are static.
  */
-const authorizationFingerprint = "5c5b075124801b3d3b7208ab5f2dc2e5f5c31e5f392eb6d6bb2838828f1f59e7";
+const authorizationFingerprint = "8d6f798872806d89a8df05378db8cb626ddc7ee25743eaa600ed6683e1db520d";
 const surfaces = [
   {
     "contractVersion": "1.3.0",

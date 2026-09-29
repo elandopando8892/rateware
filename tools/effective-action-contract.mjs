@@ -135,18 +135,19 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // CRM template or an import would archive a carrier. Ownership and tenant
 // checks are unchanged. Later that day, taking a carrier out of the archive
 // became an Administrador's too; the handlers check it after reading the
-// rows.
+// rows. And list_rfx_invitation_wave_reviews, which the contract already
+// declares a read, joined the role reads, so every role can see the reviews.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': '47344307ceef4b051008850e8211fad1e395c7fd5830e3a3f011a10d5a36ccf3',
   'edge.gmail-oauth-callback.': '9cd3a3329bdb82d139b988dc7503fc3676b744157bd9a1063ce579fa4c8b178c',
   'edge.google-chat-app.': '0d81b2db1ca1d0442814d2e07264c967b1a1999a70be60bd1ed641fbe675475b',
-  'edge.interpret-upload.': 'ab123a53bd978648ce27bbcc9d85f6c08a9a25afe13f9bc6442250fe4dd7d924',
+  'edge.interpret-upload.': '193d01a256e1e9999775134eb20670878e24642dabec2b8d31be46e650f245c4',
   'edge.provider-gmail-intake-api.': '51f613ef43bb666a2bbe81fd09ab99af18315677a6210119bc105bafc7f5f9b6',
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': 'd18f14ff628b0eda32ad3ae77f492a97bc7dc7fb1520284354f181f237098a80',
+  'edge.rateware-api.': '23491530de329dbc15fc545f6fad5344089cc2ca9fbcac31132a4b0eeacbd47a',
   // Reviewed after merging the no-write invitation peek with the stricter
   // Google Chat conversation isolation in main. The peek now includes
   // same-vendor encrypted-token rows without decrypting or exposing tokens;
@@ -255,7 +256,7 @@ const carrierChatSourceFingerprintOverrides = {
   'edge.rfx-bid-api.post_bid_room_chat_message': '459d7a128900a4a7a0f43f14b34af543064304095b35970bc02a4bae905aad33',
 };
 
-const quotedeskAuthEnvelope = '227cd58bc25b1097cfc1340b7ecaae0966d9e55b835b44a2efa9590191e1bbc9';
+const quotedeskAuthEnvelope = '34adb7563025e0ec4fc75e8ff9f86f34431c42154357c25ed4ebf22f0b5bfba4';
 
 const supabaseAuthMetadataOverrides = {
   'edge.google-chat-app.handle_chat_event': 'fd759bead6f0bfed76d9f70c962399ba7d815ef30f7a85491d68c4d5b088accf',

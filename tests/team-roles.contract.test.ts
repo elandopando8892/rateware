@@ -29,6 +29,8 @@ Deno.test("the role is the highest one the account carries, and none means viewe
 
 Deno.test("what each action asks of the role", () => {
   assertEquals(teamRoleNeed("rateware-api", "list_rfx_events"), "read");
+  assertEquals(teamRoleNeed("rateware-api", "list_rfx_invitation_wave_reviews", { rfx_event_id: "e-1" }), "read", "anyone may see who reviewed a contact");
+  assertEquals(teamRoleNeed("rateware-api", "record_rfx_invitation_wave_review", { rfx_event_id: "e-1" }), "operate", "reviewing one is day-to-day work");
   assertEquals(teamRoleNeed("rateware-api", "create_rfx_event"), "operate");
   assertEquals(teamRoleNeed("rateware-api", "invite_rfx_lane_vendors"), "operate");
   assertEquals(teamRoleNeed("rateware-api", "suppress_outreach_contact"), "operate", "an opt-out is anyone's to record");
