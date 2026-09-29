@@ -35,7 +35,7 @@ const rfxBidPeekSurface = {
   contractVersion,
   canonicalId: 'edge.rfx-bid-api.peek_invitation',
   actionName: 'peek_invitation',
-  sourceFingerprint: 'b59d132901bc53e17d12bd2345578db132e0c685c0a0e0c801937d722360b677',
+  sourceFingerprint: '65e612a3d91eae30f098ff85c2d22e67693377622a1eb34c765d28f8c0c1d8cf',
   decisionStatus: 'pending_human_approval',
   notes: 'No-write, token-scoped carrier invitation projection for Loads Preview. Production activation remains pending human approval.',
 };
@@ -141,8 +141,10 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
   'edge.rateware-api.': 'b324515298a19661bfe1a1ab78c4e1ac04114cae23375abaf02b9bea51033b71',
   // Reviewed after merging the no-write invitation peek with the stricter
-  // Google Chat conversation isolation in main.
-  'edge.rfx-bid-api.': '260e53d63e6329580f4efaccc54817be2f9a574d6f3d281541720ddbfd32d989',
+  // Google Chat conversation isolation in main. The peek now includes
+  // same-vendor encrypted-token rows without decrypting or exposing tokens;
+  // the ordinary invitation path still hydrates tokens for quoting.
+  'edge.rfx-bid-api.': 'e647f6c131de42998e4804da82849ba6b8d456265df2be68f91d4abc63d516ad',
   'edge.shipper-directory-api.': '529b561a078707872c24b999e1ed60c61ad2b024fcbfbdc4b9d3f121dca942cf',
   'edge.shipper-profile-api.': 'f1a6315de6fa26940c274745a944f93577a7179c7465fc015f00a4fbd90d762e',
   'edge.sync-banxico-fx.': '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc',
@@ -200,7 +202,7 @@ const whatsappWebhookSourceFingerprintOverrides = {
 // and Unix checkouts without changing executable behavior.
 const portableRfxBidSourceFingerprintOverrides = {
   'edge.rfx-bid-api.decline_invitation': '6ec9d89d98ca2bbcceed7b697fa1acd22929d29d4519c4f31e5ffc7d72fd28c0',
-  'edge.rfx-bid-api.get_invitation': 'b59d132901bc53e17d12bd2345578db132e0c685c0a0e0c801937d722360b677',
+  'edge.rfx-bid-api.get_invitation': '65e612a3d91eae30f098ff85c2d22e67693377622a1eb34c765d28f8c0c1d8cf',
   'edge.rfx-bid-api.public_bid_room_find_invitations': '789fd150c4ca512fa07374cc0eab1d9b53081861a3c2425691fc5c63300237b8',
   'edge.rfx-bid-api.public_bid_room_request_invite': '1d6b135fde12db3a88cc64efd2e5c5c39ce1dafbc3c79eb94cb0216425f40907',
   'edge.rfx-bid-api.submit_bid': 'd60402a1c008a8b884b84c6436010d55e3fcac0457fff6cf0c592b51547b4934',
@@ -456,7 +458,7 @@ export const ACTION_CONTRACT = {
   },
   reviewedAuthorizationFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedAuthorizationFingerprints,
-    'edge.rfx-bid-api.peek_invitation': '260e53d63e6329580f4efaccc54817be2f9a574d6f3d281541720ddbfd32d989',
+    'edge.rfx-bid-api.peek_invitation': 'e647f6c131de42998e4804da82849ba6b8d456265df2be68f91d4abc63d516ad',
     ...legacyAuthorizationOverrides,
     ...extension.reviewedAuthorizationFingerprints,
     ...gmailAuthorizationFingerprints,

@@ -32,6 +32,12 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
     invitation_token: "legacy-test-token-b",
     vendors: { vendor_name: "Foreign Carrier", domain: "foreign.example", primary_email: "foreign@carrier.example" },
   };
+  const encryptedSameVendorRow = {
+    ...row, id: "invitation-a2", rfx_lane_id: "lane-a2",
+    invitation_token: null, invitation_token_hash: "opaque-test-hash",
+    invitation_token_encrypted: "opaque-test-ciphertext",
+    rfx_lanes: { ...row.rfx_lanes, id: "lane-a2", lane_number: 2 },
+  };
   try {
     Deno.env.set("SUPABASE_URL", "https://supabase-mock.invalid");
     Deno.env.set("RATEWARE_SUPABASE_SERVICE_ROLE_KEY", "synthetic-service-role-test-only");
@@ -60,7 +66,7 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
       if (url.pathname.endsWith("/rfx_lane_vendors") && url.searchParams.has("vendor_id")) {
         const vendorId = url.searchParams.get("vendor_id");
         const ownerEmail = url.searchParams.get("rfx_events.owner_email");
-        return new Response(JSON.stringify([row, foreignRow].filter((candidate) =>
+        return new Response(JSON.stringify([row, encryptedSameVendorRow, foreignRow].filter((candidate) =>
           vendorId === `eq.${candidate.vendor_id}` && ownerEmail === `eq.${candidate.rfx_events.owner_email}`
         )), { status: 200, headers });
       }
@@ -90,7 +96,11 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
     assertEquals(fullResponse.status, 200);
     const fullPayload = await fullResponse.json();
     assertEquals(fullPayload.carrier_book.invited[0].invitation_id, "invitation-a");
-    assertEquals(fullPayload.carrier_book.invited.length, 1);
+    assertEquals(fullPayload.carrier_book.invited.length, 2);
+    assert(fullPayload.carrier_book.invited.some((entry: { invitation_id: string }) =>
+      entry.invitation_id === "invitation-a2"), "encrypted-token invitation must remain in a tokenless peek");
+    assertEquals(JSON.stringify(fullPayload).includes("opaque-test-ciphertext"), false);
+    assertEquals(JSON.stringify(fullPayload).includes("opaque-test-hash"), false);
     assertEquals(fullPayload.carrier_book.open_not_invited.length, 0);
     assertEquals(fullPayload.carrier_book.summary.not_invited_open, 0);
     assertEquals(queries.some((query) => new URL(query.url).pathname.endsWith("/rfx_lanes")), false);

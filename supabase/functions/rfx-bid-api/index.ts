@@ -4948,11 +4948,12 @@ Deno.serve(async (request) => {
       if (invitedResult.error) throw invitedResult.error;
       // The private book is scoped to this carrier. Hydrate every lane token so
       // each active invitation in the same RFx can be opened and quoted in place.
-      const hydratedInvitedRows = await hydrateInvitationTokens(
-        supabase,
-        (invitedResult.data || []) as Record<string, unknown>[],
-        !readOnlyPeek
-      );
+      const invitedRows = (invitedResult.data || []) as Record<string, unknown>[];
+      // A peek never returns invitation tokens, so it must not depend on the
+      // encryption key merely to include a carrier's encrypted-token rows.
+      // Keep the ordinary Bid Room path's token hydration unchanged.
+      const hydratedInvitedRows = readOnlyPeek ? invitedRows
+        : await hydrateInvitationTokens(supabase, invitedRows);
 
       // A Loads peek is strictly vendor-bound: unrelated open lanes from the
       // same RFx owner are not part of this carrier's private invitation book.
