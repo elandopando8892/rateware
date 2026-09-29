@@ -2167,6 +2167,7 @@ assert.match(apiSource, /Schedule a call: mailto:sales@heymarksman\.com/, "Not-a
 assert.match(apiSource, /Agendar una llamada: mailto:sales@heymarksman\.com/, "Spanish closeout notices should invite the call in Spanish");
 assert.match(apiSource, /es \? "Adjudicación" : "Award"/, "Award notice subjects should speak the notice language");
 assert.doesNotMatch(apiSource, /decision de adjudicacion|actualizacion corresponde|Fecha limite/, "Spanish award notices should carry their accents");
+assert.match(apiSource, /outreach_sent_at: sentAt\.get\(/, "The RFx detail should say when each invitation's message really went out");
 assert.match(apiSource, /body\.action === "set_rfx_lane_no_award"/, "An Administrador should be able to declare an RFx lane void");
 assert.match(rfxBidApiSource, /function hiddenVoidLane/, "A void lane should stay out of the carrier's book while its event takes bids");
 assert.match(rfxBidApiSource, /\.filter\(\(lane\) => !cleanText\(lane\.no_award_at\)\)/, "The public board should never show a void lane");
@@ -2898,7 +2899,7 @@ assert.match(rfxEventsHtml, /rfx-chat-start-event-thread/, "Bid Room chat should
 assert.match(rfxEventsSource, /syncBidRoomEventThread/, "Bid Room UI should call the event thread sync action");
 assert.match(rfxEventsSource, /function bidRoomHasEventGroupThread[\s\S]+thread_type === "event_group"/, "Bid Room should detect an existing event thread from its loaded snapshot");
 assert.match(rfxEventsSource, /if \(!bidRoomHasEventGroupThread\(bidRoomChatThreads\)\)[\s\S]+ensureSelectedEventChatThread\(eventId, \{ silent: true \}\)/, "Bid Room should create an event thread only when the loaded snapshot does not already contain one");
-assert.match(apiSource, /const \[eventLanes, loadedInvitationRows, benchmarkLoad, comparisonFx\] = await Promise\.all\(\[[\s\S]+fetchAllRfxLaneRows[\s\S]+fetchAllRfxLaneVendorRows[\s\S]+fetchRfxDetailBenchmarkRates[\s\S]+loadBidComparisonFxRate/, "Bid Room detail should load lanes, invitations, Rateware benchmarks, and the comparison FX rate concurrently");
+assert.match(apiSource, /const \[eventLanes, loadedInvitationRows, benchmarkLoad, comparisonFx, sentLoad\] = await Promise\.all\(\[[\s\S]+fetchAllRfxLaneRows[\s\S]+fetchAllRfxLaneVendorRows[\s\S]+fetchRfxDetailBenchmarkRates[\s\S]+loadBidComparisonFxRate[\s\S]+fetchRfxInvitationSentAt/, "Bid Room detail should load lanes, invitations, Rateware benchmarks, the comparison FX rate and the sends concurrently");
 
 // The Google Sheet import used to delete every vendor from the sheet tab before
 // re-inserting. vendors has eleven ON DELETE CASCADE children, so each re-sync
