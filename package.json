@@ -25,6 +25,7 @@
     "test:us-diesel": "node --test tests/us-diesel-sync.test.mjs",
     "test:release-preflight": "node --test tests/release-preflight.test.mjs",
     "test:rateware-correlation": "deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/rateware-correlation.contract.test.ts",
+    "test:rfx-lane-no-award": "deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/rfx-lane-no-award.contract.test.ts",
     "test:team-roles": "node tests/team-roles-wiring.test.mjs && deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/team-roles.contract.test.ts",
     "audit:p3:mutations": "node tools/p3-mutation-risk-register.mjs",
     "test:p3:mutations": "node --test tests/p3-mutation-risk-register.test.mjs",

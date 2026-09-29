@@ -15,6 +15,7 @@ for (const action of [
   "clear_rfx_award",
   "closeout_awarded_rfx_to_rateware",
   "generate_rfx_award_notices",
+  "set_rfx_lane_no_award",
   "publish_ratebook",
   "archive_rfx_event",
   "archive_carrier_list_template",

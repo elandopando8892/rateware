@@ -11,6 +11,7 @@ import { OPS_WATCH_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shar
 import { TEAM_MEMBERSHIP_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-team-membership.mjs';
 import { OBJECT_STORAGE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-object-storage.mjs';
 import { CUSTOMER_RFI_LOOKUPS_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-customer-rfi-lookups.mjs';
+import { RFX_LANE_NO_AWARD_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-rfx-lane-no-award.mjs';
 
 const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
 const carrierTemplateExtension = CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION;
@@ -24,6 +25,7 @@ const opsWatchExtension = OPS_WATCH_ACTION_CONTRACT_EXTENSION;
 const teamMembershipExtension = TEAM_MEMBERSHIP_ACTION_CONTRACT_EXTENSION;
 const objectStorageExtension = OBJECT_STORAGE_ACTION_CONTRACT_EXTENSION;
 const customerRfiLookupsExtension = CUSTOMER_RFI_LOOKUPS_ACTION_CONTRACT_EXTENSION;
+const rfxLaneNoAwardExtension = RFX_LANE_NO_AWARD_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 const carrierTemplateDelta = carrierTemplateExtension.expectedCountsDelta;
@@ -137,17 +139,21 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // became an Administrador's too; the handlers check it after reading the
 // rows. And list_rfx_invitation_wave_reviews, which the contract already
 // declares a read, joined the role reads, so every role can see the reviews.
+// 2026-09-29 (close): declaring a lane void (set_rfx_lane_no_award, its own
+// extension) became an Administrador's decision like awarding, and
+// quotedesk-api's estimate_lane_fcm, which the contract already declares a
+// read, joined the role reads. Ownership and tenant checks are unchanged.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': '47344307ceef4b051008850e8211fad1e395c7fd5830e3a3f011a10d5a36ccf3',
   'edge.gmail-oauth-callback.': '9cd3a3329bdb82d139b988dc7503fc3676b744157bd9a1063ce579fa4c8b178c',
   'edge.google-chat-app.': '0d81b2db1ca1d0442814d2e07264c967b1a1999a70be60bd1ed641fbe675475b',
-  'edge.interpret-upload.': '193d01a256e1e9999775134eb20670878e24642dabec2b8d31be46e650f245c4',
+  'edge.interpret-upload.': '2667890f3b3fffc9b38f0e8cd2ff52346db10baa22df08d517259b23d76ce1c8',
   'edge.provider-gmail-intake-api.': '51f613ef43bb666a2bbe81fd09ab99af18315677a6210119bc105bafc7f5f9b6',
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': '23491530de329dbc15fc545f6fad5344089cc2ca9fbcac31132a4b0eeacbd47a',
+  'edge.rateware-api.': '1b1ca66976d28a7590e4dd4aa245a0460c811ef2c3b5faeab7633496dc91fcce',
   // Reviewed after merging the no-write invitation peek with the stricter
   // Google Chat conversation isolation in main. The peek now includes
   // same-vendor encrypted-token rows without decrypting or exposing tokens;
@@ -256,7 +262,7 @@ const carrierChatSourceFingerprintOverrides = {
   'edge.rfx-bid-api.post_bid_room_chat_message': '459d7a128900a4a7a0f43f14b34af543064304095b35970bc02a4bae905aad33',
 };
 
-const quotedeskAuthEnvelope = '34adb7563025e0ec4fc75e8ff9f86f34431c42154357c25ed4ebf22f0b5bfba4';
+const quotedeskAuthEnvelope = 'cd1073603c3af9c103faf96d3d0dfdd2757e2ccb463827b09b58fb2455c46375';
 
 const supabaseAuthMetadataOverrides = {
   'edge.google-chat-app.handle_chat_event': 'fd759bead6f0bfed76d9f70c962399ba7d815ef30f7a85491d68c4d5b088accf',
@@ -434,6 +440,7 @@ const brandedDomainAuthorizationOverrides = Object.fromEntries(
     ...rfxInvitationReviewExtension.surfaces,
     ...rfxAtomicAwardExtension.surfaces,
     ...customerRfiLookupsExtension.surfaces,
+    ...rfxLaneNoAwardExtension.surfaces,
   ].flatMap((entry) => {
     const match = Object.entries(brandedDomainAuthorizationEnvelopes)
       .find(([prefix]) => entry.canonicalId.startsWith(prefix));
@@ -444,12 +451,12 @@ const brandedDomainAuthorizationOverrides = Object.fromEntries(
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
-  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award+website-intake+quotedesk+us-diesel`,
+  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award+website-intake+quotedesk+us-diesel+rfx-lane-no-award`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + opsWatchExtension.expectedCountsDelta.governable + teamMembershipExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable + customerRfiLookupsExtension.expectedCountsDelta.governable + 1,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + opsWatchExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge + customerRfiLookupsExtension.expectedCountsDelta.edge + 1,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + opsWatchExtension.expectedCountsDelta.governable + teamMembershipExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable + customerRfiLookupsExtension.expectedCountsDelta.governable + rfxLaneNoAwardExtension.expectedCountsDelta.governable + 1,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + opsWatchExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge + customerRfiLookupsExtension.expectedCountsDelta.edge + rfxLaneNoAwardExtension.expectedCountsDelta.edge + 1,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres + websiteIntakeExtension.expectedCountsDelta.postgres + quotedeskExtension.expectedCountsDelta.postgres + teamMembershipExtension.expectedCountsDelta.postgres,
-    ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi,
+    ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi + rfxLaneNoAwardExtension.expectedCountsDelta.ratewareApi,
   },
   reviewedMetadataFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedMetadataFingerprints,
@@ -468,6 +475,7 @@ export const ACTION_CONTRACT = {
     ...teamMembershipExtension.reviewedMetadataFingerprints,
     ...objectStorageExtension.reviewedMetadataFingerprints,
     ...customerRfiLookupsExtension.reviewedMetadataFingerprints,
+    ...rfxLaneNoAwardExtension.reviewedMetadataFingerprints,
     ...supabaseAuthMetadataOverrides,
   },
   reviewedAuthorizationFingerprints: {
@@ -488,6 +496,7 @@ export const ACTION_CONTRACT = {
     ...teamMembershipExtension.reviewedAuthorizationFingerprints,
     ...objectStorageExtension.reviewedAuthorizationFingerprints,
     ...customerRfiLookupsExtension.reviewedAuthorizationFingerprints,
+    ...rfxLaneNoAwardExtension.reviewedAuthorizationFingerprints,
     ...corsOnlyAuthorizationOverrides,
     ...supabaseAuthAuthorizationOverrides,
     ...ratewareApiAuthorizationOverrides,
@@ -521,6 +530,7 @@ export const ACTION_CONTRACT = {
     ...teamMembershipExtension.surfaces,
     ...objectStorageExtension.surfaces,
     ...customerRfiLookupsExtension.surfaces,
+    ...rfxLaneNoAwardExtension.surfaces,
     rfxBidPeekSurface,
   ],
 };

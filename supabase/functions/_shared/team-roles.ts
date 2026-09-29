@@ -59,6 +59,8 @@ const READS: Record<string, ReadonlySet<string>> = {
   "quotedesk-api": new Set([
     "event_origins", "get_context", "get_quote", "list_fcm_cost_bases", "list_quote_emails", "list_quotes",
     "preview_quote_email", "suggest_lane_miles",
+    // The FCM estimate prices a route without saving it, like suggest_lane_miles (opened 2026-09-29).
+    "estimate_lane_fcm",
   ]),
 };
 
@@ -68,6 +70,8 @@ const ADMIN: Record<string, ReadonlySet<string>> = {
     // Awarding, handing the awards to rateware, and publishing the Ratebook (decided 2026-09-27)
     "award_rfx_lane_vendor", "clear_rfx_award", "closeout_awarded_rfx_to_rateware", "create_rfx_award_package",
     "generate_rfx_award_notices", "mark_rfx_award_package_implementation_ready", "publish_ratebook",
+    // Declaring a lane void or reopening it (decided 2026-09-29)
+    "set_rfx_lane_no_award",
     // Archiving, restoring and deleting records; merging shippers archives the duplicate
     "archive_rfx_event", "delete_rfx_event", "archive_carrier_list_template", "restore_carrier_list_template",
     "delete_vendor_segment", "remove_vendors", "archive_shippers", "delete_shipper_record", "archive_ratebook",

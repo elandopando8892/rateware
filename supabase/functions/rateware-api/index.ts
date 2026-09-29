@@ -10563,7 +10563,7 @@ async function rfxCloseoutDecisionSnapshot(
   const event = await requireOwnedRfxEvent(supabase, user, eventId);
   const resolvedEventId = cleanText(event.id) || "";
   const [lanes, invitationRows] = await Promise.all([
-    fetchAllRfxLaneRows(supabase, resolvedEventId, "id,lane_number,origin,destination"),
+    fetchAllRfxLaneRows(supabase, resolvedEventId, "id,lane_number,origin,destination,no_award_at"),
     fetchAllRfxLaneVendorRows(
       supabase,
       resolvedEventId,
@@ -10583,9 +10583,18 @@ async function rfxCloseoutDecisionSnapshot(
       .map((row) => cleanText(row.rfx_lane_id))
       .filter(Boolean) as string[]
   );
+  // A lane declared void ("desierto") closes without an award, with or without bids.
+  const voidLaneIds = new Set(
+    lanes.filter((lane) => cleanText(lane.no_award_at)).map((lane) => cleanText(lane.id)).filter(Boolean) as string[]
+  );
   const missingPrimary = lanes.filter((lane) => {
     const laneId = cleanText(lane.id);
-    return Boolean(laneId && bidLaneIds.has(laneId) && !primaryLaneIds.has(laneId));
+    return Boolean(laneId && bidLaneIds.has(laneId) && !primaryLaneIds.has(laneId) && !voidLaneIds.has(laneId));
+  });
+  // Every lane ends decided (decided 2026-09-29): a lane nobody bid on is declared void, not left open.
+  const missingDecision = lanes.filter((lane) => {
+    const laneId = cleanText(lane.id);
+    return Boolean(laneId && !bidLaneIds.has(laneId) && !voidLaneIds.has(laneId));
   });
 
   return {
@@ -10594,7 +10603,9 @@ async function rfxCloseoutDecisionSnapshot(
     invitations,
     bid_lane_count: bidLaneIds.size,
     primary_lane_count: primaryLaneIds.size,
-    missing_primary: missingPrimary
+    void_lane_count: voidLaneIds.size,
+    missing_primary: missingPrimary,
+    missing_decision: missingDecision
   };
 }
 
@@ -10608,15 +10619,20 @@ async function requireCompleteRfxAwardDecisions(
   if (options.requireBids && !snapshot.bid_lane_count) {
     throw new Error("At least one carrier bid is required before Rateware closeout.");
   }
-  if (snapshot.missing_primary.length) {
-    const laneLabels = snapshot.missing_primary.slice(0, 5).map((lane) => {
+  const pending = [...snapshot.missing_primary, ...snapshot.missing_decision]
+    .sort((left, right) => Number(left.lane_number || 0) - Number(right.lane_number || 0));
+  if (pending.length) {
+    const laneLabels = pending.slice(0, 5).map((lane) => {
       const route = [cleanText(lane.origin), cleanText(lane.destination)].filter(Boolean).join(" -> ");
       return `#${cleanText(lane.lane_number) || "?"}${route ? ` ${route}` : ""}`;
     });
-    const more = snapshot.missing_primary.length > laneLabels.length
-      ? ` and ${snapshot.missing_primary.length - laneLabels.length} more`
+    const more = pending.length > laneLabels.length
+      ? ` y ${pending.length - laneLabels.length} más`
       : "";
-    throw new Error(`Choose a primary award for every lane with bids before closing: ${laneLabels.join(", ")}${more}.`);
+    throw Object.assign(
+      new Error(`Antes de cerrar, cada lane necesita un primario o declararse desierto: ${laneLabels.join(", ")}${more}.`),
+      { code: "409" }
+    );
   }
   return snapshot;
 }
@@ -10801,6 +10817,9 @@ async function awardRfxLaneVendor(
 ) {
   const invitation = await requireOwnedRfxLaneVendor(supabase, user, input.id || input.rfx_lane_vendor_id || input.invitation_id);
   if (cleanNumber(invitation.bid_rate) === null) throw new Error("A carrier bid rate is required before awarding.");
+  if (cleanText(relationRecord(invitation.rfx_lanes).no_award_at)) {
+    throw Object.assign(new Error("Este lane está declarado desierto; reábrelo antes de adjudicarlo."), { code: "409" });
+  }
   const role = normalizeAwardRole(input.award_role || input.role);
   if (!operationId) throw new Error("RFx award operation id is required.");
   const transition = await supabase.rpc("rateware_award_rfx_lane_vendor", {
@@ -11229,7 +11248,18 @@ function awardNoticeOutcome(invitation: Record<string, unknown>) {
   const role = cleanText(invitation.award_role)?.toLowerCase();
   if (role === "primary") return { key: "awarded", label: "Awarded" };
   if (role === "backup") return { key: "backup", label: "Backup" };
+  // A lane declared void closed without an award for anyone: nobody else won it.
+  if (cleanText(relationRecord(invitation.rfx_lanes).no_award_at)) return { key: "no_award", label: "No award" };
   return { key: "not_awarded", label: "Not awarded" };
+}
+
+/** The lane's result as the notice shows it, in the notice's language. */
+function awardNoticeOutcomeLabel(key: unknown, language = "en") {
+  const es = language === "es";
+  if (key === "awarded") return es ? "Adjudicado" : "Awarded";
+  if (key === "backup") return es ? "Respaldo" : "Backup";
+  if (key === "no_award") return es ? "Desierto" : "No award";
+  return es ? "No adjudicado" : "Not awarded";
 }
 
 function awardNoticeLaneSummary(invitation: Record<string, unknown>) {
@@ -11254,7 +11284,7 @@ function awardNoticeTableHtml(rows: Record<string, unknown>[], language = "en") 
   if (!rows.length) return "";
   const es = language === "es";
   const labels = es
-    ? { result: "Resultado", lane: "Ruta", equipment: "Equipo", service: "Servicio", capacity: "Capacidad semanal", transit: "Transito", bid: "Tu tarifa", notes: "Notas" }
+    ? { result: "Resultado", lane: "Ruta", equipment: "Equipo", service: "Servicio", capacity: "Capacidad semanal", transit: "Tránsito", bid: "Su tarifa", notes: "Notas" }
     : { result: "Result", lane: "Lane", equipment: "Equipment", service: "Service", capacity: "Weekly capacity", transit: "Transit", bid: "Your bid", notes: "Notes" };
   const headerStyle = "border:1px solid #b7c9d9;padding:9px 8px;text-align:left;background:#1f4e79;color:#ffffff;font-size:11px;line-height:1.2;white-space:nowrap";
   const cellStyle = "border:1px solid #d2dde5;padding:9px 8px;vertical-align:top;font-size:12px;line-height:1.3;color:#233746";
@@ -11285,14 +11315,16 @@ function awardNoticeTableHtml(rows: Record<string, unknown>[], language = "en") 
           const amount = rate === null ? "-" : `${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${cleanText(row.currency) || "USD"}`;
           return `
             <tr>
-              <td style="${cellStyle};white-space:nowrap"><span style="display:inline-block;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:700;${outcomeStyle}">${escapeHtmlText(es ? (outcomeKey === "awarded" ? "ADJUDICADO" : outcomeKey === "backup" ? "RESPALDO" : "NO ADJUDICADO") : outcome.label)}</span></td>
+              <td style="${cellStyle};white-space:nowrap"><span style="display:inline-block;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:700;${outcomeStyle}">${escapeHtmlText(es ? awardNoticeOutcomeLabel(outcomeKey, language).toUpperCase() : awardNoticeOutcomeLabel(outcomeKey))}</span></td>
               <td style="${cellStyle}"><strong>${escapeHtmlText([row.lane_number ? `#${row.lane_number}` : null, `${row.origin || "-"} -> ${row.destination || "-"}`].filter(Boolean).join(" "))}</strong></td>
               <td style="${cellStyle}">${escapeHtmlText(row.equipment || "-")}</td>
               <td style="${cellStyle}">${escapeHtmlText(row.service || "-")}</td>
               <td style="${cellStyle};text-align:center;white-space:nowrap">${escapeHtmlText(row.capacity ?? "-")}</td>
               <td style="${cellStyle};text-align:center;white-space:nowrap">${escapeHtmlText(row.transit_days ?? "-")}</td>
               <td style="${cellStyle};text-align:right;white-space:nowrap;font-weight:700;background:#f2f7fa">${escapeHtmlText(amount)}</td>
-              <td style="${cellStyle};color:#526675">${escapeHtmlText(row.reason || (es ? "Sin observaciones adicionales." : "No additional notes."))}</td>
+              <td style="${cellStyle};color:#526675">${escapeHtmlText(row.reason || (outcomeKey === "no_award"
+                ? (es ? "Ruta cerrada sin adjudicar." : "Lane closed without an award.")
+                : (es ? "Sin observaciones adicionales." : "No additional notes.")))}</td>
             </tr>
           `;
         }).join("")}
@@ -11301,13 +11333,13 @@ function awardNoticeTableHtml(rows: Record<string, unknown>[], language = "en") 
   `;
 }
 
-function awardNoticeRowsText(rows: Record<string, unknown>[]) {
+function awardNoticeRowsText(rows: Record<string, unknown>[], language = "en") {
   return rows.map((row) => {
     const outcome = objectRecord(row.outcome);
     const rate = cleanNumber(row.bid_rate);
     const amount = rate === null ? "-" : `${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${cleanText(row.currency) || "USD"}`;
     return [
-      cleanText(outcome.label),
+      awardNoticeOutcomeLabel(cleanText(outcome.key), language),
       [row.lane_number ? `#${row.lane_number}` : null, `${row.origin || "-"} -> ${row.destination || "-"}`].filter(Boolean).join(" "),
       cleanText(row.equipment),
       cleanText(row.service),
@@ -11332,21 +11364,27 @@ function awardNoticeHtml(event: Record<string, unknown>, vendor: Record<string, 
     acc[key] = Number(acc[key] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
+  // Only lanes declared void: nobody won them, so "awarded to another carrier" would be untrue.
+  const onlyVoid = !counts.awarded && !counts.backup && !counts.not_awarded && Boolean(counts.no_award);
   const headline = counts.awarded
-    ? (es ? "Tu decision de adjudicacion esta lista." : "Your award decision is ready.")
+    ? (es ? "La decisión de adjudicación está lista." : "Your award decision is ready.")
     : counts.backup
-      ? (es ? "Has sido seleccionado como capacidad de respaldo." : "You have been selected as backup capacity.")
-      : (es ? "Este RFx fue adjudicado a otro transportista." : "This RFx has been awarded to another carrier.");
+      ? (es ? "Ha sido seleccionado como capacidad de respaldo." : "You have been selected as backup capacity.")
+      : onlyVoid
+        ? (es ? "Las rutas en las que participó se cerraron sin adjudicar." : "The lanes you took part in closed without an award.")
+        : (es ? "Este RFx fue adjudicado a otro transportista." : "This RFx has been awarded to another carrier.");
   const intro = es
-    ? "Esta actualizacion corresponde exclusivamente a esta oportunidad y resume las rutas, tarifas y capacidad registradas en el Bid Room."
+    ? "Esta actualización corresponde exclusivamente a esta oportunidad y resume las rutas, tarifas y capacidad registradas en el Bid Room."
     : "This update applies only to this opportunity and summarizes the routes, rates, and capacity recorded in the Bid Room.";
   const nextStep = counts.awarded
-    ? (es ? "Gracias por participar. Conservaremos esta informacion para siguientes asignaciones y coordinaremos los siguientes pasos por este medio." : "Thank you for participating. We will retain this information for future assignments and coordinate next steps through this thread.")
+    ? (es ? "Gracias por participar. Conservaremos esta información para siguientes asignaciones y coordinaremos los siguientes pasos por este medio." : "Thank you for participating. We will retain this information for future assignments and coordinate next steps through this thread.")
     : counts.not_awarded
-      ? (es ? "Gracias por participar. Le invitamos a seguir cotizando con MARKSMAN. Si desea revisar como mejorar sus posibilidades de ganar mas bids, agende una llamada con nuestro equipo." : "Thank you for participating. We invite you to continue quoting with MARKSMAN. If you would like to review how to improve your chances of winning more bids, schedule a call with our team.")
+      ? (es ? "Gracias por participar. Le invitamos a seguir cotizando con MARKSMAN. Si desea revisar cómo mejorar sus posibilidades de ganar más bids, agende una llamada con nuestro equipo." : "Thank you for participating. We invite you to continue quoting with MARKSMAN. If you would like to review how to improve your chances of winning more bids, schedule a call with our team.")
+    : onlyVoid
+      ? (es ? "Gracias por participar. Estas rutas no se adjudicaron a ningún transportista; le invitamos a seguir cotizando con MARKSMAN." : "Thank you for participating. These lanes were not awarded to any carrier; we invite you to continue quoting with MARKSMAN.")
     : (es ? "Gracias por participar. Mantendremos su capacidad y comentarios visibles para siguientes asignaciones." : "Thank you for participating. We will keep your capacity and comments available for future assignments.");
   const statusLabel = counts.awarded
-    ? (es ? "ADJUDICACION" : "AWARD DECISION")
+    ? (es ? "ADJUDICACIÓN" : "AWARD DECISION")
     : counts.backup
       ? (es ? "CAPACIDAD DE RESPALDO" : "BACKUP CAPACITY")
       : (es ? "CIERRE DE RFx" : "RFx CLOSEOUT");
@@ -11358,7 +11396,7 @@ function awardNoticeHtml(event: Record<string, unknown>, vendor: Record<string, 
     : null;
   const followUpLabel = es ? "Agendar una llamada" : "Schedule a call";
   const contextLabels = es
-    ? { customer: "Cliente", type: "Tipo", due: "Fecha limite", lanes: "Rutas", visibility: "Visibilidad" }
+    ? { customer: "Cliente", type: "Tipo", due: "Fecha límite", lanes: "Rutas", visibility: "Visibilidad" }
     : { customer: "Customer", type: "Type", due: "Due date", lanes: "Lanes", visibility: "Visibility" };
   return `
     <div style="margin:0;background:#edf3f7;padding:24px 12px;font-family:Arial,sans-serif;color:#233746;line-height:1.45">
@@ -11514,6 +11552,8 @@ async function generateRfxAwardNotices(
   const createdContactKeys = new Set<string>();
   let refreshed = 0;
   const now = new Date().toISOString();
+  const language = bidRoomFollowUpLanguage("", event, event.rfx_id);
+  const es = language === "es";
   for (const invitationGroup of rows.values()) {
     const sortedGroup = [...invitationGroup].sort((a, b) => {
       const aLane = objectRecord(a.rfx_lanes);
@@ -11529,23 +11569,36 @@ async function generateRfxAwardNotices(
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
-    const subjectPrefix = counts.awarded ? "Award" : counts.backup ? "Backup status" : "RFx closeout";
+    // Subject, body and text all speak the notice's language (decided 2026-09-29).
+    const subjectPrefix = counts.awarded
+      ? (es ? "Adjudicación" : "Award")
+      : counts.backup
+        ? (es ? "Capacidad de respaldo" : "Backup status")
+        : (es ? "Cierre de RFx" : "RFx closeout");
     const subject = `${subjectPrefix}: ${cleanText(event.rfx_id || event.name) || "Bid Room"}`;
     const token = cleanText(first.invitation_token);
     const portalLink = token
       ? `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(token)}${sortedGroup.length > 1 ? "&view=book" : ""}`
       : null;
     const htmlBody = awardNoticeHtml(event, vendor, laneSummaries, portalLink);
+    const rfxLabel = cleanText(event.rfx_id || event.name) || "RFx";
+    const invitesToKeepQuoting = Boolean(counts.not_awarded) || (!counts.awarded && !counts.backup && Boolean(counts.no_award));
     const textBody = [
-      `Estimados ${cleanText(vendor.vendor_name || vendor.domain || "team")},`,
-      `RFx: ${cleanText(event.rfx_id || event.name) || "RFx"}`,
+      `${es ? "Estimados" : "Dear"} ${cleanText(vendor.vendor_name || vendor.domain) || (es ? "transportista" : "team")},`,
+      `RFx: ${rfxLabel}`,
       "",
-      awardNoticeRowsText(laneSummaries),
+      awardNoticeRowsText(laneSummaries, language),
       "",
       portalLink ? `Bid Room: ${portalLink}` : null,
-      counts.not_awarded ? `Schedule a call: mailto:sales@heymarksman.com?subject=${encodeURIComponent(`${cleanText(event.rfx_id || event.name) || "RFx"} | Review opportunities to win more bids`)}` : null,
-      counts.not_awarded ? "Thank you for participating. We invite you to continue quoting with MARKSMAN." : "Gracias por participar.",
-      marksmanSignatureText(bidRoomFollowUpLanguage("", event, event.rfx_id))
+      counts.not_awarded
+        ? (es
+          ? `Agendar una llamada: mailto:sales@heymarksman.com?subject=${encodeURIComponent(`${rfxLabel} | Revisar oportunidades de mejora`)}`
+          : `Schedule a call: mailto:sales@heymarksman.com?subject=${encodeURIComponent(`${rfxLabel} | Review opportunities to win more bids`)}`)
+        : null,
+      invitesToKeepQuoting
+        ? (es ? "Gracias por participar. Le invitamos a seguir cotizando con MARKSMAN." : "Thank you for participating. We invite you to continue quoting with MARKSMAN.")
+        : (es ? "Gracias por participar." : "Thank you for participating."),
+      marksmanSignatureText(language)
     ].filter(Boolean).join("\n");
     const invitationIds = sortedGroup.map((item) => item.id).filter(Boolean);
     const laneIds = sortedGroup.map((item) => item.rfx_lane_id).filter(Boolean);
@@ -12668,7 +12721,9 @@ function escapeHtmlText(value: unknown) {
 }
 
 function bidRoomFollowUpLanguage(body: unknown, event: Record<string, unknown>, sourceSubject: unknown) {
-  const source = [body, event.name, event.customer, sourceSubject].map(cleanText).filter(Boolean).join(" ").toLowerCase();
+  // Accents are dropped first, so "cotización" or "fecha límite" read as Spanish too.
+  const source = [body, event.name, event.customer, sourceSubject].map(cleanText).filter(Boolean).join(" ")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return /\b(hola|cotizar|cotizacion|ruta|interesa|favor|gracias|propuesta|fecha limite|por favor)\b/.test(source) ? "es" : "en";
 }
 
@@ -28699,6 +28754,79 @@ export function createRatewareApiHandler(
       );
       const sync = await ensureRatebookForBidRoomEvent(supabase, user, event, body);
       return jsonResponse({ row: result.data, ratebook_sync: sync });
+    }
+
+    if (body.action === "set_rfx_lane_no_award") {
+      // Declares lanes void ("desierto": the event closes without awarding them)
+      // or reopens them. An Administrador's decision, like awarding (decided 2026-09-29).
+      const eventId = cleanText(body.rfx_event_id || body.event_id);
+      if (!eventId || !UUID_PATTERN.test(eventId)) return jsonResponse({ error: "A valid RFx event id is required." }, 400);
+      const laneIds = uniqueCleanValues(Array.isArray(body.lane_ids) ? body.lane_ids : [body.lane_id]);
+      if (!laneIds.length || laneIds.length > 500 || laneIds.some((id) => !UUID_PATTERN.test(id))) {
+        return jsonResponse({ error: "Indica entre 1 y 500 lanes válidos." }, 400);
+      }
+      const event = await requireOwnedRfxEvent(supabase, user, eventId);
+      if (["closed", "archived"].includes(String(event.status || "").toLowerCase())) {
+        return jsonResponse({ error: "El evento ya está cerrado; sus lanes ya no cambian." }, 409);
+      }
+      const declare = body.no_award !== false;
+      const lanesResult = await supabase
+        .from("rfx_lanes")
+        .select("id,lane_number,no_award_at")
+        .eq("rfx_event_id", event.id)
+        .in("id", laneIds);
+      if (lanesResult.error) throw lanesResult.error;
+      const lanes = (lanesResult.data || []) as Record<string, unknown>[];
+      if (lanes.length !== laneIds.length) return jsonResponse({ error: "Algún lane no pertenece a este evento." }, 404);
+      if (declare) {
+        // A lane with a primary or a backup is decided already: that award is removed first.
+        const awards = await supabase
+          .from("rfx_lane_vendors")
+          .select("rfx_lane_id,award_role,invitation_status")
+          .eq("rfx_event_id", event.id)
+          .in("rfx_lane_id", laneIds)
+          .not("award_role", "is", null);
+        if (awards.error) throw awards.error;
+        const awardedLaneIds = new Set(((awards.data || []) as Record<string, unknown>[])
+          .filter((row) => cleanText(row.award_role) && cleanText(row.invitation_status)?.toLowerCase() !== "archived")
+          .map((row) => cleanText(row.rfx_lane_id)));
+        const blocked = lanes.filter((lane) => awardedLaneIds.has(cleanText(lane.id)));
+        if (blocked.length) {
+          return jsonResponse({
+            error: `Quita primero el primario y los respaldos de ${blocked.map((lane) => `#${cleanText(lane.lane_number) || "?"}`).join(", ")} para declararlo desierto.`,
+            code: "lane_has_award",
+            lane_ids: blocked.map((lane) => lane.id)
+          }, 409);
+        }
+      }
+      const changing = lanes.filter((lane) => Boolean(cleanText(lane.no_award_at)) !== declare);
+      let rows: Record<string, unknown>[] = [];
+      if (changing.length) {
+        const now = new Date().toISOString();
+        const claimed = claims as Record<string, unknown>;
+        const actor = (cleanText(claimed.email || claimed.preferred_email || claimed["https://kinde.com/email"]) || cleanText(user.owner_email) || "").toLowerCase() || null;
+        const reason = declare ? cleanText(body.reason) : null;
+        const result = await supabase
+          .from("rfx_lanes")
+          .update(declare
+            ? { no_award_at: now, no_award_reason: reason, no_award_by: actor, updated_at: now }
+            : { no_award_at: null, no_award_reason: null, no_award_by: null, updated_at: now })
+          .eq("rfx_event_id", event.id)
+          .in("id", changing.map((lane) => lane.id))
+          .select("id,lane_number,no_award_at,no_award_reason,no_award_by");
+        if (result.error) throw result.error;
+        rows = (result.data || []) as Record<string, unknown>[];
+        await writeAuditLog(
+          supabase,
+          user,
+          declare ? "rfx.lane.no_award" : "rfx.lane.no_award.clear",
+          "rfx_events",
+          event.id,
+          declare ? `Declared ${rows.length} RFx lane(s) void` : `Reopened ${rows.length} void RFx lane(s)`,
+          { rfx_event_id: event.id, lane_ids: rows.map((row) => row.id), reason, actor }
+        );
+      }
+      return jsonResponse({ no_award: declare, updated: rows.length, unchanged: lanes.length - changing.length, rows });
     }
 
     if (body.action === "list_rfx_detail") {
