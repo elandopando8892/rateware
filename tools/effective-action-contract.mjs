@@ -155,6 +155,9 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // 2026-09-29 (sent): list_rfx_detail tells, per invitation, when its message
 // really went out (the latest outreach message the provider accepted, bounced
 // and failed ones left out), read from the owner's own messages of the event.
+// 2026-09-29 (reject reason): reject_rfx_bid clears the carrier's own notes
+// with the rest of the bid; its reason stays in the event history and the
+// audit log. Access is unchanged.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': '47344307ceef4b051008850e8211fad1e395c7fd5830e3a3f011a10d5a36ccf3',
@@ -165,7 +168,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': 'afc4e5e582308c37a3d73fad40a148bdfb4e1304a4e35377de99bdbb63638fc0',
+  'edge.rateware-api.': '1b6ae5c053265f420aaf3bee8aad4cbd61626a3882cabd2023a1e6c6aa2b91f6',
   // Reviewed after merging the no-write invitation peek with the stricter
   // Google Chat conversation isolation in main. The peek now includes
   // same-vendor encrypted-token rows without decrypting or exposing tokens;

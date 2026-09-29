@@ -2129,6 +2129,7 @@ assert.match(apiSource, /async function setRfxBidRateHistoryOutcome/, "RFx award
 assert.match(apiSource, /async function archiveOperatorRejectedBidRateStaging/, "Operator bid rejection should preserve the linked staging history");
 assert.match(apiSource, /async function rejectRfxBid/, "Internal API should expose a dedicated operator bid rejection action");
 assert.match(apiSource, /body\.action === "reject_rfx_bid"/, "Internal API should route operator bid rejection separately from bid edits");
+assert.doesNotMatch(apiSource, /notes: reason,/, "Why procurement rejected a bid should never land in the carrier's own notes");
 assert.match(apiSource, /source_bid_status: "declined"/, "Operator-rejected bid history should record its source status");
 assert.match(apiSource, /rfx\.bid\.reject/, "Operator bid rejection should be auditable");
 assert.match(apiSource, /rfx_bid_outcome: outcome/, "RFx award actions should persist the selected bid outcome");

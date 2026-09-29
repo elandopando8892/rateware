@@ -5,7 +5,7 @@
 
 const CONTRACT_VERSION = "1.3.0";
 const SOURCE_FILE = "supabase/functions/rateware-api/index.ts";
-const AUTHORIZATION_FINGERPRINT = "afc4e5e582308c37a3d73fad40a148bdfb4e1304a4e35377de99bdbb63638fc0";
+const AUTHORIZATION_FINGERPRINT = "1b6ae5c053265f420aaf3bee8aad4cbd61626a3882cabd2023a1e6c6aa2b91f6";
 const DEPENDENCY_FILES = [
   "supabase/functions/_shared/auth.ts",
   "supabase/functions/_shared/bid-room-google-chat.ts",
