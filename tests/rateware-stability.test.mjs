@@ -2164,6 +2164,12 @@ assert.match(apiSource, /awardNoticeTableHtml\(rows, language\)/, "RFx award not
 assert.match(apiSource, /marksmanSignatureHtml\(language\)/, "RFx award notices should include the complete MARKSMAN signature");
 assert.match(apiSource, /contextLabels = es/, "RFx award notices should include localized RFx context metadata");
 assert.match(apiSource, /Schedule a call: mailto:sales@heymarksman\.com/, "Not-awarded closeout notices should invite carriers to schedule a follow-up call");
+assert.match(apiSource, /Agendar una llamada: mailto:sales@heymarksman\.com/, "Spanish closeout notices should invite the call in Spanish");
+assert.match(apiSource, /es \? "Adjudicación" : "Award"/, "Award notice subjects should speak the notice language");
+assert.doesNotMatch(apiSource, /decision de adjudicacion|actualizacion corresponde|Fecha limite/, "Spanish award notices should carry their accents");
+assert.match(apiSource, /body\.action === "set_rfx_lane_no_award"/, "An Administrador should be able to declare an RFx lane void");
+assert.match(apiSource, /no_award_at\)\) \{\s*throw Object\.assign\(new Error\("Este lane está declarado desierto/, "A void lane should never be awarded");
+assert.match(apiSource, /if \(cleanText\(relationRecord\(invitation\.rfx_lanes\)\.no_award_at\)\) return \{ key: "no_award"/, "Award notices should say a void lane was not awarded to anyone");
 assert.match(apiSource, /rfx\.award\.notices\.generate/, "API should audit RFx award notice generation");
 assert.match(rfxServiceSource, /award_rfx_lane_vendor/, "RFx service should expose award decisions");
 assert.match(rfxServiceSource, /closeout_awarded_rfx_to_rateware/, "RFx service should expose Rateware closeout");
@@ -3786,6 +3792,8 @@ const rfxCloseoutDecisionSource = apiSource.slice(apiSource.indexOf("async funct
 const rfxAwardNoticeSource = apiSource.slice(apiSource.indexOf("async function generateRfxAwardNotices"), apiSource.indexOf("const BID_ROOM_CHAT_THREAD_TYPES"));
 assert.match(rfxCloseoutDecisionSource, /fetchAllRfxLaneRows/, "RFx closeout decisions should paginate every event lane");
 assert.match(rfxCloseoutDecisionSource, /fetchAllRfxLaneVendorRows/, "RFx closeout decisions should paginate every carrier response");
+assert.match(rfxCloseoutDecisionSource, /missingDecision/, "Closing should ask every lane nobody bid on to be declared void");
+assert.match(rfxCloseoutDecisionSource, /!voidLaneIds\.has\(laneId\)/, "A void lane should close without a primary");
 assert.match(rfxAwardCloseoutSource, /fetchAllRfxLaneVendorRows/, "RFx Rateware closeout should paginate every primary award");
 assert.match(rfxAwardNoticeSource, /fetchAllRfxLaneVendorRows/, "RFx award notices should include every carrier response beyond the PostgREST page limit");
 assert.match(rfxAwardNoticeSource, /fetchAllOutreachMessagesByCampaignIds/, "RFx award notice retries should inspect every existing campaign message");
