@@ -703,8 +703,24 @@ function publicLane(row: Record<string, unknown>) {
     other_notes: row.other_notes,
     notes: row.notes,
     rfx_segment_key: row.rfx_segment_key,
-    rfx_segment_name: row.rfx_segment_name
+    rfx_segment_name: row.rfx_segment_name,
+    // Declared void ("desierto"): closed without an award. Why and who stay internal.
+    no_award: Boolean(cleanText(row.no_award_at))
   };
+}
+
+/** A void lane of an event still taking bids is out of the carrier's sight (decided 2026-09-29). */
+function hiddenVoidLane(lane: Record<string, unknown>, event: Record<string, unknown>) {
+  const status = String(cleanText(event.status) || "").toLowerCase();
+  return Boolean(cleanText(lane.no_award_at)) && !["closed", "awarded", "archived"].includes(status);
+}
+
+/** The link's own invitation as the carrier receives it: the lane's void reason and who decided stay out. */
+function carrierInvitation(row: Record<string, unknown>) {
+  const lane = relationRecord(row.rfx_lanes);
+  if (!Object.keys(lane).length) return row;
+  const { no_award_reason: _reason, no_award_by: _decidedBy, ...visible } = lane;
+  return { ...row, rfx_lanes: { ...visible, no_award: Boolean(cleanText(lane.no_award_at)) } };
 }
 
 function publicEvent(row: Record<string, unknown>) {
@@ -716,6 +732,8 @@ function publicEvent(row: Record<string, unknown>) {
     event_type: row.event_type,
     status: row.status,
     due_date: row.due_date,
+    // The operation's expected start (arranque estimado), next to the bid deadline.
+    operation_start_date: row.operation_start_date ?? null,
     bid_visibility_mode: cleanText(row.bid_visibility_mode) || "anonymous_rank",
     source_rfx_process_project_id: row.source_rfx_process_project_id,
     source_rfx_package_id: row.source_rfx_package_id,
@@ -767,6 +785,13 @@ function bidSubmissionBlockReason(
         ? "La fecha limite de esta puja ya paso. Escribe al equipo de compras si necesitas actualizar tu oferta."
         : "The deadline for this bid event has passed. Contact the procurement team if you need to update your offer.";
     }
+  }
+
+  // A lane declared void ("desierto") closed without an award: it takes no more offers.
+  if (cleanText(relationRecord(invitation.rfx_lanes).no_award_at)) {
+    return es
+      ? "Esta ruta se cerró sin adjudicar; ya no recibe ofertas."
+      : "This lane was closed without an award; it no longer takes offers.";
   }
 
   const status = String(cleanText(invitation.invitation_status) || "").toLowerCase();
@@ -1665,7 +1690,9 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
 function carrierBusinessBook(currentInvitation: Record<string, unknown>, invitedRows: Record<string, unknown>[], openLaneRows: Record<string, unknown>[]) {
   const vendor = relationRecord(currentInvitation.vendors);
   const invitedLaneIds = new Set(invitedRows.map((row) => cleanText(row.rfx_lane_id)).filter(Boolean));
-  const invited = invitedRows.map((row) => {
+  const invited = invitedRows
+    .filter((row) => !hiddenVoidLane(relationRecord(row.rfx_lanes), relationRecord(row.rfx_events)))
+    .map((row) => {
     const lane = relationRecord(row.rfx_lanes);
     const event = relationRecord(row.rfx_events);
     const economics = commercialRateEconomics(row as Record<string, unknown>);
@@ -1724,7 +1751,7 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
     };
   });
   const open_not_invited = openLaneRows
-    .filter((lane) => !invitedLaneIds.has(cleanText(lane.id)))
+    .filter((lane) => !invitedLaneIds.has(cleanText(lane.id)) && !hiddenVoidLane(lane, relationRecord(lane.rfx_events)))
     .map((lane) => ({
       participation_status: "not_invited",
       business_status: "open",
@@ -1920,7 +1947,7 @@ async function publicBidRoomBoard(supabase: RfxBidSupabaseClient, input: Record<
 
   let eventsQuery = supabase
     .from("rfx_events")
-    .select("id,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,created_at,updated_at")
+    .select("id,rfx_id,name,customer,event_type,status,due_date,operation_start_date,bid_visibility_mode,created_at,updated_at")
     .in("status", ["open", "closed", "awarded"]);
   eventsQuery = eventId
     ? eventsQuery.eq("id", eventId).limit(1)
@@ -1973,7 +2000,7 @@ async function publicBidRoomBoard(supabase: RfxBidSupabaseClient, input: Record<
       supabase,
       "rfx_lanes",
       eventIds as string[],
-      "id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,annual_volume,currency,logistics_model,operation_criteria,business_rules,service_specifications,carrier_requirements,other_notes,notes,updated_at"
+      "id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,annual_volume,currency,logistics_model,operation_criteria,business_rules,service_specifications,carrier_requirements,other_notes,notes,no_award_at,updated_at"
     ),
     fetchAllPublicBoardRows(
       supabase,
@@ -1995,6 +2022,8 @@ async function publicBidRoomBoard(supabase: RfxBidSupabaseClient, input: Record<
   }
 
   const rows = laneRows
+    // A lane declared void closed without an award: the board never shows it.
+    .filter((lane) => !cleanText(lane.no_award_at))
     .map((lane) => {
       const event = eventsById.get(String(lane.rfx_event_id)) || {};
       const boardStatus = publicBidBoardState(event);
@@ -2020,6 +2049,7 @@ async function publicBidRoomBoard(supabase: RfxBidSupabaseClient, input: Record<
           event_type: event.event_type,
           status: event.status,
           due_date: event.due_date,
+          operation_start_date: event.operation_start_date ?? null,
           updated_at: event.updated_at
         },
         lane: publicLane(lane as Record<string, unknown>),
@@ -4846,7 +4876,7 @@ Deno.serve(async (request) => {
           rate_staging_id,
           rateware_closeout_at,
           vendors(vendor_name,domain,primary_email),
-          rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,notes,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
+          rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,operation_start_date,bid_visibility_mode,notes,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
       rfx_lanes(*)
         `, !readOnlyPeek);
       if (!invitation) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
@@ -4886,7 +4916,7 @@ Deno.serve(async (request) => {
         const currentRow = currentBook.invited[0] || null;
         const liveBoard = liveBoardFromRows(result.data, peersResult.data || []);
         const response = jsonResponse({
-          invitation: readOnlyPeek ? invitationWithoutToken(result.data) : result.data,
+          invitation: readOnlyPeek ? invitationWithoutToken(carrierInvitation(result.data)) : carrierInvitation(result.data),
           live_board: readOnlyPeek ? { ...liveBoard, current_invitation_token: undefined } : liveBoard,
           current_book_row: readOnlyPeek && currentRow ? invitationWithoutToken(currentRow) : currentRow,
           ...(!readOnlyPeek && body.include_history === true ? { bid_history: bidHistory } : {})
@@ -4936,7 +4966,7 @@ Deno.serve(async (request) => {
               awarded_at,
               rate_staging_id,
               rateware_closeout_at,
-              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
+              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,operation_start_date,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
               rfx_lanes(*)
             `)
             .eq("vendor_id", result.data.vendor_id)
@@ -4989,7 +5019,8 @@ Deno.serve(async (request) => {
               carrier_requirements,
               other_notes,
               notes,
-              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package)
+              no_award_at,
+              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,operation_start_date,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package)
             `)
             .eq("rfx_events.owner_email", ownerEmail)
             .eq("rfx_events.status", "open")
@@ -5009,7 +5040,7 @@ Deno.serve(async (request) => {
       const book = carrierBusinessBook(result.data, hydratedInvitedRows, openLanesResult.data || []);
       const liveBoard = liveBoardFromRows(result.data, peersResult.data || []);
       const response = jsonResponse({
-        invitation: readOnlyPeek ? invitationWithoutToken(result.data) : result.data,
+        invitation: readOnlyPeek ? invitationWithoutToken(carrierInvitation(result.data)) : carrierInvitation(result.data),
         live_board: readOnlyPeek ? { ...liveBoard, current_invitation_token: undefined } : liveBoard,
         carrier_book: readOnlyPeek ? { ...book, invited: book.invited.map(invitationWithoutToken),
           quoted: book.quoted.map(invitationWithoutToken) } : book,

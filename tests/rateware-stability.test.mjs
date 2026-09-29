@@ -2168,6 +2168,12 @@ assert.match(apiSource, /Agendar una llamada: mailto:sales@heymarksman\.com/, "S
 assert.match(apiSource, /es \? "Adjudicación" : "Award"/, "Award notice subjects should speak the notice language");
 assert.doesNotMatch(apiSource, /decision de adjudicacion|actualizacion corresponde|Fecha limite/, "Spanish award notices should carry their accents");
 assert.match(apiSource, /body\.action === "set_rfx_lane_no_award"/, "An Administrador should be able to declare an RFx lane void");
+assert.match(rfxBidApiSource, /function hiddenVoidLane/, "A void lane should stay out of the carrier's book while its event takes bids");
+assert.match(rfxBidApiSource, /\.filter\(\(lane\) => !cleanText\(lane\.no_award_at\)\)/, "The public board should never show a void lane");
+assert.match(rfxBidApiSource, /invitation: readOnlyPeek \? invitationWithoutToken\(carrierInvitation\(result\.data\)\) : carrierInvitation\(result\.data\)/, "The carrier's own lane should arrive without the internal void reason");
+assert.match(rfxBidApiSource, /Esta ruta se cerró sin adjudicar; ya no recibe ofertas/, "A void lane should refuse new offers");
+assert.match(rfxBidApiSource, /operation_start_date: row\.operation_start_date \?\? null/, "Carriers should see the event's operation start date");
+assert.match(apiSource, /operation_start_date: cleanDate\(input\.operation_start_date\)/, "An event should keep its operation start date");
 assert.match(apiSource, /no_award_at\)\) \{\s*throw Object\.assign\(new Error\("Este lane está declarado desierto/, "A void lane should never be awarded");
 assert.match(apiSource, /if \(cleanText\(relationRecord\(invitation\.rfx_lanes\)\.no_award_at\)\) return \{ key: "no_award"/, "Award notices should say a void lane was not awarded to anyone");
 assert.match(apiSource, /rfx\.award\.notices\.generate/, "API should audit RFx award notice generation");

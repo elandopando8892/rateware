@@ -10024,6 +10024,8 @@ function normalizeRfxEvent(input: Record<string, unknown>) {
     status: ["draft", "open", "closed", "awarded", "archived"].includes(status) ? status : "draft",
     bid_visibility_mode: ["private", "anonymous_rank", "open_leaderboard"].includes(bidVisibilityMode) ? bidVisibilityMode : "anonymous_rank",
     due_date: cleanDate(input.due_date || input.deadline),
+    // When the operation is expected to start (arranque estimado); carriers see it.
+    operation_start_date: cleanDate(input.operation_start_date),
     notes: cleanText(input.notes || input.description),
     updated_at: new Date().toISOString()
   };
@@ -10053,6 +10055,7 @@ function normalizeRfxEventPatch(input: Record<string, unknown>) {
     }
   }
   if (input.due_date !== undefined || input.deadline !== undefined) patch.due_date = cleanDate(input.due_date || input.deadline);
+  if (input.operation_start_date !== undefined) patch.operation_start_date = cleanDate(input.operation_start_date);
   if (input.notes !== undefined || input.description !== undefined) patch.notes = cleanText(input.notes || input.description);
   patch.updated_at = new Date().toISOString();
   return patch;
