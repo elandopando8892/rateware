@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 
 assert.equal(process.env.GITHUB_ACTIONS, 'true', 'Isolated CI runner required');
 assert.equal(process.env.RFX_PEEK_LOCAL_ONLY, '1', 'Local-only gate required');
 const sourceContainer = 'supabase_db_alqjqzqagdmcywpjtnnr';
+const sourceDirectory = process.cwd();
 const directory = mkdtempSync(join(tmpdir(), 'loads-schema-'));
 const targetContainer = `supabase_db_${basename(directory)}`;
 const run = (command, args, options = {}) => {
@@ -70,7 +71,22 @@ try {
     has_table_privilege('service_role','public.outreach_messages','SELECT'),
     has_table_privilege('anon','public.rfx_lane_vendors','SELECT'),
     has_table_privilege('anon','public.outreach_messages','SELECT');`), 't|t|f|f');
-  console.log('PASS: separate local Supabase instance; public schema empty; private-book grants preserved.');
+  // Exercise the actual function against the restored, initially empty schema.
+  // Copy only function source and the existing synthetic harness into the
+  // disposable target; no migrations or historical contact rows are copied.
+  mkdirSync(join(directory, 'supabase', 'functions'), { recursive: true });
+  cpSync(join(sourceDirectory, 'supabase', 'functions', 'rfx-bid-api'),
+    join(directory, 'supabase', 'functions', 'rfx-bid-api'), { recursive: true });
+  cpSync(join(sourceDirectory, 'supabase', 'functions', '_shared'),
+    join(directory, 'supabase', 'functions', '_shared'), { recursive: true });
+  mkdirSync(join(directory, 'tools'), { recursive: true });
+  cpSync(join(sourceDirectory, 'tools', 'test-rfx-bid-peek-local.mjs'),
+    join(directory, 'tools', 'test-rfx-bid-peek-local.mjs'));
+  run('node', ['tools/test-rfx-bid-peek-local.mjs'], {
+    cwd: directory,
+    env: { ...process.env, RFX_PEEK_DB_CONTAINER: targetContainer },
+  });
+  console.log('PASS: separate local Supabase instance; initially empty public schema; private-book grants and synthetic function flow verified.');
 } finally {
   if (targetStarted) run('supabase', ['stop', '--no-backup'], { cwd: directory });
   rmSync(directory, { recursive: true, force: true });

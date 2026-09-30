@@ -29,3 +29,9 @@ The second-database-in-one-stack attempt failed on platform ownership and extens
 GitHub Actions run [36670033506](https://github.com/elandopando8892/rateware/actions/runs/36670033506) passed both independent jobs: schema-only restore and private invitation integration. The restore job checked that every `public` table was empty and that the private-book `service_role` reads were allowed while `anon` reads were denied. Both local instances were stopped and removed. This is infrastructure and API evidence, not hosted Preview or Google-session acceptance.
 
 The next hosted step needs a reviewed method to initialize the temporary branch without replaying historical contact imports, plus exact cleanup of that paid branch. Do not assume Supabase's automatic branch creation meets that requirement: the first branch stopped after 29 migrations. No schema export was published to a hosted project in this increment.
+
+## Next gate: function on the restored database
+
+The schema-only CI job now copies only the reviewed Edge Function and synthetic test harness into its second disposable Supabase stack. It runs the same sent-only, vendor-isolation, re-invite, archive, closed-event and no-write checks against the restored database, after confirming that every business table was initially empty. This is a local integration rehearsal; it still does not prove a hosted branch can skip automatic migration replay, Google OAuth works on a new Auth origin, or a carrier can open the private book in Loads.
+
+Do not create a second paid branch while Rateware main reports `MIGRATIONS_FAILED` and the provider's branch creation path replays historical migrations. A hosted Preview needs an explicitly reviewed initialization mechanism that does not replay contact INSERTs, plus an exact cost and deletion path. Production private-book flags remain off.

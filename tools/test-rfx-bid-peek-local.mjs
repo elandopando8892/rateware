@@ -15,6 +15,8 @@ const serviceKey = status.SERVICE_ROLE_KEY || status.service_role_key;
 assert.ok(apiUrl && serviceKey, 'Local Supabase API URL and service-role key are required');
 const parsedUrl = new URL(apiUrl);
 assert.ok(['127.0.0.1', 'localhost'].includes(parsedUrl.hostname), 'Refusing a non-loopback Supabase URL');
+const dbContainer = process.env.RFX_PEEK_DB_CONTAINER || 'supabase_db_alqjqzqagdmcywpjtnnr';
+assert.match(dbContainer, /^supabase_db_[a-zA-Z0-9_-]+$/, 'Expected an isolated local Supabase database container');
 const functionUrl = new URL('/functions/v1/rfx-bid-api', apiUrl);
 const runId = randomUUID();
 const ids = {
@@ -87,7 +89,7 @@ try {
 
   // Vendor CRM intentionally does not grant service_role INSERT in a clean replay.
   // Seed fixtures as the ephemeral database administrator, not via an app grant.
-  execFileSync('docker', ['exec', 'supabase_db_alqjqzqagdmcywpjtnnr', 'psql', '-U', 'postgres', '-d', 'postgres', '-c',
+  execFileSync('docker', ['exec', dbContainer, 'psql', '-U', 'postgres', '-d', 'postgres', '-c',
     `insert into public.vendors (id,vendor_name,domain,primary_email) values
      ('${ids.vendorA}','CI Carrier A ${runId}','carrier-a.example.invalid','a@example.invalid'),
      ('${ids.vendorB}','CI Carrier B ${runId}','carrier-b.example.invalid','b@example.invalid')`], { stdio: 'pipe' });
@@ -115,7 +117,7 @@ try {
   ] });
   // An authorized invitation is not a delivered one. Only these three
   // synthetic messages have a confirmed send in the isolated CI database.
-  execFileSync('docker', ['exec', 'supabase_db_alqjqzqagdmcywpjtnnr', 'psql', '-U', 'postgres', '-d', 'postgres', '-c',
+  execFileSync('docker', ['exec', dbContainer, 'psql', '-U', 'postgres', '-d', 'postgres', '-c',
     `insert into public.outreach_campaigns (id,owner_email,rfx_event_id,name,status) values
      ('${ids.campaign}','owner@example.invalid','${ids.event}','Synthetic CI send','sent');
      insert into public.outreach_messages (campaign_id,owner_email,rfx_event_id,rfx_lane_vendor_id,status,sent_at)
@@ -174,7 +176,7 @@ try {
     body: { invitation_status: 'invited', invited_at: new Date(Date.now() + 60_000).toISOString() } });
   assert.equal((await peek(tokens.a)).status, 404, 'An old send must not authorize a later re-invite');
   assert.equal((await peek(tokens.b)).status, 200, 'A second carrier must remain unaffected');
-  execFileSync('docker', ['exec', 'supabase_db_alqjqzqagdmcywpjtnnr', 'psql', '-U', 'postgres', '-d', 'postgres', '-c',
+  execFileSync('docker', ['exec', dbContainer, 'psql', '-U', 'postgres', '-d', 'postgres', '-c',
     `insert into public.outreach_messages (campaign_id,owner_email,rfx_event_id,rfx_lane_vendor_id,status,sent_at)
      values ('${ids.campaign}','owner@example.invalid','${ids.event}','${ids.invitationA}','sent',now() + interval '2 minutes');`], { stdio: 'pipe' });
   assert.equal((await peek(tokens.a)).status, 200, 'A new recorded send must restore access after re-invite');
