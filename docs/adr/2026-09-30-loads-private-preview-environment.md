@@ -14,7 +14,7 @@ Un carrier con Google y una invitacion de Bidware realmente enviada ve solo sus 
 - La primera rama temporal de Rateware termino `MIGRATIONS_FAILED` antes de crear las tablas de RFx/outreach y ya fue eliminada. La rama principal y la rama de Demand Radar siguen reportando ese mismo estado, aunque el proyecto principal esta `ACTIVE_HEALTHY`.
 - La lista remota contiene 593 migraciones aplicadas. El repositorio contiene migraciones con `INSERT` de contactos reales. Una rama `with_data=false` no evita que el propio SQL de una migracion inserte esos registros.
 - Segun la [documentacion de Supabase sobre ramas desde el panel](https://supabase.com/docs/guides/deployment/branching/dashboard), si main tiene historial de migraciones, una nueva rama se crea desde ese historial y no desde un volcado de esquema. [Su guia de diagnostico](https://supabase.com/docs/guides/troubleshooting/branch-in-migrations-failed-status) explica el estado parcialmente migrado. Por ello repetir la creacion de la misma rama no es una solucion segura.
-- El ensayo [CI 36670740141](https://github.com/elandopando8892/rateware/actions/runs/36670740141) restauro solo definiciones de `public` en una segunda instancia local desechable y ejecuto la Edge Function con datos sinteticos. Eso no es una prueba alojada ni de Google OAuth.
+- El ensayo [CI 36671655772](https://github.com/elandopando8892/rateware/actions/runs/36671655772) restauro solo definiciones de `public` en una segunda instancia local desechable, retiro acceso directo de los roles `anon` y `authenticated` a tablas y rutinas, y ejecuto la Edge Function con datos sinteticos. Ambos jobs pasaron. Eso no es una prueba alojada ni de Google OAuth.
 
 ## Opciones
 
@@ -28,6 +28,8 @@ Un carrier con Google y una invitacion de Bidware realmente enviada ve solo sus 
 ## Decision propuesta y limites
 
 Preparar un proyecto Supabase temporal **independiente**, sin GitHub branching ni datos de Rateware. Antes de crearlo se solicita la cotizacion del proveedor para la organizacion confirmada y se obtiene aprobacion especifica del costo. La aprobacion previa del costo de una *rama* no equivale a aprobar un *proyecto*.
+
+La organizacion `lfwjwlwdcjumomhwupba` fue confirmada para cotizar, no para crear. El conector indico `0` por mes para un proyecto nuevo, sin especificar moneda ni otros posibles consumos. La aprobacion explicita de esa cotizacion y de la creacion sigue pendiente.
 
 1. Revisar el volcado de definiciones antes de alojarlo: funciones, defaults, grants, extensiones y literales incrustados. Aplicarlo solamente al ref nuevo; no marcar las migraciones historicas como ejecutadas ni editar el historial de main.
 2. Retirar en el proyecto temporal el acceso directo `anon` y `authenticated` a tablas, secuencias y rutinas de `public`; conservar el acceso de servidor estrictamente necesario. El CI debe demostrar ese cierre y que `peek_invitation` continua funcionando con dos vendors sinteticos.
