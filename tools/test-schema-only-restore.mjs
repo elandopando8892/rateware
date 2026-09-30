@@ -11,7 +11,9 @@ const docker = (args, input) => execFileSync('docker', ['exec', '-i', container,
   input, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
   stdio: ['pipe', 'pipe', 'pipe'],
 });
-const sql = (db, query) => docker(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', db, '-At'], query);
+// Platform objects retain their owners; the local platform administrator is
+// required to restore those owners without changing grants or granting roles.
+const sql = (db, query) => docker(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'supabase_admin', '-d', db, '-At'], query);
 let created = false;
 try {
   // All platform schemas are included to preserve cross-schema dependencies.
