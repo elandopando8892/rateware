@@ -21829,8 +21829,22 @@ const RFX_PROCESS_OPPORTUNITY_TYPES = new Set([
   "dedicated",
   "spot",
   "contract",
+  // A long, many-lane RFx, told apart from a mini-bid ("contract") since 2026-09-30.
+  "program",
   "backup"
 ]);
+
+/**
+ * The Bid Room event a request becomes: a program is an "RFx · Programa"
+ * event, a mini-bid ("contract") a "Mini-bid" one, a spot a spot; the other
+ * sourcing purposes stay RFx events as before.
+ */
+function rfxEventTypeForProject(project: Record<string, unknown>) {
+  const type = cleanText(project.opportunity_type)?.toLowerCase();
+  if (type === "spot") return "spot";
+  if (type === "contract") return "bid";
+  return "rfx";
+}
 
 const RFX_PROCESS_SEGMENTS = new Set(["expedited", "time_critical", "crossborder", "local", "regional", "national"]);
 
@@ -22404,8 +22418,12 @@ function rfxProjectStatusForEvent(event: Record<string, unknown>) {
   return "draft";
 }
 
+/** The other way round: the request type of the project an event opens. */
 function rfxOpportunityTypeForEvent(event: Record<string, unknown>) {
-  return cleanText(event.event_type)?.toLowerCase() === "spot" ? "spot" : "contract";
+  const type = cleanText(event.event_type)?.toLowerCase();
+  if (type === "spot") return "spot";
+  if (type === "rfx") return "program";
+  return "contract";
 }
 
 function ratebookSourceTypeForEvent(event: Record<string, unknown>) {
@@ -23463,7 +23481,7 @@ async function launchRfxProcessPackageToBidRoom(supabase: RatewareSupabaseClient
       customer: project.customer_name,
       // The CRM Shipper, not only its name: Shipper Ratebooks consolidate on this key.
       customer_id: project.customer_id,
-      event_type: "rfx",
+      event_type: rfxEventTypeForProject(project),
       status: cleanText(input.open_now || input.status) === "open" || cleanOptionalBoolean(input.open_now) === true ? "open" : "draft",
       due_date: input.due_date || pack.bid_due_at || project.due_date,
       notes: `Launched from RFx Process package ${pack.name || pack.id}. Target buy rates remain internal in RFx Package guidance.`
