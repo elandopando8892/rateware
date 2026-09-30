@@ -36,9 +36,11 @@ jobs:
             "select has_table_privilege('service_role','public.rfx_events','SELECT'),
                     has_table_privilege('service_role','public.rfx_lanes','SELECT'),
                     has_table_privilege('service_role','public.rfx_lane_vendors','SELECT'),
+                    has_table_privilege('service_role','public.outreach_messages','SELECT'),
                     has_table_privilege('service_role','public.vendors','UPDATE'),
-                    has_table_privilege('anon','public.rfx_lane_vendors','SELECT')")"
-          test "$grants" = 't|t|t|t|f'
+                    has_table_privilege('anon','public.rfx_lane_vendors','SELECT'),
+                    has_table_privilege('anon','public.outreach_messages','SELECT')")"
+          test "$grants" = 't|t|t|t|t|f|f'
           echo 'Server-side RFx reads PASS; browser role denied.'
 
       - name: Exercise real Edge function and local database
