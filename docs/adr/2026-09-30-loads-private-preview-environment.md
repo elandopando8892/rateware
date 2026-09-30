@@ -1,6 +1,6 @@
 # ADR: Entorno temporal aislado para validar el libro privado en Loads
 
-**Estado:** Propuesto; sujeto a costo y aprobacion del propietario
+**Estado:** Proyecto temporal creado; esquema, funcion y Auth pendientes
 **Fecha:** 2026-09-30
 **Decisor:** sales@heymarksman.com
 
@@ -29,12 +29,12 @@ Un carrier con Google y una invitacion de Bidware realmente enviada ve solo sus 
 
 Preparar un proyecto Supabase temporal **independiente**, sin GitHub branching ni datos de Rateware. Antes de crearlo se solicita la cotizacion del proveedor para la organizacion confirmada y se obtiene aprobacion especifica del costo. La aprobacion previa del costo de una *rama* no equivale a aprobar un *proyecto*.
 
-La organizacion `lfwjwlwdcjumomhwupba` fue confirmada para cotizar, no para crear. El conector indico `0` por mes para un proyecto nuevo, sin especificar moneda ni otros posibles consumos. La aprobacion explicita de esa cotizacion y de la creacion sigue pendiente.
+El propietario confirmo la organizacion `lfwjwlwdcjumomhwupba` para cotizar y despues autorizo continuar tras la cotizacion. El conector indico `0` por mes para un proyecto nuevo, sin especificar moneda ni otros posibles consumos. El proyecto temporal `iegaganvuvcicynszxds` (`marksman-loads-private-book-preview-temporary`) se creo el 2026-09-30 a las 05:03:53 UTC en `us-east-1`. La lectura posterior confirmo `ACTIVE_HEALTHY`, cero tablas base en `public`, cero funciones y cero migraciones. No esta conectado a Loads ni se han sembrado identidades o invitaciones.
 
 1. Revisar el volcado de definiciones antes de alojarlo: funciones, defaults, grants, extensiones y literales incrustados. Aplicarlo solamente al ref nuevo; no marcar las migraciones historicas como ejecutadas ni editar el historial de main.
 2. Retirar en el proyecto temporal el acceso directo `anon` y `authenticated` a tablas, secuencias y rutinas de `public`; conservar el acceso de servidor estrictamente necesario. El CI debe demostrar ese cierre y que `peek_invitation` continua funcionando con dos vendors sinteticos.
 3. Cargar solo IDs generados y contactos `.invalid`; verificar filas vacias antes de sembrar. No copiar usuarios, tokens, contactos, propuestas ni clientes productivos.
-4. Desplegar una funcion de lectura y conectar un Preview protegido de Loads. El Auth de ese Preview y la fuente deben pertenecer al **mismo ref**. Configurar Google y callbacks especificos del Preview; no relajar la comprobacion de origen de Loads.
+4. Antes de desplegar, configurar `RFX_PEEK_PREVIEW_READ_ONLY=1` y verificarlo en el proyecto temporal. Este modo debe negar toda accion distinta de `peek_invitation` antes de construir el cliente service-role. Desplegar la funcion solo despues de comprobar esquema, grants y modo de lectura. Conectar un Preview protegido de Loads. El Auth de ese Preview y la fuente deben pertenecer al **mismo ref**. Configurar Google y callbacks especificos del Preview; no relajar la comprobacion de origen de Loads.
 5. Ensayar invitacion enviada, no enviada, vendor correcto/distinto, expiracion, revocacion, ausencia de tokens en respuestas y ausencia de cambios en `viewed_at`/`updated_at`. Una prueba con identidades sinteticas no sustituye la aceptacion con un carrier real.
 6. Mantener los flags comerciales y productivos apagados. Registrar ID exacto del proyecto, despliegue de Vercel, variables temporales, hora de inicio y costo; retirar solo esos recursos y verificar ausencia al terminar.
 

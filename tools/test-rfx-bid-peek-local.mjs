@@ -76,7 +76,7 @@ async function invitationSnapshot(id) {
 
 try {
   await writeFile(envPath,
-    `RATEWARE_SUPABASE_SERVICE_ROLE_KEY=${serviceKey}\nRFX_INVITATION_TOKEN_ENCRYPTION_KEY=${randomUUID()}\n`,
+    `RATEWARE_SUPABASE_SERVICE_ROLE_KEY=${serviceKey}\nRFX_INVITATION_TOKEN_ENCRYPTION_KEY=${randomUUID()}\nRFX_PEEK_PREVIEW_READ_ONLY=1\n`,
     { mode: 0o600 });
   serve = spawn('supabase', ['functions', 'serve', '--no-verify-jwt', '--env-file', envPath], {
     stdio: ['ignore', 'pipe', 'pipe']
@@ -127,6 +127,14 @@ try {
 
   const beforeA = await invitationSnapshot(ids.invitationA);
   const beforeB = await invitationSnapshot(ids.invitationB);
+  for (const action of ['get_invitation', 'submit_bid', 'public_bid_room_request_invite']) {
+    const response = await fetch(functionUrl, {
+      method: 'POST', headers, body: JSON.stringify({ action, token: tokens.a })
+    });
+    assert.equal(response.status, 403, `${action} must be disabled in the disposable preview`);
+    assert.match(response.headers.get('cache-control') || '', /no-store/);
+  }
+  assert.deepEqual(await invitationSnapshot(ids.invitationA), beforeA, 'Denied preview actions must not mutate an invitation');
   for (const [token, ownId, otherId] of [[tokens.a, ids.invitationA, ids.invitationB], [tokens.b, ids.invitationB, ids.invitationA]]) {
     const result = await peek(token);
     assert.equal(result.status, 200, `Expected private-book response: ${JSON.stringify(result.body)}`);
