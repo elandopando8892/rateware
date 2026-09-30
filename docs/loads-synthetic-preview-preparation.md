@@ -21,3 +21,9 @@ The deleted disposable Preview stopped before the RFx/outreach tables existed. F
 ## This increment
 
 Added an explicit closed-event negative test and rejected-read audit checks to `tools/test-rfx-bid-peek-local.mjs`. Extended the source unit test for closed-event refusal and absence of private rows/tokens. Local Deno unit test passed; integration harness syntax check passed. The extended integration scenario has not run against a database yet. No functional source code, cloud configuration, production data or paid resources changed.
+
+## Executed restore rehearsal — 2026-09-30
+
+The schema-only restore probe was implemented and executed in GitHub Actions, not a paid Supabase Preview. First run 36668155522 exposed a platform ownership requirement. Run 36668372772 used the isolated platform administrator and then failed because a platform extension can only be created in database `postgres`. The cleanup step ran; no hosted resource was created.
+
+Decision: the second-database-in-the-same-stack approach is NOT validated. Do not keep patching away ownership or extension errors or omit security objects to obtain a green check. The next architecture must use a separate disposable Supabase stack with its own `postgres` database and compatible platform extensions. The probe remains a failing, explicit preflight gate; private-book integration steps after it were skipped and must not be reported as passing for these commits. No schema export was published or installed in Preview.
