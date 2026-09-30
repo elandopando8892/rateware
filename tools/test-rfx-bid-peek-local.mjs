@@ -18,10 +18,10 @@ assert.ok(['127.0.0.1', 'localhost'].includes(parsedUrl.hostname), 'Refusing a n
 const functionUrl = new URL('/functions/v1/rfx-bid-api', apiUrl);
 const runId = randomUUID();
 const ids = {
-  vendorA: randomUUID(), vendorB: randomUUID(), event: randomUUID(), lane: randomUUID(), laneB: randomUUID(),
-  invitationA: randomUUID(), invitationB: randomUUID(), invitationB2: randomUUID()
+  vendorA: randomUUID(), vendorB: randomUUID(), event: randomUUID(), campaign: randomUUID(), lane: randomUUID(), laneB: randomUUID(), laneDraft: randomUUID(), laneAuthorized: randomUUID(),
+  invitationA: randomUUID(), invitationB: randomUUID(), invitationB2: randomUUID(), invitationDraft: randomUUID(), invitationAuthorized: randomUUID()
 };
-const tokens = { a: `ci-peek-a-${runId}`, b: `ci-peek-b-${runId}` };
+const tokens = { a: `ci-peek-a-${runId}`, b: `ci-peek-b-${runId}`, draft: `ci-peek-draft-${runId}`, authorized: `ci-peek-authorized-${runId}` };
 const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
 const tempDir = await mkdtemp(join(tmpdir(), 'rateware-peek-'));
 const envPath = join(tempDir, 'edge.env');
@@ -100,13 +100,28 @@ try {
     { id: ids.lane, rfx_event_id: ids.event, lane_number: 1,
       origin: 'Synthetic origin', destination: 'Synthetic destination', equipment: 'Dry Van' },
     { id: ids.laneB, rfx_event_id: ids.event, lane_number: 2,
-      origin: 'B-only origin', destination: 'B-only destination', equipment: 'Reefer' }
+      origin: 'B-only origin', destination: 'B-only destination', equipment: 'Reefer' },
+    { id: ids.laneDraft, rfx_event_id: ids.event, lane_number: 3,
+      origin: 'Unsent origin', destination: 'Unsent destination', equipment: 'Flatbed' },
+    { id: ids.laneAuthorized, rfx_event_id: ids.event, lane_number: 4,
+      origin: 'Authorized origin', destination: 'Authorized destination', equipment: 'Flatbed' }
   ] });
   await rest('rfx_lane_vendors', { method: 'POST', body: [
     { id: ids.invitationA, rfx_event_id: ids.event, rfx_lane_id: ids.lane, vendor_id: ids.vendorA, invitation_status: 'invited', invitation_token: tokens.a },
     { id: ids.invitationB, rfx_event_id: ids.event, rfx_lane_id: ids.lane, vendor_id: ids.vendorB, invitation_status: 'invited', invitation_token: tokens.b },
-    { id: ids.invitationB2, rfx_event_id: ids.event, rfx_lane_id: ids.laneB, vendor_id: ids.vendorB, invitation_status: 'invited', invitation_token: `ci-peek-b2-${runId}` }
+    { id: ids.invitationB2, rfx_event_id: ids.event, rfx_lane_id: ids.laneB, vendor_id: ids.vendorB, invitation_status: 'invited', invitation_token: `ci-peek-b2-${runId}` },
+    { id: ids.invitationDraft, rfx_event_id: ids.event, rfx_lane_id: ids.laneDraft, vendor_id: ids.vendorA, invitation_status: 'drafted', invitation_token: tokens.draft },
+    { id: ids.invitationAuthorized, rfx_event_id: ids.event, rfx_lane_id: ids.laneAuthorized, vendor_id: ids.vendorA, invitation_status: 'invited', invitation_token: tokens.authorized }
   ] });
+  // An authorized invitation is not a delivered one. Only these three
+  // synthetic messages have a confirmed send in the isolated CI database.
+  execFileSync('docker', ['exec', 'supabase_db_alqjqzqagdmcywpjtnnr', 'psql', '-U', 'postgres', '-d', 'postgres', '-c',
+    `insert into public.outreach_campaigns (id,owner_email,rfx_event_id,name,status) values
+     ('${ids.campaign}','owner@example.invalid','${ids.event}','Synthetic CI send','sent');
+     insert into public.outreach_messages (campaign_id,owner_email,rfx_event_id,rfx_lane_vendor_id,status,sent_at)
+     values ('${ids.campaign}','owner@example.invalid','${ids.event}','${ids.invitationA}','sent',now()),
+            ('${ids.campaign}','owner@example.invalid','${ids.event}','${ids.invitationB}','sent',now()),
+            ('${ids.campaign}','owner@example.invalid','${ids.event}','${ids.invitationB2}','sent',now());`], { stdio: 'pipe' });
 
   const beforeA = await invitationSnapshot(ids.invitationA);
   const beforeB = await invitationSnapshot(ids.invitationB);
@@ -118,10 +133,13 @@ try {
     assert.equal(result.body.invitation.vendor_id, ownId === ids.invitationA ? ids.vendorA : ids.vendorB);
     assert.equal(result.body.invitation.rfx_events?.id, ids.event);
     assert.equal(result.body.invitation.rfx_lanes?.id, ids.lane);
+    assert.equal(result.body.delivery_evidence?.contractVersion, 'rateware-private-book-sent.v1');
     assert.ok(result.body.invitation.vendors?.vendor_name, 'Loads needs the carrier name');
     assert.ok(Array.isArray(result.body.carrier_book?.invited));
     assert.ok(result.body.carrier_book.invited.some((row) => row.invitation_id === ownId));
     assert.ok(result.body.carrier_book.invited.every((row) => row.invitation_id !== otherId));
+    assert.ok(result.body.carrier_book.invited.every((row) => row.invitation_id !== ids.invitationDraft), 'Unsent draft must remain private to procurement');
+    assert.ok(result.body.carrier_book.invited.every((row) => row.invitation_id !== ids.invitationAuthorized), 'Authorization without a sent message must remain private to procurement');
     for (const row of result.body.carrier_book.invited) {
       assert.equal(row.is_invited, true);
       assert.equal(row.rfx_event_id, row.event?.id);
@@ -146,13 +164,15 @@ try {
   }
   assert.deepEqual(await invitationSnapshot(ids.invitationA), beforeA, 'Carrier A read must not mutate invitation');
   assert.deepEqual(await invitationSnapshot(ids.invitationB), beforeB, 'Carrier B read must not mutate invitation');
+  assert.equal((await peek(tokens.draft)).status, 404, 'An unsent token is not a carrier invitation');
+  assert.equal((await peek(tokens.authorized)).status, 404, 'An authorized but undelivered token is not a carrier invitation');
   assert.equal((await peek(`ci-peek-unknown-${runId}`)).status, 404);
 
   // Archive only the synthetic fixture; this checks server-side exclusion after revocation.
   await rest('rfx_lane_vendors', { method: 'PATCH', query: `?id=eq.${ids.invitationA}`, body: { invitation_status: 'archived' } });
   assert.equal((await peek(tokens.a)).status, 404);
   assert.equal((await peek(tokens.b)).status, 200);
-  console.log('PASS: isolated local private-book peek, tenant separation, read-only state, invalid and archived tokens.');
+  console.log('PASS: isolated local private-book peek, sent-only visibility, tenant separation, read-only state, invalid and archived tokens.');
 } finally {
   if (serve?.exitCode === null) serve.kill('SIGTERM');
   await rm(tempDir, { recursive: true, force: true });
