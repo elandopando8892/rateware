@@ -10,16 +10,16 @@ const OTHER = "00000000-0000-4000-8000-000000000002";
 const COLUMNS = "rfx_lane_vendor_id,vendor_id,segment_key,rubric_key,answer,comment,updated_at";
 
 async function read(eventId: unknown, options: { role?: string; count?: number; fail?: boolean; unauthenticated?: boolean } = {}) {
-  const calls: { table: string; columns?: string; filters: Record<string, unknown>; ranges: number[][] }[] = [];
+  const calls: { table: string; columns?: string; filters: Record<string, unknown>; ranges: number[][]; orders: [string, boolean][] }[] = [];
   const client = {
     from(table: string) {
-      const call = { table, columns: "", filters: {} as Record<string, unknown>, ranges: [] as number[][] };
+      const call = { table, columns: "", filters: {} as Record<string, unknown>, ranges: [] as number[][], orders: [] as [string, boolean][] };
       calls.push(call);
       let start = 0, end = 999;
       const chain = {
         select(columns: string) { call.columns = columns; return chain; },
         eq(column: string, value: unknown) { call.filters[column] = value; return chain; },
-        order() { return chain; },
+        order(column: string, options: { ascending: boolean }) { call.orders.push([column, options.ascending]); return chain; },
         single() { return chain; },
         range(from: number, to: number) { start = from; end = to; call.ranges.push([from, to]); return chain; },
         then(resolve: (value: unknown) => void) {
@@ -63,6 +63,7 @@ for (const role of ["viewer", "operator", "admin"]) Deno.test(`${role} lee los s
   assertEquals(result.body.rows.length, 1);
   assertEquals(Object.keys(result.body.rows[0]), COLUMNS.split(","));
   assertEquals(result.calls[0].filters.owner_email, "org:team-a", "No acepta owner_email del body");
+  assertEquals(result.calls.find(c => c.table === "rfx_segment_confirmations")?.orders, [["updated_at", false], ["id", true]]);
 });
 
 Deno.test("rechaza otro workspace antes de consultar confirmaciones", async () => {

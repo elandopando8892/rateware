@@ -33380,6 +33380,7 @@ export function createRatewareApiHandler(
 
       const categoryMaps: Record<string, Map<string, { value: string; source: string }>> = {};
       const catalogData = catalogRows
+        .filter((item) => item.active === true)
         .filter((item) => managedOptionCategories.has(String(item.category)))
         .filter((item) => isManualCatalogOwnedBy(item, user));
       for (const item of catalogData) {
