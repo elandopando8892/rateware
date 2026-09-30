@@ -79,6 +79,19 @@ jobs:
           RFX_PEEK_LOCAL_ONLY: "1"
         run: node tools/test-rfx-peek-preview-schema.mjs
 
+      - name: Export data-free six-table Preview schema
+        env:
+          RFX_PEEK_SCHEMA_EXPORT_ONLY: "1"
+        run: node tools/build-rfx-peek-preview-schema.mjs supabase_db_alqjqzqagdmcywpjtnnr "$RUNNER_TEMP/loads-private-preview-schema.sql"
+
+      - name: Retain short-lived schema-only artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: loads-private-preview-schema
+          path: ${{ runner.temp }}/loads-private-preview-schema.sql
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Restore schema in separate empty local stack
         env:
           RFX_PEEK_LOCAL_ONLY: "1"
