@@ -50,6 +50,11 @@ Deno.test("a void lane stays out of the carrier's room and the board, keeps its 
       if (method !== "GET") throw new Error(`unexpected database write: ${method} ${url.pathname}`);
       const headers = { "Content-Type": "application/json" };
       const reply = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers });
+      if (url.pathname.endsWith("/outreach_messages")) return reply([openRow, voidRow].map((row) => ({
+        id: `synthetic-receipt-${row.id}`, owner_email: event.owner_email, vendor_id: row.vendor_id,
+        rfx_event_id: row.rfx_event_id, rfx_lane_vendor_id: row.id, status: "sent", channel: "email",
+        provider: "gmail", provider_message_id: "synthetic-provider-void", sent_at: new Date(Date.now() - 60_000).toISOString(),
+      })));
       if (url.pathname.endsWith("/rfx_lane_vendors")) {
         if (url.searchParams.has("invitation_token_hash")) return reply([]);
         if (url.searchParams.has("invitation_token")) {

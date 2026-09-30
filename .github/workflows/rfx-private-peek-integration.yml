@@ -8,6 +8,10 @@ on:
       - "supabase/migrations/**"
       - "supabase/config.toml"
       - "tools/test-rfx-bid-peek-local.mjs"
+      - "tests/private-invitation-evidence.test.mjs"
+      - "tests/rfx-bid-peek.test.ts"
+      - "tests/rfx-bid-carrier-payload.test.ts"
+      - "tests/rfx-bid-void-lanes.test.ts"
       - ".github/workflows/rfx-private-peek-integration.yml"
   workflow_dispatch:
 
@@ -19,6 +23,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Check pure private-book evidence rules
+        run: node --test tests/private-invitation-evidence.test.mjs
 
       - name: Install Supabase CLI
         uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
@@ -37,8 +44,10 @@ jobs:
                     has_table_privilege('service_role','public.rfx_lanes','SELECT'),
                     has_table_privilege('service_role','public.rfx_lane_vendors','SELECT'),
                     has_table_privilege('service_role','public.vendors','UPDATE'),
-                    has_table_privilege('anon','public.rfx_lane_vendors','SELECT')")"
-          test "$grants" = 't|t|t|t|f'
+                    has_table_privilege('anon','public.rfx_lane_vendors','SELECT'),
+                    has_table_privilege('service_role','public.outreach_messages','SELECT'),
+                    has_table_privilege('anon','public.outreach_messages','SELECT')")"
+          test "$grants" = 't|t|t|t|f|t|f'
           echo 'Server-side RFx reads PASS; browser role denied.'
 
       - name: Exercise real Edge function and local database
