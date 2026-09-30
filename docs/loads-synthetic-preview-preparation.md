@@ -34,4 +34,6 @@ The next hosted step needs a reviewed method to initialize the temporary branch 
 
 The schema-only CI job now copies only the reviewed Edge Function and synthetic test harness into its second disposable Supabase stack. It runs the same sent-only, vendor-isolation, re-invite, archive, closed-event and no-write checks against the restored database, after confirming that every business table was initially empty. This is a local integration rehearsal; it still does not prove a hosted branch can skip automatic migration replay, Google OAuth works on a new Auth origin, or a carrier can open the private book in Loads.
 
+GitHub Actions run [36670740141](https://github.com/elandopando8892/rateware/actions/runs/36670740141) passed both jobs, including the function flow on the separately restored database. The jobs used generated fixture IDs and `.invalid` contacts; they did not publish a hosted branch or import production rows into the restored target.
+
 Do not create a second paid branch while Rateware main reports `MIGRATIONS_FAILED` and the provider's branch creation path replays historical migrations. A hosted Preview needs an explicitly reviewed initialization mechanism that does not replay contact INSERTs, plus an exact cost and deletion path. Production private-book flags remain off.
