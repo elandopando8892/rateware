@@ -31,11 +31,6 @@ jobs:
           SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
         run: supabase start
 
-      - name: Rehearse schema-only restore without contact rows
-        env:
-          RFX_PEEK_LOCAL_ONLY: "1"
-        run: node tools/test-schema-only-restore.mjs
-
       - name: Gate service-role grants used by the private book
         run: |
           grants="$(docker exec supabase_db_alqjqzqagdmcywpjtnnr psql -U postgres -d postgres -Atc \
@@ -53,6 +48,12 @@ jobs:
         env:
           RFX_PEEK_LOCAL_ONLY: "1"
         run: node tools/test-rfx-bid-peek-local.mjs
+
+      - name: Rehearse schema-only restore in a separate local instance
+        env:
+          RFX_PEEK_LOCAL_ONLY: "1"
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
+        run: node tools/test-schema-only-restore.mjs
 
       - name: Stop isolated Supabase stack
         if: always()
