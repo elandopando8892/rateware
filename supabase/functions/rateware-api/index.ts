@@ -10758,7 +10758,9 @@ async function rejectRfxBid(
       mirror_account_enabled: false,
       availability_validation_status: "not_requested",
       availability_validation_notes: null,
-      notes: reason,
+      // The carrier reads these notes as its own; why procurement rejected the
+      // bid stays in the event history and the audit log below (2026-09-29).
+      notes: null,
       response_source: "manual_operator",
       responded_at: now,
       updated_at: now
