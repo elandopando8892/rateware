@@ -76,6 +76,9 @@ Local validation completed:
 - Deno: 13 tests PASS across peek HTTP contract, carrier payload privacy, void
   lanes, existing admin sent-at semantics and no-award contract regression.
 - JS syntax and `git diff --check`: PASS.
+- Full authorization validator: 449 discovered surfaces, zero errors; action
+  contract regression test PASS. One pre-existing missing WhatsApp-healthcheck
+  declaration warning remains, unrelated to this increment.
 - All HTTP tests intercept fetch; no live credentials, sends or production writes.
 
 Isolated database CI is required before review readiness. The workflow replays

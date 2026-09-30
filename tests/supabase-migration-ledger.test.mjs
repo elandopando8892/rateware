@@ -226,7 +226,7 @@ test("clean replay CI verifies pinned hashes, final ledger, and Provider Service
   assert.match(workflow, /run:\s+npm run test:migration-ledger/);
   assert.match(workflow, /tests\/supabase-migration-ledger\.test\.mjs/);
   assert.match(workflow, /count\(\*\).*max\(version\)/s);
-  assert.match(workflow, /402\|20260930005749/);
+  assert.match(workflow, /403\|20260930185000/);
   assert.match(workflow, /provider_legal_entity_fact_promotions/);
   assert.match(workflow, /provider_onboarding_readiness_evaluations/);
   assert.match(workflow, /provider_onboarding_readiness_results/);
@@ -244,4 +244,15 @@ test("Bid Room service-role grants survive a clean replay without browser grants
   }
   assert.match(migration, /grant update on table public\.vendors to service_role;/i);
   assert.doesNotMatch(migration, /\bgrant\b[^;]*\bto (anon|authenticated)\b/i);
+});
+
+test("private peek grants outreach SELECT only to the server, never writes or browser access", () => {
+  const migration = readFileSync(path.join(repoRoot, 'supabase', 'migrations',
+    '20260930185000_grant_private_peek_outreach_read.sql'), 'utf8');
+  const sql = migration.replace(/--[^\n]*/g, '').trim();
+  assert.equal(sql, 'grant select on table public.outreach_messages to service_role;');
+  const workflow = readFileSync(path.join(repoRoot, '.github', 'workflows', 'rfx-private-peek-integration.yml'), 'utf8');
+  assert.match(workflow, /has_table_privilege\('service_role','public\.outreach_messages','SELECT'\)/);
+  assert.match(workflow, /has_table_privilege\('anon','public\.outreach_messages','SELECT'\)/);
+  assert.match(workflow, /t\|t\|t\|t\|f\|t\|f/);
 });
