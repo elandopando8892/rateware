@@ -1,3 +1,4 @@
+import { RFX_SEGMENT_CONFIRMATIONS_ACTION_CONTRACT_EXTENSION as segmentConfirmationsExtension } from '../supabase/functions/_shared/action-contract-rfx-segment-confirmations.mjs';
 import { ACTION_CONTRACT as BASE_ACTION_CONTRACT } from '../supabase/functions/_shared/action-contract.mjs';
 import { CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-carrier-list-templates.mjs';
 import { PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-provider-service.mjs';
@@ -163,19 +164,20 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // 2026-09-30 (program): a request can be a "program"; a launched request
 // becomes the event its type names (program -> rfx, contract -> bid, spot ->
 // spot). Access is unchanged.
-// 2026-09-30: proyección Gmail saneada y sello de rebotes por owner/buzón;
-// preserva autorización existente y metadata concurrente.
+// 2026-09-30: confirmaciones por propietario, registro READS y metadata Gmail.
+// Gmail conserva permisos existentes y protege la mezcla concurrente de metadata.
+// team-roles también forma parte del contexto de interpret-upload y QuoteDesk.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': '47344307ceef4b051008850e8211fad1e395c7fd5830e3a3f011a10d5a36ccf3',
   'edge.gmail-oauth-callback.': '9cd3a3329bdb82d139b988dc7503fc3676b744157bd9a1063ce579fa4c8b178c',
   'edge.google-chat-app.': '0d81b2db1ca1d0442814d2e07264c967b1a1999a70be60bd1ed641fbe675475b',
-  'edge.interpret-upload.': '2667890f3b3fffc9b38f0e8cd2ff52346db10baa22df08d517259b23d76ce1c8',
+  'edge.interpret-upload.': '68d26fc231037927aceae166c7bbdab722fa282dd3637abbd09eaca7c9fa78c8',
   'edge.provider-gmail-intake-api.': '51f613ef43bb666a2bbe81fd09ab99af18315677a6210119bc105bafc7f5f9b6',
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': '3bd7e55d99dd1436849848b2b1a9c47c2c6c0367c17f7c338d983820103d003e',
+  'edge.rateware-api.': '7dc939bfa3345e2d5395567a73d86f8a6c712b0a6af28a47116989ad15e0bbd0',
   // Reviewed after merging the no-write invitation peek with the stricter
   // Google Chat conversation isolation in main. The peek now includes
   // same-vendor encrypted-token rows without decrypting or exposing tokens;
@@ -288,7 +290,7 @@ const carrierChatSourceFingerprintOverrides = {
   'edge.rfx-bid-api.post_bid_room_chat_message': '459d7a128900a4a7a0f43f14b34af543064304095b35970bc02a4bae905aad33',
 };
 
-const quotedeskAuthEnvelope = 'cd1073603c3af9c103faf96d3d0dfdd2757e2ccb463827b09b58fb2455c46375';
+const quotedeskAuthEnvelope = '3f8a12198596e5d5845e8548dc6e717841495b6b01ebedfd1ee1a6243910f9a2';
 
 const supabaseAuthMetadataOverrides = {
   'edge.google-chat-app.handle_chat_event': 'fd759bead6f0bfed76d9f70c962399ba7d815ef30f7a85491d68c4d5b088accf',
@@ -467,6 +469,7 @@ const brandedDomainAuthorizationOverrides = Object.fromEntries(
     ...rfxAtomicAwardExtension.surfaces,
     ...customerRfiLookupsExtension.surfaces,
     ...rfxLaneNoAwardExtension.surfaces,
+    ...segmentConfirmationsExtension.surfaces,
   ].flatMap((entry) => {
     const match = Object.entries(brandedDomainAuthorizationEnvelopes)
       .find(([prefix]) => entry.canonicalId.startsWith(prefix));
@@ -477,12 +480,12 @@ const brandedDomainAuthorizationOverrides = Object.fromEntries(
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
-  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award+website-intake+quotedesk+us-diesel+rfx-lane-no-award`,
+  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award+website-intake+quotedesk+us-diesel+rfx-lane-no-award+rfx-segment-confirmations`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + opsWatchExtension.expectedCountsDelta.governable + teamMembershipExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable + customerRfiLookupsExtension.expectedCountsDelta.governable + rfxLaneNoAwardExtension.expectedCountsDelta.governable + 1,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + opsWatchExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge + customerRfiLookupsExtension.expectedCountsDelta.edge + rfxLaneNoAwardExtension.expectedCountsDelta.edge + 1,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + opsWatchExtension.expectedCountsDelta.governable + teamMembershipExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable + customerRfiLookupsExtension.expectedCountsDelta.governable + segmentConfirmationsExtension.expectedCountsDelta.governable + rfxLaneNoAwardExtension.expectedCountsDelta.governable + 1,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + opsWatchExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge + customerRfiLookupsExtension.expectedCountsDelta.edge + segmentConfirmationsExtension.expectedCountsDelta.edge + rfxLaneNoAwardExtension.expectedCountsDelta.edge + 1,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres + websiteIntakeExtension.expectedCountsDelta.postgres + quotedeskExtension.expectedCountsDelta.postgres + teamMembershipExtension.expectedCountsDelta.postgres,
-    ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi + rfxLaneNoAwardExtension.expectedCountsDelta.ratewareApi,
+    ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi + segmentConfirmationsExtension.expectedCountsDelta.ratewareApi + rfxLaneNoAwardExtension.expectedCountsDelta.ratewareApi,
   },
   reviewedMetadataFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedMetadataFingerprints,
@@ -502,6 +505,7 @@ export const ACTION_CONTRACT = {
     ...objectStorageExtension.reviewedMetadataFingerprints,
     ...customerRfiLookupsExtension.reviewedMetadataFingerprints,
     ...rfxLaneNoAwardExtension.reviewedMetadataFingerprints,
+    ...segmentConfirmationsExtension.reviewedMetadataFingerprints,
     ...supabaseAuthMetadataOverrides,
   },
   reviewedAuthorizationFingerprints: {
@@ -523,6 +527,7 @@ export const ACTION_CONTRACT = {
     ...objectStorageExtension.reviewedAuthorizationFingerprints,
     ...customerRfiLookupsExtension.reviewedAuthorizationFingerprints,
     ...rfxLaneNoAwardExtension.reviewedAuthorizationFingerprints,
+    ...segmentConfirmationsExtension.reviewedAuthorizationFingerprints,
     ...corsOnlyAuthorizationOverrides,
     ...supabaseAuthAuthorizationOverrides,
     ...ratewareApiAuthorizationOverrides,
@@ -530,6 +535,9 @@ export const ACTION_CONTRACT = {
     ...Object.fromEntries(quotedeskExtension.surfaces
       .filter((entry) => entry.canonicalId.startsWith('edge.quotedesk-api.'))
       .map((entry) => [entry.canonicalId, quotedeskAuthEnvelope])),
+    // Shared team-roles read registration; storage authorization is unchanged.
+    'edge.rateware-storage-api.get_upload_source_url': 'a56ab23c0a20a9b5f0d7d02cbd2be22a73a5a7b6ab59d8b86fbe5f2e7b47fc7e',
+    'edge.rateware-storage-api.remove_upload': 'a56ab23c0a20a9b5f0d7d02cbd2be22a73a5a7b6ab59d8b86fbe5f2e7b47fc7e',
   },
   surfaces: [
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
@@ -557,6 +565,7 @@ export const ACTION_CONTRACT = {
     ...objectStorageExtension.surfaces,
     ...customerRfiLookupsExtension.surfaces,
     ...rfxLaneNoAwardExtension.surfaces,
+    ...segmentConfirmationsExtension.surfaces,
     rfxBidPeekSurface,
   ],
 };

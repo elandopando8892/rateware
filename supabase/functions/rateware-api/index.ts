@@ -28932,6 +28932,27 @@ export function createRatewareApiHandler(
       return jsonResponse({ no_award: declare, updated: rows.length, unchanged: lanes.length - changing.length, rows });
     }
 
+    if (body.action === "list_rfx_segment_confirmations") {
+      // The event owns the scope; never trust owner_email supplied by the caller.
+      const event = await requireOwnedRfxEvent(supabase, user, body.event_id);
+      const rows: Record<string, unknown>[] = [];
+      const pageSize = 1000;
+      for (let offset = 0; ; offset += pageSize) {
+        const result = await supabase
+          .from("rfx_segment_confirmations")
+          .select("rfx_lane_vendor_id,vendor_id,segment_key,rubric_key,answer,comment,updated_at")
+          .eq("rfx_event_id", event.id)
+          .order("updated_at", { ascending: false })
+          .order("id", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (result.error) throw result.error;
+        const page = result.data || [];
+        rows.push(...page);
+        if (page.length < pageSize) break;
+      }
+      return jsonResponse({ rows });
+    }
+
     if (body.action === "list_rfx_detail") {
       const event = await requireOwnedRfxEvent(supabase, user, body.event_id || body.id);
       const compactVendors = body.compact_vendors === true;
