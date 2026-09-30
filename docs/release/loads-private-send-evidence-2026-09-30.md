@@ -28,7 +28,7 @@ precede activation, but is not a requirement for routine implementation.
 | Configured `BID_DEADLINE_UTC_OFFSET` | Project an authoritative `expires_at` for date-only deadlines |
 | Ordinary Bid Room mutations / public board | No change |
 | Loads private source activation / live invitation acceptance | Defer to a separately authorized gate |
-| Tracking, awards, Shipment API, messages, production migrations | Outside this increment |
+| Tracking, awards, Shipment API, messages, applying production migrations | Outside this increment |
 
 ## Contract and evidence semantics
 
@@ -83,6 +83,20 @@ the local Supabase stack, asserts service-role SELECT / anon denial on outreach,
 seeds only synthetic invitations and receipts, exercises the actual Edge
 function, checks no invitation mutations and removes the isolated stack.
 Its result is not a real Bidware invitation or authenticated carrier acceptance.
+
+First CI attempts caught two preparation gaps, not production changes:
+
+- The receipt dependency/handler fingerprints require explicit registration in
+  the effective action contract. Permission, exposure and human-approval status
+  are preserved; no validator is skipped or weakened. The contract test's stale
+  inventory assertions are aligned to main's existing 449 surfaces, not an added
+  public API, and explicitly assert peek remains pending/read/tokenized.
+- Fresh replay produced private-book grants `t|t|t|t|f|f|f`: the missing permission
+  was service-role SELECT on outreach, whereas live read-only inspection reported
+  it already true and anon false. Migration
+  `20260930185000_grant_private_peek_outreach_read.sql` adds only that SELECT for
+  reproducibility. It is prepared in Git and applied only in disposable CI, NOT
+  applied to the live database. Replay ledger expectation becomes 403 migrations.
 
 Remaining before Sprint 3 closure:
 

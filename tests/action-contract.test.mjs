@@ -241,12 +241,20 @@ assert.ok(codes(validateActionContract(contractFor([malformed], [{ ...inlineActu
 // 25-30: committed baseline, status preservation, non-governable declaration, divergence and explicit limitations.
 const baseline = discoverGovernableSurfaces(process.cwd());
 const baselineResult = validateActionContract(ACTION_CONTRACT, baseline, { repoRoot: process.cwd() });
-assert.equal(baseline.length, 448);
-assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, 332);
+assert.equal(baseline.length, 449);
+assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, 333);
 assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length, 116);
-assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.rateware-api.")).length, 256);
-assert.equal(ACTION_CONTRACT.surfaces.length, 450);
-assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 289);
+assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.rateware-api.")).length, 257);
+assert.equal(ACTION_CONTRACT.surfaces.length, 451);
+assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 290);
+// The effective main contract already includes 449 surfaces. Peek remains
+// read-only/token-scoped and pending human approval after receipt hardening.
+const privatePeek = ACTION_CONTRACT.surfaces.find((entry) => entry.canonicalId === 'edge.rfx-bid-api.peek_invitation');
+assert.equal(privatePeek.decisionStatus, 'pending_human_approval');
+assert.equal(privatePeek.access, 'read');
+assert.equal(privatePeek.operation, 'read');
+assert.equal(privatePeek.exposure, 'external-tokenized');
+assert.equal(privatePeek.proposedPermissionKey, 'external.rfx.read');
 assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "explicitly_allowed").length, 39);
 assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 122);
 for (const [actionName, access, proposedPermissionKey] of [
@@ -788,9 +796,9 @@ assert.equal(formatValidationResult(validateActionContract(deterministicContract
 assert.equal(formatValidationResult(validateActionContract(deterministicContract, inlineActual)).includes(secretMarker), false);
 const finalBaseline = discoverGovernableSurfaces(process.cwd());
 const finalBaselineResult = validateActionContract(ACTION_CONTRACT, finalBaseline, { repoRoot: process.cwd() });
-assert.deepEqual({ total: finalBaseline.length, edge: finalBaseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, rpc: finalBaseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length }, { total: 448, edge: 332, rpc: 116 });
+assert.deepEqual({ total: finalBaseline.length, edge: finalBaseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, rpc: finalBaseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length }, { total: 449, edge: 333, rpc: 116 });
 assert.deepEqual(finalBaselineResult.issues.filter((entry) => entry.level === "error").map((entry) => entry.code), []);
-assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 289);
+assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 290);
 assert.equal(ACTION_CONTRACT.nonGovernableDeclarations.some((entry) => entry.canonicalId === "declaration.edge.whatsapp-healthcheck" && entry.decisionStatus === "pending_human_approval"), true);
 for (const actual of [dynamicTemplate, spreadRegistry, computedDynamic, callbackWrapper, multipleRegistries, multipleDispatchers, fallbackDispatch]) {
   assert.equal(actual.dispatchCandidates.length > 0, true, "No unsupported dispatch fixture may omit its blocking candidate.");

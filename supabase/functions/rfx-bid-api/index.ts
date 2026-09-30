@@ -4894,7 +4894,10 @@ Deno.serve(async (request) => {
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,operation_start_date,bid_visibility_mode,notes,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
       rfx_lanes(*)
         `, !readOnlyPeek);
-      if (!invitation) return invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+      if (!invitation) {
+        const response = invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+        return response;
+      }
       const result = { data: invitation };
       const peekNow = Date.now();
       const peekScope = { ownerEmail: cleanText(relationRecord(invitation.rfx_events).owner_email) || "",
@@ -4902,14 +4905,19 @@ Deno.serve(async (request) => {
       let rootDelivery: { sent_at: string; basis: string } | undefined;
       if (readOnlyPeek) {
         if (!activePrivateInvitation(invitation, peekScope, BID_DEADLINE_UTC_OFFSET, peekNow)) {
-          return invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+          const response = invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+          return response;
         }
         try {
           rootDelivery = (await loadPrivateDeliveryEvidence(supabase, [invitation], peekScope, peekNow)).get(invitation.id);
         } catch {
-          return invitationResponse({ error: "Private invitation evidence is unavailable.", code: "PRIVATE_DELIVERY_EVIDENCE_UNAVAILABLE" }, 503);
+          const response = invitationResponse({ error: "Private invitation evidence is unavailable.", code: "PRIVATE_DELIVERY_EVIDENCE_UNAVAILABLE" }, 503);
+          return response;
         }
-        if (!rootDelivery) return invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+        if (!rootDelivery) {
+          const response = invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+          return response;
+        }
       }
       const peekProjection = (row: Record<string, unknown>, proof = rootDelivery) =>
         invitationWithoutToken(privateInvitationProjection(row, proof!, BID_DEADLINE_UTC_OFFSET));
@@ -5017,16 +5025,19 @@ Deno.serve(async (request) => {
         try {
           peekProofs = await loadPrivateDeliveryEvidence(supabase, invitedRows, peekScope, peekNow);
         } catch {
-          return invitationResponse({ error: "Private invitation evidence is unavailable.", code: "PRIVATE_DELIVERY_EVIDENCE_UNAVAILABLE" }, 503);
+          const response = invitationResponse({ error: "Private invitation evidence is unavailable.", code: "PRIVATE_DELIVERY_EVIDENCE_UNAVAILABLE" }, 503);
+          return response;
         }
         // Recheck the root in the book read: do not return a prior receipt after
         // evidence disappears, or claim a complete root projection outside the cap.
         const bookRoot = invitedRows.find((row) => row.id === invitation.id);
         if (!bookRoot || !peekProofs.has(String(invitation.id))) {
-          return invitationResponse({ error: "Private invitation evidence is unavailable.", code: "PRIVATE_DELIVERY_EVIDENCE_UNAVAILABLE" }, 503);
+          const response = invitationResponse({ error: "Private invitation evidence is unavailable.", code: "PRIVATE_DELIVERY_EVIDENCE_UNAVAILABLE" }, 503);
+          return response;
         }
         if (!activePrivateInvitation(bookRoot, peekScope, BID_DEADLINE_UTC_OFFSET, peekNow)) {
-          return invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+          const response = invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+          return response;
         }
       }
       const hydratedInvitedRows = readOnlyPeek ? invitedRows.filter((row) =>
