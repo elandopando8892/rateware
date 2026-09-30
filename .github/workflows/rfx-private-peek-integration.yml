@@ -9,6 +9,8 @@ on:
       - "supabase/config.toml"
       - "tools/test-rfx-bid-peek-local.mjs"
       - "tools/build-rfx-peek-preview.mjs"
+      - "tools/build-rfx-peek-preview-schema.mjs"
+      - "tools/test-rfx-peek-preview-schema.mjs"
       - "tools/test-schema-only-restore.mjs"
       - ".github/workflows/rfx-private-peek-integration.yml"
   workflow_dispatch:
@@ -71,6 +73,11 @@ jobs:
         env:
           SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
         run: supabase start
+
+      - name: Validate minimal disposable Preview schema
+        env:
+          RFX_PEEK_LOCAL_ONLY: "1"
+        run: node tools/test-rfx-peek-preview-schema.mjs
 
       - name: Restore schema in separate empty local stack
         env:

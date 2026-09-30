@@ -12,6 +12,8 @@ if (sourcePath === outputPath) {
 }
 
 const source = await readFile(sourcePath, 'utf8');
+const credentialSentinel = 'const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");';
+assert.equal(source.split(credentialSentinel).length, 2, 'Service-role source sentinel drifted');
 const sentinel = /    const supabase = getClient\(\);\r?\n    const body = await request\.json\(\)\.catch\(\(\) => \(\{\}\)\);/g;
 assert.equal([...source.matchAll(sentinel)].length, 1, 'Action-dispatcher sentinel drifted; review the source before building Preview');
 assert.ok(source.includes('Deno.serve(async (request) => {'), 'Expected Rateware Edge handler');
@@ -24,6 +26,9 @@ const guarded = `    const body = await request.json().catch(() => ({}));
       return response;
     }
     const supabase = getClient();`;
-const result = source.replace(sentinel, guarded.replaceAll('\n', source.includes('\r\n') ? '\r\n' : '\n'));
+const result = source
+  .replace(credentialSentinel,
+    'const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");')
+  .replace(sentinel, guarded.replaceAll('\n', source.includes('\r\n') ? '\r\n' : '\n'));
 assert.ok(result.includes('body.action !== "peek_invitation"'), 'Read-only action guard missing');
 await writeFile(outputPath, result, { flag: 'w' });
