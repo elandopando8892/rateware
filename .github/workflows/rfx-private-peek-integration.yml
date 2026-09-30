@@ -47,6 +47,7 @@ jobs:
                     has_table_privilege('anon','public.rfx_lane_vendors','SELECT'),
                     has_table_privilege('service_role','public.outreach_messages','SELECT'),
                     has_table_privilege('anon','public.outreach_messages','SELECT')")"
+          echo "Private-book privilege booleans: $grants"
           test "$grants" = 't|t|t|t|f|t|f'
           echo 'Server-side RFx reads PASS; browser role denied.'
 
