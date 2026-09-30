@@ -158,6 +158,8 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // 2026-09-29 (reject reason): reject_rfx_bid clears the carrier's own notes
 // with the rest of the bid; its reason stays in the event history and the
 // audit log. Access is unchanged.
+// 2026-09-29 (dashboard): dashboard_summary also counts, best-effort, the
+// owner's priced offers since a caller-given start of day (at most a week).
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': '47344307ceef4b051008850e8211fad1e395c7fd5830e3a3f011a10d5a36ccf3',
@@ -168,7 +170,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': '1b6ae5c053265f420aaf3bee8aad4cbd61626a3882cabd2023a1e6c6aa2b91f6',
+  'edge.rateware-api.': 'b09cba96587d6f86ecf11dd000fcee4e500ecbe3e8dcda9bf87932059cfe17e3',
   // Reviewed after merging the no-write invitation peek with the stricter
   // Google Chat conversation isolation in main. The peek now includes
   // same-vendor encrypted-token rows without decrypting or exposing tokens;
@@ -187,6 +189,8 @@ const ratewareApiSourceFingerprintOverrides = {
   'edge.rateware-api.award_rfx_lane_vendor': '80b222f9225cf992b19bcc18ca232ae3dff2a4cdfc88b280bd615d517373ba34',
   'edge.rateware-api.create_rfx_award_package': '378f73423f4726da85dfc4c453be98f50d3f86c7da6a9f3af9a68267441fe4d6',
   'edge.rateware-api.create_vendor_segment': '8e6a444366bfa108430e02fdf8dffbbf11a0ab0e4e102d4687f6e589f809aa69',
+  // The summary also counts the offers priced since the caller's day began (2026-09-29).
+  'edge.rateware-api.dashboard_summary': '839151c8295936c9cdbe9aadb7d40096cef867e285d09e8b5c3b7d748da985db',
   'edge.rateware-api.delete_vendor_segment': '792ce2b10566c1be41064ef07f5e818088fb1f16596433d88fdb7c0fbec972d2',
   'edge.rateware-api.generate_outreach_drafts': 'a94ce49aabdbfa2a891518d7972a3001b4f74e7aaeb0bfbd0eac85a3043592c4',
   'edge.rateware-api.list_vendor_segments': '79d6ff15b7b7a0bcbf8e580baaed1b11575d56c38cc4034fb9b80a8891814128',

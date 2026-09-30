@@ -31941,6 +31941,24 @@ export function createRatewareApiHandler(
         // best-effort: omit freshness fields
       }
 
+      // Offers priced since the caller's day began (`bids_since`, at most a
+      // week back): a carrier's first bid, its revisions and the team's
+      // captures all stamp responded_at. Best-effort like the health counts.
+      const bidsSince = Date.parse(cleanText(body.bids_since) || "");
+      if (Number.isFinite(bidsSince) && bidsSince <= Date.now() && Date.now() - bidsSince <= 7 * 86400000) {
+        try {
+          const recentBids = await supabase
+            .from("rfx_lane_vendors")
+            .select("id,rfx_events!inner(owner_email)", { count: "exact", head: true })
+            .eq("rfx_events.owner_email", user.owner_email)
+            .not("bid_rate", "is", null)
+            .gte("responded_at", new Date(bidsSince).toISOString());
+          if (!recentBids.error) summary.rfx_bids_since = recentBids.count || 0;
+        } catch {
+          // best-effort: omit the day's bids
+        }
+      }
+
       return jsonResponse(summary);
     }
 
