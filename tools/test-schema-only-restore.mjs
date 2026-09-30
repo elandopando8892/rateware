@@ -41,6 +41,11 @@ try {
   run('supabase', ['start'], { cwd: directory });
   targetStarted = true;
 
+  // The source migrations enable pg_trgm in extensions; a fresh project does
+  // not enable it until its own migrations run. Recreate that dependency only.
+  docker(targetContainer, [
+    'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres', '-q',
+  ], 'CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;');
   docker(targetContainer, [
     'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres', '-q',
   ], schema);
