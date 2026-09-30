@@ -79,13 +79,21 @@ Local validation completed:
 - Full authorization validator: 449 discovered surfaces, zero errors; action
   contract regression test PASS. One pre-existing missing WhatsApp-healthcheck
   declaration warning remains, unrelated to this increment.
+- Migration ledger: 5 tests PASS, including the server-only SELECT grant.
+- Complete `npm run test:product`: PASS. Source-wiring assertions now check the
+  evidence-aware sanitizer, active scoped receipt filter and token-free book
+  projection; existing carrier payload privacy tests remain in place.
 - All HTTP tests intercept fetch; no live credentials, sends or production writes.
 
-Isolated database CI is required before review readiness. The workflow replays
+Isolated database CI passed at commit `a1207498` (run `36761912100`). The workflow replays
 the local Supabase stack, asserts service-role SELECT / anon denial on outreach,
 seeds only synthetic invitations and receipts, exercises the actual Edge
 function, checks no invitation mutations and removes the isolated stack.
 Its result is not a real Bidware invitation or authenticated carrier acceptance.
+The full clean-migration CI replay at that commit passed schema, ledger, grant
+and authorization gates but exposed an obsolete product source-wiring assertion.
+That assertion is updated and the product suite passes locally; final CI on the
+updated commit is still required before review readiness.
 
 First CI attempts caught two preparation gaps, not production changes:
 
