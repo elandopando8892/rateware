@@ -15624,6 +15624,8 @@ function googleChatRedirectUri() {
 }
 
 function publicGmailConnection(row: Record<string, unknown> | null | undefined) {
+  const metadata = objectRecord(row?.metadata);
+  const syncedAt = typeof metadata.bounces_synced_at === "string" ? metadata.bounces_synced_at : "";
   return {
     mailbox_email: GMAIL_ALLOWED_SENDER,
     provider: "gmail",
@@ -15632,6 +15634,8 @@ function publicGmailConnection(row: Record<string, unknown> | null | undefined) 
     scopes: Array.isArray(row?.scopes) ? row?.scopes : [],
     token_expires_at: row?.token_expires_at || null,
     updated_at: row?.updated_at || null,
+    sender_name: cleanText(metadata.sender_name) || cleanText(Deno.env.get("GMAIL_SENDER_NAME")) || null,
+    bounces_synced_at: syncedAt && Number.isFinite(Date.parse(syncedAt)) ? syncedAt : null,
     last_error: row?.last_error || null,
     configured: Boolean(Deno.env.get("GOOGLE_CLIENT_ID") && Deno.env.get("GOOGLE_CLIENT_SECRET") && Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY"))
   };
@@ -15640,7 +15644,7 @@ function publicGmailConnection(row: Record<string, unknown> | null | undefined) 
 async function listGmailConnections(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
   const result = await supabase
     .from("gmail_mailbox_connections")
-    .select("mailbox_email,provider,status,scopes,token_expires_at,updated_at,last_error")
+    .select("mailbox_email,provider,status,scopes,token_expires_at,updated_at,last_error,metadata")
     .eq("owner_email", user.owner_email)
     .eq("mailbox_email", GMAIL_ALLOWED_SENDER)
     .maybeSingle();
@@ -18103,6 +18107,31 @@ async function quarantineVendorEmail(
   return updatedVendorIds;
 }
 
+/** Merge against current metadata: token refreshes and concurrent syncs may have changed it. */
+async function persistGmailBounceSync(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const current = await supabase.from("gmail_mailbox_connections")
+      .select("id,metadata,updated_at")
+      .eq("owner_email", user.owner_email)
+      .eq("mailbox_email", GMAIL_ALLOWED_SENDER)
+      .eq("status", "connected").maybeSingle();
+    if (current.error) throw current.error;
+    if (!current.data) throw new Error("Gmail connection changed during bounce synchronization.");
+    const syncedAt = new Date().toISOString();
+    let update = supabase.from("gmail_mailbox_connections").update({
+      metadata: { ...objectRecord(current.data.metadata), bounces_synced_at: syncedAt },
+      updated_at: syncedAt
+    }).eq("id", current.data.id).eq("owner_email", user.owner_email)
+      .eq("mailbox_email", GMAIL_ALLOWED_SENDER).eq("status", "connected");
+    update = current.data.updated_at == null
+      ? update.is("updated_at", null) : update.eq("updated_at", current.data.updated_at);
+    const saved = await update.select("id").maybeSingle();
+    if (saved.error) throw saved.error;
+    if (saved.data) return syncedAt;
+  }
+  throw new Error("Gmail connection changed concurrently; retry bounce synchronization.");
+}
+
 async function syncGmailBounces(
   supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
@@ -18148,7 +18177,7 @@ async function syncGmailBounces(
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     const detail = await detailResponse.json();
-    if (!detailResponse.ok) continue;
+    if (!detailResponse.ok) throw new Error(`Gmail delivery failure detail lookup failed (${detailResponse.status}).`);
     scanned += 1;
     const headers = gmailMessageHeaders(detail);
     const bodyText = gmailPayloadText(objectRecord(detail.payload));
@@ -18170,7 +18199,8 @@ async function syncGmailBounces(
   }
 
   if (!detected.size) {
-    return { scanned, detected: 0, blocked: 0, cleaned_vendors: 0, rows: [] };
+    const bouncesSyncedAt = await persistGmailBounceSync(supabase, user);
+    return { scanned, detected: 0, blocked: 0, cleaned_vendors: 0, rows: [], bounces_synced_at: bouncesSyncedAt };
   }
 
   const emails = [...detected.keys()];
@@ -18289,7 +18319,9 @@ async function syncGmailBounces(
     { scanned, detected: detected.size, cleaned_vendors: cleanedVendors }
   );
 
+  const bouncesSyncedAt = await persistGmailBounceSync(supabase, user);
   return {
+    bounces_synced_at: bouncesSyncedAt,
     scanned,
     detected: detected.size,
     blocked: suppressionRows.filter((row) => row.status === "hard_bounce").length,
