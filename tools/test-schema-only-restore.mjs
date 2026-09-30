@@ -26,11 +26,14 @@ const docker = (container, args, input) => run('docker', ['exec', '-i', containe
 let targetStarted = false;
 try {
   // Dump definitions only; the original migrations contain contact INSERTs.
-  const schema = docker(sourceContainer, [
+  const sourceSchema = docker(sourceContainer, [
     'pg_dump', '-U', 'postgres', '-d', 'postgres',
     '--schema=public', '--schema-only', '--no-owner',
   ]);
-  assert.ok(schema.includes('rfx_lane_vendors') && schema.includes('outreach_messages'));
+  assert.ok(sourceSchema.includes('rfx_lane_vendors') && sourceSchema.includes('outreach_messages'));
+  // Fresh Supabase already creates public; retain its grants and comments.
+  assert.equal((sourceSchema.match(/^CREATE SCHEMA public;$/gm) || []).length, 1);
+  const schema = sourceSchema.replace(/^CREATE SCHEMA public;$/m, 'CREATE SCHEMA IF NOT EXISTS public;');
 
   // Finish the source integration test before replacing its local stack.
   run('supabase', ['stop', '--no-backup']);
