@@ -318,7 +318,7 @@ function objectRecord(value: unknown): Record<string, unknown> {
 // invited_at records internal authorization, not delivery. Only an accepted
 // outreach message linked to the specific invitation establishes visibility.
 async function privatePeekSentInvitationIds(supabase: RfxBidSupabaseClient, ownerEmail: string, eventIds: string[]) {
-  const sent = new Set<string>();
+  const sent = new Map<string, number>();
   const events = [...new Set(eventIds.filter(Boolean))];
   const accepted = ["sent", "delivered", "read", "replied", "manual_sent", "archived"];
   for (let start = 0; start < events.length; start += 50) {
@@ -334,13 +334,14 @@ async function privatePeekSentInvitationIds(supabase: RfxBidSupabaseClient, owne
       if (result.error) throw result.error;
       const rows = (result.data || []) as Record<string, unknown>[];
       for (const message of rows) {
+        const sentAt = Date.parse(String(message.sent_at || ""));
         if (!accepted.includes(String(cleanText(message.status) || "").toLowerCase()) ||
-          !Number.isFinite(Date.parse(String(message.sent_at || "")))) continue;
+          !Number.isFinite(sentAt)) continue;
         const metadata = objectRecord(message.metadata);
         const grouped = Array.isArray(metadata.rfx_lane_vendor_ids) ? metadata.rfx_lane_vendor_ids : [];
         for (const id of [message.rfx_lane_vendor_id, ...grouped]) {
           const cleanId = cleanText(id);
-          if (cleanId) sent.add(cleanId);
+          if (cleanId) sent.set(cleanId, Math.max(sent.get(cleanId) || 0, sentAt));
         }
       }
       if (rows.length < 1000) break;
@@ -348,6 +349,16 @@ async function privatePeekSentInvitationIds(supabase: RfxBidSupabaseClient, owne
     }
   }
   return sent;
+}
+
+function privatePeekHasCurrentSend(sent: Map<string, number> | null, invitation: Record<string, unknown>) {
+  const sentAt = sent?.get(cleanText(invitation.id) || "");
+  if (sentAt === undefined) return false;
+  // A manual re-invite can reuse the same row and token. An older delivery
+  // cannot authorize that newer invitation; the current send must be as recent
+  // as invited_at when that timestamp is available.
+  const invitedAt = Date.parse(String(invitation.invited_at || ""));
+  return invitation.invited_at == null || (Number.isFinite(invitedAt) && sentAt >= invitedAt);
 }
 
 function normalizeDomain(value: unknown) {
@@ -4934,7 +4945,7 @@ Deno.serve(async (request) => {
       const rootSent = readOnlyPeek
         ? await privatePeekSentInvitationIds(supabase, ownerEmail!, [cleanText(result.data.rfx_event_id) || ""])
         : null;
-      if (readOnlyPeek && !rootSent?.has(cleanText(result.data.id) || ""))
+      if (readOnlyPeek && !privatePeekHasCurrentSend(rootSent, result.data))
         return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
 
       if (!readOnlyPeek && !result.data.viewed_at) {
@@ -5037,9 +5048,9 @@ Deno.serve(async (request) => {
           .filter((id) => id && id !== cleanText(result.data.rfx_event_id));
         const otherSent = otherEvents.length
           ? await privatePeekSentInvitationIds(supabase, ownerEmail!, otherEvents)
-          : new Set<string>();
+          : new Map<string, number>();
         invitedRows = invitedRows.filter((row) => (cleanText(row.rfx_event_id) === cleanText(result.data.rfx_event_id)
-          ? rootSent : otherSent)?.has(cleanText(row.id) || ""));
+          ? privatePeekHasCurrentSend(rootSent, row) : privatePeekHasCurrentSend(otherSent, row)));
       }
       // A peek never returns invitation tokens, so it must not depend on the
       // encryption key merely to include a carrier's encrypted-token rows.

@@ -48,6 +48,11 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
     invitation_token: "legacy-test-token-authorized",
     rfx_lanes: { ...row.rfx_lanes, id: "lane-authorized", lane_number: 4 },
   };
+  const reauthorizedButNotResentRow = {
+    ...row, id: "invitation-reauthorized", rfx_lane_id: "lane-reauthorized",
+    invitation_token: "legacy-test-token-reauthorized", invited_at: "2026-09-29T12:00:00Z",
+    rfx_lanes: { ...row.rfx_lanes, id: "lane-reauthorized", lane_number: 5 },
+  };
   try {
     Deno.env.set("SUPABASE_URL", "https://supabase-mock.invalid");
     Deno.env.set("RATEWARE_SUPABASE_SERVICE_ROLE_KEY", "synthetic-service-role-test-only");
@@ -67,7 +72,8 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
       }
       if (url.pathname.endsWith("/rfx_lane_vendors") && url.searchParams.has("invitation_token")) {
         const requested = url.searchParams.get("invitation_token");
-        const found = [row, foreignRow, unsentSameVendorRow, authorizedButUnsentRow].find((candidate) => requested === `eq.${candidate.invitation_token}`);
+        const found = [row, foreignRow, unsentSameVendorRow, authorizedButUnsentRow, reauthorizedButNotResentRow]
+          .find((candidate) => requested === `eq.${candidate.invitation_token}`);
         return new Response(JSON.stringify(found || null), { status: 200, headers });
       }
       if (url.pathname.endsWith("/rfx_lane_vendors") && url.searchParams.has("rfx_lane_id")) {
@@ -77,7 +83,7 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
         const vendorId = url.searchParams.get("vendor_id");
         const ownerEmail = url.searchParams.get("rfx_events.owner_email");
         const sentOnly = url.searchParams.get("invitation_status")?.startsWith("in.");
-        return new Response(JSON.stringify([row, encryptedSameVendorRow, unsentSameVendorRow, authorizedButUnsentRow, foreignRow].filter((candidate) =>
+        return new Response(JSON.stringify([row, encryptedSameVendorRow, unsentSameVendorRow, authorizedButUnsentRow, reauthorizedButNotResentRow, foreignRow].filter((candidate) =>
           vendorId === `eq.${candidate.vendor_id}` && ownerEmail === `eq.${candidate.rfx_events.owner_email}` &&
           (!sentOnly || candidate.invitation_status !== "drafted")
         )), { status: 200, headers });
@@ -87,6 +93,7 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
           { id: "message-a", status: "sent", sent_at: "2026-09-29T10:00:00Z", rfx_lane_vendor_id: "invitation-a", metadata: {} },
           { id: "message-a2", status: "archived", sent_at: "2026-09-29T11:00:00Z", rfx_lane_vendor_id: null, metadata: { rfx_lane_vendor_ids: ["invitation-a2"] } },
           { id: "message-b", status: "sent", sent_at: "2026-09-29T10:00:00Z", rfx_lane_vendor_id: "invitation-b", metadata: {} },
+          { id: "message-reauthorized", status: "sent", sent_at: "2026-09-29T10:00:00Z", rfx_lane_vendor_id: "invitation-reauthorized", metadata: {} },
           { id: "message-bounce", status: "bounced", sent_at: "2026-09-29T10:00:00Z", rfx_lane_vendor_id: "invitation-authorized", metadata: {} },
         ]), { status: 200, headers });
       }
@@ -123,6 +130,8 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
       entry.invitation_id === "invitation-draft"), "an unsent draft must not appear in a carrier peek");
     assert(!fullPayload.carrier_book.invited.some((entry: { invitation_id: string }) =>
       entry.invitation_id === "invitation-authorized"), "authorization without a delivered message is not visibility");
+    assert(!fullPayload.carrier_book.invited.some((entry: { invitation_id: string }) =>
+      entry.invitation_id === "invitation-reauthorized"), "an old send cannot authorize a newer re-invite");
     assert(queries.some((query) => new URL(query.url).searchParams.get("invitation_status")?.startsWith("in.")),
       "the database query must exclude unsent rows before projection");
     assert(fullPayload.carrier_book.invited.some((entry: { invitation_id: string }) =>
@@ -157,6 +166,11 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
       body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token-authorized" }),
     }));
     assertEquals(authorizedRoot.status, 404);
+    const reauthorizedRoot = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token-reauthorized" }),
+    }));
+    assertEquals(reauthorizedRoot.status, 404);
     row.invitation_status = "revoked";
     const revoked = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
       method: "POST", headers: { "Content-Type": "application/json" },

@@ -168,6 +168,13 @@ try {
   assert.equal((await peek(tokens.authorized)).status, 404, 'An authorized but undelivered token is not a carrier invitation');
   assert.equal((await peek(`ci-peek-unknown-${runId}`)).status, 404);
 
+  // Reusing an already-sent invitation row is not a fresh delivery. The
+  // synthetic re-invite timestamp is deliberately later than its send record.
+  await rest('rfx_lane_vendors', { method: 'PATCH', query: `?id=eq.${ids.invitationA}`,
+    body: { invitation_status: 'invited', invited_at: new Date(Date.now() + 60_000).toISOString() } });
+  assert.equal((await peek(tokens.a)).status, 404, 'An old send must not authorize a later re-invite');
+  assert.equal((await peek(tokens.b)).status, 200, 'A second carrier must remain unaffected');
+
   // Archive only the synthetic fixture; this checks server-side exclusion after revocation.
   await rest('rfx_lane_vendors', { method: 'PATCH', query: `?id=eq.${ids.invitationA}`, body: { invitation_status: 'archived' } });
   assert.equal((await peek(tokens.a)).status, 404);
