@@ -4831,16 +4831,8 @@ Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
 
   try {
-    const body = await request.json().catch(() => ({}));
-    // The disposable Loads preview deploys this otherwise multi-action function.
-    // Fail closed before constructing a service-role client or dispatching writes.
-    if (Deno.env.get("RFX_PEEK_PREVIEW_READ_ONLY") === "1" &&
-        (request.method !== "POST" || body.action !== "peek_invitation")) {
-      const response = jsonResponse({ error: "Preview permits invitation lookup only." }, 403);
-      response.headers.set("Cache-Control", "private, no-store, max-age=0");
-      return response;
-    }
     const supabase = getClient();
+    const body = await request.json().catch(() => ({}));
     if (body.action === "bid_support_reply") {
       const result = await bidSupportReply(supabase, body);
       if (result.status) {

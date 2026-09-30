@@ -103,6 +103,8 @@ GRANT EXECUTE ON ALL ROUTINES IN SCHEMA public TO service_role;`);
   mkdirSync(join(directory, 'tools'), { recursive: true });
   cpSync(join(sourceDirectory, 'tools', 'test-rfx-bid-peek-local.mjs'),
     join(directory, 'tools', 'test-rfx-bid-peek-local.mjs'));
+  cpSync(join(sourceDirectory, 'tools', 'build-rfx-peek-preview.mjs'),
+    join(directory, 'tools', 'build-rfx-peek-preview.mjs'));
   run('node', ['tools/test-rfx-bid-peek-local.mjs'], {
     cwd: directory,
     env: { ...process.env, RFX_PEEK_DB_CONTAINER: targetContainer },

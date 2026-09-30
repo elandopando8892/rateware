@@ -76,8 +76,13 @@ async function invitationSnapshot(id) {
 
 try {
   await writeFile(envPath,
-    `RATEWARE_SUPABASE_SERVICE_ROLE_KEY=${serviceKey}\nRFX_INVITATION_TOKEN_ENCRYPTION_KEY=${randomUUID()}\nRFX_PEEK_PREVIEW_READ_ONLY=1\n`,
+    `RATEWARE_SUPABASE_SERVICE_ROLE_KEY=${serviceKey}\nRFX_INVITATION_TOKEN_ENCRYPTION_KEY=${randomUUID()}\n`,
     { mode: 0o600 });
+  // Replace the function only on this disposable CI runner. The committed
+  // Rateware function and its production authorization envelope stay intact.
+  execFileSync('node', ['tools/build-rfx-peek-preview.mjs',
+    'supabase/functions/rfx-bid-api/index.ts', 'supabase/functions/rfx-bid-api/index.ts'],
+    { stdio: 'pipe' });
   serve = spawn('supabase', ['functions', 'serve', '--no-verify-jwt', '--env-file', envPath], {
     stdio: ['ignore', 'pipe', 'pipe']
   });
