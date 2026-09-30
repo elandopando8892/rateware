@@ -46,7 +46,7 @@ const READS: Record<string, ReadonlySet<string>> = {
     "list_rateware_audit", "list_rateware_filter_values", "list_rateware_rows_by_ids",
     "list_rateware_versions", "list_rfx_detail", "list_rfx_event_context", "list_rfx_events",
     // The carrier contact reviews; the contract declares them in an extension file (added 2026-09-29).
-    "list_rfx_invitation_wave_reviews",
+    "list_rfx_invitation_wave_reviews", "list_rfx_segment_confirmations",
     "list_rfx_process_projects", "list_rfx_response_vendor_ids", "list_saas_audit_log",
     "list_shipper_duplicates", "list_shippers", "list_staging", "list_staging_filter_values",
     "list_staging_options", "list_upload_staged_rows", "list_uploads", "list_vendor_improvement_cases",
