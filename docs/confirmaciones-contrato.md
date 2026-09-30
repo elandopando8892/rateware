@@ -8,3 +8,4 @@ La huella compartida de Rateware cambia por el bloque nuevo y por team-roles.ts;
 
 Base de revisión: a092a3a7. El contrato de la base valida sin errores; las advertencias/disposiciones heredadas se conservan. Esta revisión es de código y fixtures, no de producción autenticada.
 
+Verificación final local: 23 pruebas Deno de confirmaciones/roles y contrato completo con cero errores. Cliente: Bidware #53. Backend: Rateware #168. RLS propuesto sin aplicar.
