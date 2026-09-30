@@ -33,7 +33,11 @@ try {
   assert.ok(sourceSchema.includes('rfx_lane_vendors') && sourceSchema.includes('outreach_messages'));
   // Fresh Supabase already creates public; retain its grants and comments.
   assert.equal((sourceSchema.match(/^CREATE SCHEMA public;$/gm) || []).length, 1);
-  const schema = sourceSchema.replace(/^CREATE SCHEMA public;$/m, 'CREATE SCHEMA IF NOT EXISTS public;');
+  const defaultPrivilegeLines = sourceSchema.match(/^ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public .*;$/gm) || [];
+  assert.ok(defaultPrivilegeLines.length > 0, 'Expected Supabase-owned default privileges');
+  const schema = sourceSchema
+    .replace(/^CREATE SCHEMA public;$/m, 'CREATE SCHEMA IF NOT EXISTS public;')
+    .replace(/^ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public .*;$/gm, '');
 
   // Finish the source integration test before replacing its local stack.
   run('supabase', ['stop', '--no-backup']);
@@ -49,6 +53,9 @@ try {
   docker(targetContainer, [
     'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres', '-q',
   ], schema);
+  docker(targetContainer, [
+    'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'supabase_admin', '-d', 'postgres', '-q',
+  ], `${defaultPrivilegeLines.join('\n')}\n`);
   const sql = (query) => docker(targetContainer, [
     'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres', '-At',
   ], query).trim();
