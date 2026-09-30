@@ -57,6 +57,15 @@ try {
   docker(targetContainer, [
     'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'supabase_admin', '-d', 'postgres', '-q',
   ], `${defaultPrivilegeLines.join('\n')}\n`);
+  // The temporary hosted Preview will have no direct browser Data API or RPC
+  // access to the copied Rateware schema. Only the server-side Edge Function
+  // uses service_role. Test that posture on the disposable restored instance.
+  docker(targetContainer, [
+    'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres', '-q',
+  ], `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON ALL ROUTINES IN SCHEMA public TO service_role;`);
   const sql = (query) => docker(targetContainer, [
     'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres', '-At',
   ], query).trim();
@@ -71,6 +80,18 @@ try {
     has_table_privilege('service_role','public.outreach_messages','SELECT'),
     has_table_privilege('anon','public.rfx_lane_vendors','SELECT'),
     has_table_privilege('anon','public.outreach_messages','SELECT');`), 't|t|f|f');
+  assert.equal(sql(`SELECT count(*) FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','f')
+    AND (has_table_privilege('anon', c.oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+      OR has_table_privilege('authenticated', c.oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'));`), '0',
+  'Browser roles must have no direct access to restored public tables');
+  assert.equal(sql(`SELECT count(*) FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+    AND (has_function_privilege('anon', p.oid, 'EXECUTE')
+      OR has_function_privilege('authenticated', p.oid, 'EXECUTE'));`), '0',
+  'Browser roles must have no direct access to restored public routines');
   // Exercise the actual function against the restored, initially empty schema.
   // Copy only function source and the existing synthetic harness into the
   // disposable target; no migrations or historical contact rows are copied.
@@ -86,7 +107,7 @@ try {
     cwd: directory,
     env: { ...process.env, RFX_PEEK_DB_CONTAINER: targetContainer },
   });
-  console.log('PASS: separate local Supabase instance; initially empty public schema; private-book grants and synthetic function flow verified.');
+  console.log('PASS: separate local Supabase instance; initially empty public schema; browser roles locked out; private-book grants and synthetic function flow verified.');
 } finally {
   if (targetStarted) run('supabase', ['stop', '--no-backup'], { cwd: directory });
   rmSync(directory, { recursive: true, force: true });
