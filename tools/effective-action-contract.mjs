@@ -160,6 +160,9 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // audit log. Access is unchanged.
 // 2026-09-29 (dashboard): dashboard_summary also counts, best-effort, the
 // owner's priced offers since a caller-given start of day (at most a week).
+// 2026-09-30 (program): a request can be a "program"; a launched request
+// becomes the event its type names (program -> rfx, contract -> bid, spot ->
+// spot). Access is unchanged.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': '47344307ceef4b051008850e8211fad1e395c7fd5830e3a3f011a10d5a36ccf3',
@@ -170,7 +173,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': 'b09cba96587d6f86ecf11dd000fcee4e500ecbe3e8dcda9bf87932059cfe17e3',
+  'edge.rateware-api.': 'b633941335626e40f7a7cd048d208c33b8cf99c2b768182e50549f5a8da4aa2f',
   // Reviewed after merging the no-write invitation peek with the stricter
   // Google Chat conversation isolation in main. The peek now includes
   // same-vendor encrypted-token rows without decrypting or exposing tokens;
