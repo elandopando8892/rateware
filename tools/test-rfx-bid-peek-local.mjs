@@ -174,6 +174,10 @@ try {
     body: { invitation_status: 'invited', invited_at: new Date(Date.now() + 60_000).toISOString() } });
   assert.equal((await peek(tokens.a)).status, 404, 'An old send must not authorize a later re-invite');
   assert.equal((await peek(tokens.b)).status, 200, 'A second carrier must remain unaffected');
+  execFileSync('docker', ['exec', 'supabase_db_alqjqzqagdmcywpjtnnr', 'psql', '-U', 'postgres', '-d', 'postgres', '-c',
+    `insert into public.outreach_messages (campaign_id,owner_email,rfx_event_id,rfx_lane_vendor_id,status,sent_at)
+     values ('${ids.campaign}','owner@example.invalid','${ids.event}','${ids.invitationA}','sent',now() + interval '2 minutes');`], { stdio: 'pipe' });
+  assert.equal((await peek(tokens.a)).status, 200, 'A new recorded send must restore access after re-invite');
 
   // Archive only the synthetic fixture; this checks server-side exclusion after revocation.
   await rest('rfx_lane_vendors', { method: 'PATCH', query: `?id=eq.${ids.invitationA}`, body: { invitation_status: 'archived' } });

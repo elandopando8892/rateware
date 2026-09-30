@@ -16,6 +16,7 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
   const envNames = ["SUPABASE_URL", "RATEWARE_SUPABASE_SERVICE_ROLE_KEY"];
   const previous = Object.fromEntries(envNames.map((name) => [name, Deno.env.get(name)]));
   let handler: ((request: Request) => Response | Promise<Response>) | undefined;
+  let reauthorizedResent = false;
   const queries: Array<{ method: string; url: string }> = [];
   const row = {
     id: "invitation-a", rfx_event_id: "event-a", rfx_lane_id: "lane-a", vendor_id: "vendor-a",
@@ -94,6 +95,7 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
           { id: "message-a2", status: "archived", sent_at: "2026-09-29T11:00:00Z", rfx_lane_vendor_id: null, metadata: { rfx_lane_vendor_ids: ["invitation-a2"] } },
           { id: "message-b", status: "sent", sent_at: "2026-09-29T10:00:00Z", rfx_lane_vendor_id: "invitation-b", metadata: {} },
           { id: "message-reauthorized", status: "sent", sent_at: "2026-09-29T10:00:00Z", rfx_lane_vendor_id: "invitation-reauthorized", metadata: {} },
+          ...(reauthorizedResent ? [{ id: "message-resent", status: "sent", sent_at: "2026-09-29T12:01:00Z", rfx_lane_vendor_id: "invitation-reauthorized", metadata: {} }] : []),
           { id: "message-bounce", status: "bounced", sent_at: "2026-09-29T10:00:00Z", rfx_lane_vendor_id: "invitation-authorized", metadata: {} },
         ]), { status: 200, headers });
       }
@@ -171,6 +173,12 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
       body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token-reauthorized" }),
     }));
     assertEquals(reauthorizedRoot.status, 404);
+    reauthorizedResent = true;
+    const resentRoot = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token-reauthorized" }),
+    }));
+    assertEquals(resentRoot.status, 200);
     row.invitation_status = "revoked";
     const revoked = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
       method: "POST", headers: { "Content-Type": "application/json" },
