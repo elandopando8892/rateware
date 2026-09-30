@@ -181,9 +181,24 @@ try {
 
   // Archive only the synthetic fixture; this checks server-side exclusion after revocation.
   await rest('rfx_lane_vendors', { method: 'PATCH', query: `?id=eq.${ids.invitationA}`, body: { invitation_status: 'archived' } });
-  assert.equal((await peek(tokens.a)).status, 404);
+  const archivedSnapshot = await invitationSnapshot(ids.invitationA);
+  const archivedResult = await peek(tokens.a);
+  assert.equal(archivedResult.status, 404);
+  assert.match(archivedResult.cache || '', /no-store/);
+  assert.ok(!archivedResult.body.carrier_book);
+  assert.deepEqual(await invitationSnapshot(ids.invitationA), archivedSnapshot, 'Rejected archived read must not mutate invitation');
   assert.equal((await peek(tokens.b)).status, 200);
-  console.log('PASS: isolated local private-book peek, sent-only visibility, tenant separation, read-only state, invalid and archived tokens.');
+  // Close only this run's synthetic event; a previously valid bearer must
+  // immediately stop returning rows, without recording a view on rejection.
+  await rest('rfx_events', { method: 'PATCH', query: `?id=eq.${ids.event}`, body: { status: 'closed' } });
+  const closedSnapshot = await invitationSnapshot(ids.invitationB);
+  const closedResult = await peek(tokens.b);
+  assert.equal(closedResult.status, 404);
+  assert.match(closedResult.cache || '', /no-store/);
+  assert.ok(!closedResult.body.carrier_book);
+  assert.ok(!JSON.stringify(closedResult.body).includes(tokens.b));
+  assert.deepEqual(await invitationSnapshot(ids.invitationB), closedSnapshot, 'Rejected closed-event read must not mutate invitation');
+  console.log('PASS: isolated local private-book peek, sent-only visibility, tenant separation, read-only state, invalid, archived and closed-event tokens.');
 } finally {
   if (serve?.exitCode === null) serve.kill('SIGTERM');
   await rm(tempDir, { recursive: true, force: true });

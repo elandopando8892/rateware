@@ -8,6 +8,7 @@ on:
       - "supabase/migrations/**"
       - "supabase/config.toml"
       - "tools/test-rfx-bid-peek-local.mjs"
+      - "tools/test-schema-only-restore.mjs"
       - ".github/workflows/rfx-private-peek-integration.yml"
   workflow_dispatch:
 
@@ -29,6 +30,11 @@ jobs:
         env:
           SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
         run: supabase start
+
+      - name: Rehearse schema-only restore without contact rows
+        env:
+          RFX_PEEK_LOCAL_ONLY: "1"
+        run: node tools/test-schema-only-restore.mjs
 
       - name: Gate service-role grants used by the private book
         run: |

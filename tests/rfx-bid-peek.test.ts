@@ -185,6 +185,16 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
       body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token" }),
     }));
     assertEquals(revoked.status, 404);
+    row.invitation_status = "invited";
+    row.rfx_events.status = "closed";
+    const closed = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token" }),
+    }));
+    assertEquals(closed.status, 404);
+    const closedPayload = await closed.json();
+    assert(!closedPayload.carrier_book);
+    assertEquals(tokenPaths(closedPayload).length, 0);
     assert(queries.length >= 2);
     assert(queries.every((query) => query.method === "GET"));
   } finally {
