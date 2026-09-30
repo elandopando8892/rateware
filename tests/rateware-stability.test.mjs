@@ -3231,6 +3231,7 @@ assert.match(apiSource, /async function fetchBusinessIntelligenceRows[\s\S]+\.eq
 const dashboardSummarySource = apiSource.slice(apiSource.indexOf('if (body.action === "dashboard_summary")'), apiSource.indexOf('if (body.action === "book_audit")'));
 assert.match(dashboardSummarySource, /raw_uploads[\s\S]+\.eq\("owner_email", user\.owner_email\)/, "Dashboard upload counts must remain workspace-scoped");
 assert.match(dashboardSummarySource, /rate_staging[\s\S]+\.eq\("owner_email", user\.owner_email\)/, "Dashboard rate counts must remain workspace-scoped");
+assert.match(dashboardSummarySource, /recentBids[\s\S]+\.eq\("rfx_events\.owner_email", user\.owner_email\)[\s\S]+\.gte\("responded_at"/, "The day's bid count must stay workspace-scoped");
 const bookAuditSource = apiSource.slice(apiSource.indexOf('if (body.action === "book_audit")'), apiSource.indexOf('if (body.action === "list_vendor_unmatched_ids")'));
 assert.match(bookAuditSource, /const approvedHead = \(\) =>[\s\S]+\.eq\("owner_email", user\.owner_email\)/, "Ratebook audit counts must remain workspace-scoped");
 assert.match(apiSource, /async function fetchAllOwnedRfxEvents[\s\S]+\.range\(offset, offset \+ RFX_EVENT_CHILD_PAGE_SIZE - 1\)/, "RFx event reads should paginate beyond the Supabase response limit");
