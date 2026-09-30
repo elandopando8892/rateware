@@ -177,7 +177,9 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': '7dc939bfa3345e2d5395567a73d86f8a6c712b0a6af28a47116989ad15e0bbd0',
+  // 2026-09-30: metadatos Gmail y sincronizacion de rebotes, conservando
+  // confirmaciones por propietario de #168 y catalogo activo de #170.
+  'edge.rateware-api.': '50d6483c13fc8c04c6ea0807e2945291791af77fdca8a262a534e4fb8a5c23bd',
   // Reviewed after merging the no-write invitation peek with the stricter
   // Google Chat conversation isolation in main. The peek now includes
   // same-vendor encrypted-token rows without decrypting or exposing tokens;
@@ -193,6 +195,7 @@ const brandedDomainAuthorizationEnvelopes = {
 // added template dispatch and handler factory. Their behavior is unchanged, but
 // the scanner intentionally fingerprints the complete reachable action segment.
 const ratewareApiSourceFingerprintOverrides = {
+  'edge.rateware-api.list_staging_options': '101f5482a6c8c89cfab8b7f0cd5e2694e9f842458606ee1e02619fbddaafaa76',
   'edge.rateware-api.award_rfx_lane_vendor': '80b222f9225cf992b19bcc18ca232ae3dff2a4cdfc88b280bd615d517373ba34',
   'edge.rateware-api.create_rfx_award_package': '378f73423f4726da85dfc4c453be98f50d3f86c7da6a9f3af9a68267441fe4d6',
   'edge.rateware-api.create_vendor_segment': '8e6a444366bfa108430e02fdf8dffbbf11a0ab0e4e102d4687f6e589f809aa69',
