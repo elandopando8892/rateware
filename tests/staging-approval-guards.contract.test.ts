@@ -66,3 +66,37 @@ for (const action of ['bulk_update_staging', 'bulk_update_rate_rows_by_filter'])
   assertEquals(invalidBatch.status, 409, JSON.stringify(invalidBatch.body));
   assertEquals(invalidBatch.store.tables.rate_staging.map(row => row.status), ['pending_review', 'pending_review']);
 });
+
+for (const action of ['update_staging', 'bulk_update_staging', 'bulk_update_rate_rows_by_filter']) {
+  for (const outcome of ['backup', 'not_awarded', 'submitted', 'withdrawn', 'future_outcome']) Deno.test(`${action}: retiene historia RFx ${outcome}`, async () => {
+    const result = await approve({ action, row: { rfx_id: 'RFx-PILOT', rfx_bid_outcome: outcome } });
+    assertEquals(result.status, 409);
+    assertEquals(result.body.stage, 'staging_approval_not_ready');
+    assertEquals(result.store.tables.rate_staging[0].status, 'pending_review');
+    assertEquals(result.store.tables.rate_staging[0].rfx_bid_outcome, outcome);
+    assertEquals(result.store.writes().filter(call => call.table !== 'saas_audit_log'), []);
+  });
+  Deno.test(`${action}: primaria adjudicada y carga sin resultado mantienen aprobación`, async () => {
+    assertEquals((await approve({ action, row: { rfx_bid_outcome: 'awarded' } })).status, 200);
+    assertEquals((await approve({ action, row: { rfx_bid_outcome: null } })).status, 200);
+    assertEquals((await approve({ action, row: { rfx_bid_outcome: '  AWARDED  ' } })).status, 200);
+  });
+  Deno.test(`${action}: patch no puede convertir respaldo en primaria`, async () => {
+    const result = await approve({ action, row: { rfx_id: 'RFx-PILOT', rfx_bid_outcome: 'backup' }, patch: { rfx_id: null, rfx_bid_outcome: 'awarded' } });
+    assertEquals(result.status, 409);
+    assertEquals(result.store.writes().filter(call => call.table !== 'saas_audit_log'), []);
+  });
+}
+for (const action of ['bulk_update_staging', 'bulk_update_rate_rows_by_filter']) Deno.test(`${action}: selección primaria/respaldo rechaza todo antes de escribir`, async () => {
+  const result = await approve({ action, row: { rfx_bid_outcome: 'awarded' }, second: { rfx_bid_outcome: 'backup' } });
+  assertEquals(result.status, 409);
+  assertEquals(result.store.tables.rate_staging.map(row => row.status), ['pending_review', 'pending_review']);
+  assertEquals(result.store.writes().filter(call => call.table !== 'saas_audit_log'), []);
+});
+Deno.test('respaldo sigue siendo corregible sin aprobar ni cambiar su resultado', async () => {
+  const result = await approve({ row: { rfx_bid_outcome: 'backup' }, patch: { status: 'pending_review', notes: 'Reviewed fixture; history preserved.', rfx_bid_outcome: 'awarded' } });
+  assertEquals(result.status, 200);
+  assertEquals(result.store.tables.rate_staging[0].status, 'pending_review');
+  assertEquals(result.store.tables.rate_staging[0].rfx_bid_outcome, 'backup');
+  assertEquals(result.store.tables.rate_staging[0].notes, 'Reviewed fixture; history preserved.');
+});

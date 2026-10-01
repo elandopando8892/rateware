@@ -4362,7 +4362,8 @@ function bulkHasSourceAuditIssue(row: Record<string, unknown>) {
 }
 
 function bulkIsReadyForApproval(row: Record<string, unknown>) {
-  return !bulkNeedsNumericRate(row)
+  return rfxBidMayEnterRateBase(row)
+    && !bulkNeedsNumericRate(row)
     && !bulkHasAllInText(row)
     && !bulkNeedsLocationMatch(row)
     && bulkHasVendorMatch(row)
@@ -4372,9 +4373,16 @@ function bulkIsReadyForApproval(row: Record<string, unknown>) {
     && !bulkHasReviewConflict(row);
 }
 
+/** The RFx outcome is owned by award actions, not a staging correction patch. */
+function rfxBidMayEnterRateBase(row: Record<string, unknown>) {
+  const outcome = cleanText(row.rfx_bid_outcome)?.toLowerCase();
+  return !outcome || outcome === "awarded";
+}
+
 /** Same blockers as Bidware Review. Other findings remain human-review warnings. */
 function requireStagingApprovalReady(row: Record<string, unknown>) {
   const issues: string[] = [];
+  if (!rfxBidMayEnterRateBase(row)) issues.push("rfx_outcome");
   if (bulkNeedsNumericRate(row)) issues.push("rate");
   if (bulkHasAllInText(row)) issues.push("rate_text");
   if (bulkNeedsLocationMatch(row)) issues.push("location");
