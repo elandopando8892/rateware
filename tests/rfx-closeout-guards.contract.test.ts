@@ -9,7 +9,7 @@ const EVENT = "00000000-0000-4000-8000-000000000001";
 const primary = { id: "invitation-a", rfx_event_id: EVENT, rfx_lane_id: "lane-a", vendor_id: "carrier-a", bid_rate: 1200, bid_rate_staging_id: "staging-a", rate_staging_id: "staging-a", award_role: "primary", invitation_status: "quoted", valid_through: "2099-12-31", vendors: { status: "active" }, rfx_lanes: {} };
 const refused = { rfx_lane_vendor_id: primary.id, vendor_id: primary.vendor_id, segment_key: "general", rubric_key: "logistics_model", answer: "disagree", updated_at: "2026-09-30T12:00:00Z" };
 type Row = Record<string, unknown>;
-async function close(options: { patch?: Row; extra?: Row; rows?: Row[]; role?: string; foreign?: boolean; failRead?: boolean; pending?: boolean; action?: string } = {}) {
+async function close(options: { patch?: Row; extra?: Row; rows?: readonly Row[]; role?: string; foreign?: boolean; failRead?: boolean; pending?: boolean; action?: string } = {}) {
   const writes: Row[] = [], reads: Row[] = [];
   const invitations = [{ ...primary, ...options.patch }, ...(options.extra ? [options.extra] : [])];
   const client = {

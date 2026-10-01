@@ -17,6 +17,16 @@ export function memoryClient(tables: Record<string, Row[]>) {
           rows = (Array.isArray(call.payload) ? call.payload : [call.payload]).map((row: Row) => ({ id: crypto.randomUUID(), ...structuredClone(row) }));
           tables[table].push(...rows);
         }
+        if (call.op === 'upsert') {
+          const keys = String(call.onConflict || 'id').split(',');
+          rows = (Array.isArray(call.payload) ? call.payload : [call.payload]).map((row: Row) => {
+            const old = tables[table].find(item => keys.every(key => item[key] === row[key]));
+            if (old) { Object.assign(old, structuredClone(row)); return old; }
+            const created = { id: crypto.randomUUID(), ...structuredClone(row) };
+            tables[table].push(created); return created;
+          });
+        }
+        if (call.op === 'delete') tables[table] = tables[table].filter(row => !filters.every(test => test(row)));
         const count = rows.length;
         rows = [...rows].sort((a, b) => {
           for (const [key, ascending] of orders) { const n = String(field(a, key) ?? '').localeCompare(String(field(b, key) ?? '')); if (n) return ascending ? n : -n; }
@@ -30,7 +40,8 @@ export function memoryClient(tables: Record<string, Row[]>) {
         const key = String(args[0]);
         if (name === 'select') { call.columns = args[0] || '*'; head = args[1]?.head === true; }
         else if (name === 'single' || name === 'maybeSingle') { one = true; requiredOne = name === 'single'; }
-        else if (name === 'update' || name === 'insert') { call.op = name; call.payload = args[0]; }
+        else if (name === 'update' || name === 'insert' || name === 'upsert') { call.op = name; call.payload = args[0]; call.onConflict = args[1]?.onConflict; }
+        else if (name === 'delete') call.op = name;
         else if (name === 'range') { start = args[0]; end = args[1]; }
         else if (name === 'limit') end = args[0] - 1;
         else if (name === 'order') orders.push([key, args[1]?.ascending !== false]);

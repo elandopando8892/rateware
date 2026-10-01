@@ -8,6 +8,7 @@ import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspa
 import { forwardSourceDownload, forwardSourceRemoval } from "../_shared/source-download-routing.mjs";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
 import { requireEligibleRfxCloseout } from "./rfx-closeout-guards.ts";
+import { rfxDemandOperation, rfxDemandService } from "./rfx-demand-values.ts";
 import {
   CARRIER_TEMPLATE_IMPORT_MAX_ROWS,
   carrierTemplateNameKey,
@@ -22126,11 +22127,12 @@ function safeRfxSegmentSlug(value: string) {
     .slice(0, 120);
 }
 
-function rfxSegmentKeyForDemandLane(lane: Record<string, unknown>) {
+function rfxSegmentKeyForDemandLane(lane: Record<string, unknown>, legacy = false) {
   const payload = objectRecord(lane.normalized_payload);
   const label = [
-    firstCleanText(lane.operating_segment, payload.operating_segment, lane.operation_type, payload.operation),
-    firstCleanText(lane.service_type, payload.service),
+    legacy ? firstCleanText(lane.operating_segment, payload.operating_segment, lane.operation_type, payload.operation)
+      : firstCleanText(payload.operation, lane.operation, lane.operating_segment, payload.operating_segment, lane.operation_type),
+    legacy ? firstCleanText(lane.service_type, payload.service) : rfxDemandService(lane),
     firstCleanText(lane.equipment_type, payload.equipment),
     firstCleanText(lane.trailer_requirements, payload.trailer)
   ].filter(Boolean).join(" / ");
@@ -22140,8 +22142,8 @@ function rfxSegmentKeyForDemandLane(lane: Record<string, unknown>) {
 function rfxSegmentNameForDemandLane(lane: Record<string, unknown>) {
   const payload = objectRecord(lane.normalized_payload);
   return [
-    firstCleanText(lane.operating_segment, payload.operating_segment, lane.operation_type, payload.operation),
-    firstCleanText(lane.service_type, payload.service),
+    firstCleanText(payload.operation, lane.operation, lane.operating_segment, payload.operating_segment, lane.operation_type),
+    rfxDemandService(lane),
     firstCleanText(lane.equipment_type, payload.equipment),
     firstCleanText(lane.trailer_requirements, payload.trailer)
   ].filter(Boolean).join(" / ") || "General RFx segment";
@@ -22166,8 +22168,8 @@ function rfxDemandLaneDetail(lane: Record<string, unknown>, field: string) {
   ];
   if (field === "logistics_model") {
     candidates.push([
-      firstCleanText(lane.operating_segment, lane.operation_type),
-      firstCleanText(lane.service_type),
+      rfxDemandOperation(lane),
+      rfxDemandService(lane),
       firstCleanText(lane.currency) ? `Currency ${firstCleanText(lane.currency)}` : ""
     ].filter(Boolean).join(" | "));
   }
@@ -22211,8 +22213,8 @@ function buildRfxPackageSegments(
       package_id: cleanText(packageId),
       segment_key: segmentKey,
       segment_name: rfxSegmentNameForDemandLane(firstLane),
-      operation: firstCleanText(firstLane.operation_type, objectRecord(firstLane.normalized_payload).operation),
-      service: firstCleanText(firstLane.service_type, objectRecord(firstLane.normalized_payload).service),
+      operation: rfxDemandOperation(firstLane),
+      service: rfxDemandService(firstLane),
       equipment: firstCleanText(firstLane.equipment_type, objectRecord(firstLane.normalized_payload).equipment),
       trailer: firstCleanText(firstLane.trailer_requirements, objectRecord(firstLane.normalized_payload).trailer),
       lane_count: segmentLanes.length,
@@ -23538,7 +23540,8 @@ async function launchRfxProcessPackageToBidRoom(supabase: RatewareSupabaseClient
   const laneRows = packageLanes.map((packageLane, index) => {
     const lane = objectRecord(packageLane.rfx_demand_lanes);
     const segmentKey = rfxSegmentKeyForDemandLane(lane);
-    const segment = objectRecord(segmentByKey.get(segmentKey));
+    // Existing packages keep their segment keys/checklists; new packages use catalog values.
+    const segment = objectRecord(segmentByKey.get(segmentKey) || segmentByKey.get(rfxSegmentKeyForDemandLane(lane, true)));
     return {
       rfx_event_id: eventInsert.data.id,
       source_rfx_demand_lane_id: cleanText(lane.id),
@@ -23558,9 +23561,9 @@ async function launchRfxProcessPackageToBidRoom(supabase: RatewareSupabaseClient
       equipment: cleanText(lane.equipment_type),
       trailer: cleanText(lane.trailer_requirements),
       config: cleanText(objectRecord(lane.normalized_payload).config),
-      operation: cleanText(lane.operation_type),
-      service: cleanText(lane.service_type),
-      rfx_segment_key: segmentKey,
+      operation: rfxDemandOperation(lane),
+      service: rfxDemandService(lane),
+      rfx_segment_key: cleanText(segment.segment_key) || segmentKey,
       rfx_segment_name: cleanText(segment.segment_name) || rfxSegmentNameForDemandLane(lane),
       weekly_volume: cleanNumber(lane.weekly_volume),
       annual_volume: cleanNumber(lane.monthly_volume) === null ? null : Number(lane.monthly_volume) * 12,
@@ -23657,8 +23660,8 @@ function ratebookSourceSnapshot(
       equipment: cleanText(demand.equipment_type),
       trailer: cleanText(demand.trailer_requirements),
       config: cleanText(demand.configuration_type),
-      operation: cleanText(demand.operation_type),
-      service: cleanText(demand.service_type),
+      operation: rfxDemandOperation(demand),
+      service: rfxDemandService(demand),
       weekly_volume: cleanText(demand.weekly_volume),
       frequency: cleanText(demand.frequency),
       target_rate: cleanText(demand.target_rate),
@@ -23930,8 +23933,8 @@ function fallbackRatebookSegments(packageLanes: Record<string, unknown>[]) {
       id: null,
       segment_key: segmentKey,
       segment_name: firstCleanText(firstDemand.rfx_segment_name, firstDemand.operating_segment, "All routes") || "All routes",
-      operation: cleanText(firstDemand.operation_type),
-      service: cleanText(firstDemand.service_type),
+      operation: rfxDemandOperation(firstDemand),
+      service: rfxDemandService(firstDemand),
       equipment: cleanText(firstDemand.equipment_type),
       trailer: cleanText(firstDemand.trailer_requirements),
       lane_count: rows.length,
@@ -24253,8 +24256,8 @@ async function listRatebooks(
         normalized.destination_region,
         demand.equipment_type,
         demand.trailer_requirements,
-        demand.operation_type,
-        demand.service_type,
+        rfxDemandOperation(demand),
+        rfxDemandService(demand),
         demand.currency
       ].map(cleanText).filter(Boolean).join(" ");
     }).join(" ").toLowerCase();
@@ -24401,8 +24404,8 @@ async function buildRatebookRouteExportRows(
       equipment: firstCleanText(route.equipment, demand.equipment_type, eventLane.equipment),
       trailer: firstCleanText(route.trailer, demand.trailer_requirements, eventLane.trailer),
       configuration: firstCleanText(demand.configuration_type, eventLane.config),
-      operation: firstCleanText(route.operation, demand.operation_type, eventLane.operation),
-      service: firstCleanText(route.service, demand.service_type, eventLane.service),
+      operation: firstCleanText(route.operation, rfxDemandOperation(demand), eventLane.operation),
+      service: firstCleanText(route.service, rfxDemandService(demand), eventLane.service),
       weekly_volume: cleanNumber(demand.weekly_volume) ?? cleanNumber(eventLane.weekly_volume),
       monthly_volume: cleanNumber(demand.monthly_volume),
       frequency: firstCleanText(route.frequency, demand.frequency),
@@ -24580,8 +24583,8 @@ function ratebookRouteSummary(
     destination: firstCleanText(demand.destination, [demand.destination_city, demand.destination_state].filter(Boolean).join(", ")),
     equipment: firstCleanText(demand.equipment_type, eventLane.equipment),
     trailer: firstCleanText(demand.trailer_requirements, eventLane.trailer),
-    operation: firstCleanText(demand.operation_type, eventLane.operation),
-    service: firstCleanText(demand.service_type, eventLane.service),
+    operation: firstCleanText(rfxDemandOperation(demand), eventLane.operation),
+    service: firstCleanText(rfxDemandService(demand), eventLane.service),
     weekly_volume: cleanNumber(demand.weekly_volume),
     frequency: cleanText(demand.frequency),
     currency: firstCleanText(demand.currency, eventLane.currency) || "USD",
@@ -24605,8 +24608,8 @@ function evaluateRatebookReadiness(packageLanes: Record<string, unknown>[]) {
       ["origin", firstCleanText(demand.origin, demand.origin_city)],
       ["destination", firstCleanText(demand.destination, demand.destination_city)],
       ["equipment", demand.equipment_type],
-      ["operation", demand.operation_type],
-      ["service", demand.service_type],
+      ["operation", rfxDemandOperation(demand)],
+      ["service", rfxDemandService(demand)],
       ["currency", demand.currency]
     ].filter(([, value]) => !cleanText(value)).map(([key]) => key);
     if (missing.length) {
@@ -30553,6 +30556,7 @@ export function createRatewareApiHandler(
               status: "drafted",
               metadata: {
                 bid_link: context.bid_link,
+                language: outreachTemplateLanguage(template),
                 profile_link: context.profile_link,
                 generated_at: new Date().toISOString(),
                 lane_count: invitationGroup.length,
@@ -31172,12 +31176,14 @@ export function createRatewareApiHandler(
     if (body.action === "get_outreach_message") {
       const messageId = cleanText(body.id);
       if (!messageId) throw new Error("Outreach message id is required.");
-      const result = await supabase
+      const query = supabase
         .from("outreach_messages")
         .select(OUTREACH_MESSAGE_SELECT)
         .eq("owner_email", user.owner_email)
-        .eq("id", messageId)
-        .maybeSingle();
+        .eq("id", messageId);
+      const eventId = cleanText(body.rfx_event_id);
+      if (eventId) query.eq("rfx_event_id", eventId);
+      const result = await query.maybeSingle();
       if (result.error) throw result.error;
       if (!result.data) return jsonResponse({ row: null });
       const rows = await hydrateOutreachInvitationTokens(supabase, [result.data as Record<string, unknown>]);
@@ -33518,7 +33524,7 @@ export function createRatewareApiHandler(
         .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
         .single();
       if (result.error) throw result.error;
-      const priorStatus = cleanText(currentResult.data?.status);
+      const priorStatus = cleanText(currentRow.status);
       const nextStatus = cleanText(result.data?.status);
       if (priorStatus !== nextStatus || nextStatus === "approved") {
         await tryWriteAuditLog(
