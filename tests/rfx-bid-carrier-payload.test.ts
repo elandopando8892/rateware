@@ -63,6 +63,11 @@ Deno.test("a carrier never receives the target, the incumbent or the event's int
       if (method !== "GET") throw new Error(`unexpected database write: ${method} ${url.pathname}`);
       const headers = { "Content-Type": "application/json" };
       const reply = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers });
+      if (url.pathname.endsWith("/outreach_messages")) return reply([{
+        id: "synthetic-receipt-p", owner_email: OWNER, vendor_id: row.vendor_id,
+        rfx_event_id: row.rfx_event_id, rfx_lane_vendor_id: row.id, status: "sent", channel: "email",
+        provider: "gmail", provider_message_id: "synthetic-provider-p", sent_at: new Date(Date.now() - 60_000).toISOString(),
+      }]);
       if (url.pathname.endsWith("/rfx_lane_vendors")) {
         if (url.searchParams.has("invitation_token_hash") || url.searchParams.has("invitation_token")) return reply(row);
         if (url.searchParams.has("rfx_lane_id")) return reply([]);

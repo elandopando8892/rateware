@@ -2,6 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
 import { belongsToThread, carrierChatMessage, carrierChatThread } from "../_shared/carrier-chat-view.mjs";
+import { PRIVATE_DELIVERY_CONTRACT, activePrivateInvitation, loadPrivateDeliveryEvidence,
+  privateInvitationProjection } from "../_shared/private-invitation-evidence.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -4842,6 +4844,11 @@ Deno.serve(async (request) => {
       // Loads may verify a carrier's private book without recording a view or
       // opportunistically migrating legacy tokens. The token remains required.
       const readOnlyPeek = body.action === "peek_invitation";
+      const invitationResponse = (payload: unknown, status = 200) => {
+        const response = jsonResponse(payload, status);
+        if (readOnlyPeek) response.headers.set("Cache-Control", "private, no-store, max-age=0");
+        return response;
+      };
       const invitation = await findInvitationByToken(supabase, token, `
           id,
           rfx_event_id,
@@ -4887,12 +4894,33 @@ Deno.serve(async (request) => {
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,operation_start_date,bid_visibility_mode,notes,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
       rfx_lanes(*)
         `, !readOnlyPeek);
-      if (!invitation) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
+      if (!invitation) {
+        const response = invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+        return response;
+      }
       const result = { data: invitation };
-      if (readOnlyPeek && (
-        ["archived", "revoked", "declined"].includes(String(cleanText(result.data.invitation_status) || "").toLowerCase()) ||
-        cleanText(relationRecord(result.data.rfx_events).status) !== "open"
-      )) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
+      const peekNow = Date.now();
+      const peekScope = { ownerEmail: cleanText(relationRecord(invitation.rfx_events).owner_email) || "",
+        vendorId: cleanText(invitation.vendor_id) || "" };
+      let rootDelivery: { sent_at: string; basis: string } | undefined;
+      if (readOnlyPeek) {
+        if (!activePrivateInvitation(invitation, peekScope, BID_DEADLINE_UTC_OFFSET, peekNow)) {
+          const response = invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+          return response;
+        }
+        try {
+          rootDelivery = (await loadPrivateDeliveryEvidence(supabase, [invitation], peekScope, peekNow)).get(invitation.id);
+        } catch {
+          const response = invitationResponse({ error: "Private invitation evidence is unavailable.", code: "PRIVATE_DELIVERY_EVIDENCE_UNAVAILABLE" }, 503);
+          return response;
+        }
+        if (!rootDelivery) {
+          const response = invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+          return response;
+        }
+      }
+      const peekProjection = (row: Record<string, unknown>, proof = rootDelivery) =>
+        invitationWithoutToken(privateInvitationProjection(row, proof!, BID_DEADLINE_UTC_OFFSET));
 
       if (!readOnlyPeek && !result.data.viewed_at) {
         await supabase
@@ -4924,9 +4952,11 @@ Deno.serve(async (request) => {
         const currentRow = currentBook.invited[0] || null;
         const liveBoard = liveBoardFromRows(result.data, peersResult.data || []);
         const response = jsonResponse({
-          invitation: readOnlyPeek ? invitationWithoutToken(carrierInvitation(result.data)) : carrierInvitation(result.data),
+          invitation: readOnlyPeek ? peekProjection(carrierInvitation(result.data)) : carrierInvitation(result.data),
           live_board: readOnlyPeek ? { ...liveBoard, current_invitation_token: undefined } : liveBoard,
-          current_book_row: readOnlyPeek && currentRow ? invitationWithoutToken(currentRow) : currentRow,
+          current_book_row: readOnlyPeek && currentRow ? { ...invitationWithoutToken(currentRow),
+            expires_at: peekProjection(result.data).expires_at, delivery_receipt: rootDelivery } : currentRow,
+          ...(readOnlyPeek ? { delivery_evidence: PRIVATE_DELIVERY_CONTRACT } : {}),
           ...(!readOnlyPeek && body.include_history === true ? { bid_history: bidHistory } : {})
         });
         if (readOnlyPeek) response.headers.set("Cache-Control", "private, no-store, max-age=0");
@@ -4990,7 +5020,28 @@ Deno.serve(async (request) => {
       // A peek never returns invitation tokens, so it must not depend on the
       // encryption key merely to include a carrier's encrypted-token rows.
       // Keep the ordinary Bid Room path's token hydration unchanged.
-      const hydratedInvitedRows = readOnlyPeek ? invitedRows
+      let peekProofs = new Map<string, { sent_at: string; basis: string }>();
+      if (readOnlyPeek) {
+        try {
+          peekProofs = await loadPrivateDeliveryEvidence(supabase, invitedRows, peekScope, peekNow);
+        } catch {
+          const response = invitationResponse({ error: "Private invitation evidence is unavailable.", code: "PRIVATE_DELIVERY_EVIDENCE_UNAVAILABLE" }, 503);
+          return response;
+        }
+        // Recheck the root in the book read: do not return a prior receipt after
+        // evidence disappears, or claim a complete root projection outside the cap.
+        const bookRoot = invitedRows.find((row) => row.id === invitation.id);
+        if (!bookRoot || !peekProofs.has(String(invitation.id))) {
+          const response = invitationResponse({ error: "Private invitation evidence is unavailable.", code: "PRIVATE_DELIVERY_EVIDENCE_UNAVAILABLE" }, 503);
+          return response;
+        }
+        if (!activePrivateInvitation(bookRoot, peekScope, BID_DEADLINE_UTC_OFFSET, peekNow)) {
+          const response = invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+          return response;
+        }
+      }
+      const hydratedInvitedRows = readOnlyPeek ? invitedRows.filter((row) =>
+        activePrivateInvitation(row, peekScope, BID_DEADLINE_UTC_OFFSET, peekNow) && peekProofs.has(String(row.id)))
         : await hydrateInvitationTokens(supabase, invitedRows);
 
       // A Loads peek is strictly vendor-bound: unrelated open lanes from the
@@ -5046,11 +5097,18 @@ Deno.serve(async (request) => {
 
       const book = carrierBusinessBook(result.data, hydratedInvitedRows, openLanesResult.data || []);
       const liveBoard = liveBoardFromRows(result.data, peersResult.data || []);
+      const peekBookRow = (row: Record<string, unknown>) => {
+        const original = hydratedInvitedRows.find((candidate) => candidate.id === row.invitation_id)!;
+        const projection = peekProjection(original, peekProofs.get(String(original.id)));
+        return { ...invitationWithoutToken(row), expires_at: projection.expires_at,
+          delivery_receipt: projection.delivery_receipt };
+      };
       const response = jsonResponse({
-        invitation: readOnlyPeek ? invitationWithoutToken(carrierInvitation(result.data)) : carrierInvitation(result.data),
+        invitation: readOnlyPeek ? peekProjection(carrierInvitation(result.data)) : carrierInvitation(result.data),
         live_board: readOnlyPeek ? { ...liveBoard, current_invitation_token: undefined } : liveBoard,
-        carrier_book: readOnlyPeek ? { ...book, invited: book.invited.map(invitationWithoutToken),
-          quoted: book.quoted.map(invitationWithoutToken) } : book,
+        carrier_book: readOnlyPeek ? { ...book, invited: book.invited.map(peekBookRow),
+          quoted: book.quoted.map(peekBookRow) } : book,
+        ...(readOnlyPeek ? { delivery_evidence: PRIVATE_DELIVERY_CONTRACT } : {}),
         ...(!readOnlyPeek ? { bid_history: bidHistory, segment_confirmations: segmentConfirmations } : {})
       });
       if (readOnlyPeek) response.headers.set("Cache-Control", "private, no-store, max-age=0");
