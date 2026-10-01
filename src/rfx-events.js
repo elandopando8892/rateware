@@ -4373,7 +4373,7 @@ function renderLiveOfferManager() {
                 <td>${escapeHtml(row.invitation.weekly_capacity ?? "-")}</td>
                 <td>${escapeHtml(row.invitation.transit_days ?? "-")}</td>
                 <td>${statusChip(row.invitation.invitation_status || "quoted")}</td>
-                <td><button type="button" class="secondary small-button" data-rfx-ask-carrier="${escapeHtml(row.invitation.id)}" data-rfx-ask-carrier-lane="${escapeHtml(row.lane.id)}" title="Reply in this carrier's latest Gmail thread for this RFx">Reply by email</button></td>
+                <td><button type="button" class="secondary small-button" data-rfx-ask-carrier="${escapeHtml(row.invitation.id)}" data-rfx-ask-carrier-lane="${escapeHtml(row.lane.id)}" title="Prepare a question for review in Delivery queue">Prepare question</button></td>
               </tr>
             `).join("")}
           </tbody>
@@ -5074,7 +5074,7 @@ function openCarrierCommunication(invitationId, laneId = "") {
   bidRoomCarrierMessageRequestKey = newBidRoomCarrierMessageRequestKey();
   activateRfxOperateWorkspace("communications", { focus: true });
   renderBidRoomChatControls();
-  setStatus(rfxChatStatus, `Reply by email selected for ${selectedChatRecipient.carrier}. Rateware will continue the latest Gmail thread for this RFx when one exists; otherwise it will create a new email.`, "neutral");
+  setStatus(rfxChatStatus, `Prepare a question for ${selectedChatRecipient.carrier}. Review and approve it in Delivery queue to send through Gmail.`, "neutral");
 }
 
 function bestBidForLane(lane) {
@@ -5729,7 +5729,7 @@ function renderBidRoomChatControls() {
     rfxChatDeliveryHelp.hidden = !privateTarget;
   }
   if (rfxChatSend) {
-    rfxChatSend.textContent = privateTarget ? "Reply by email" : "Post internally";
+    rfxChatSend.textContent = privateTarget ? "Prepare question" : "Post internally";
   }
   if (rfxChatSend) rfxChatSend.disabled = !selectedEventId;
   if (rfxChatStartEventThread) rfxChatStartEventThread.disabled = !selectedEventId;
@@ -6239,7 +6239,7 @@ function renderResponseBoard() {
           <div class="rfx-response-action-stack">
             <button type="button" class="secondary small-button rfx-response-open-room" data-rfx-open-private-bid="${escapeHtml(privateBidUrl)}" ${privateBidUrl ? "" : "disabled"} title="Open this carrier's tokenized Private Bid Room in a new tab">Open room</button>
             <button type="button" class="secondary small-button" data-rfx-manual-bid="${escapeHtml(invitation.id)}" data-rfx-manual-bid-lane="${escapeHtml(lane.id)}" title="Record or correct a quote received outside the Bid Room">${actionLabel}</button>
-            <button type="button" class="secondary small-button" data-rfx-ask-carrier="${escapeHtml(invitation.id)}" data-rfx-ask-carrier-lane="${escapeHtml(lane.id)}" title="Reply in this carrier's latest Gmail thread for this RFx">Reply by email</button>
+            <button type="button" class="secondary small-button" data-rfx-ask-carrier="${escapeHtml(invitation.id)}" data-rfx-ask-carrier-lane="${escapeHtml(lane.id)}" title="Prepare a question for review in Delivery queue">Prepare question</button>
           </div>
         </td>
         <td><strong>${escapeHtml(vendorLabel(invitation))}</strong><small>${escapeHtml(invitation.vendors?.primary_email || invitation.vendors?.domain || "")}</small></td>
@@ -14133,12 +14133,15 @@ rfxChatForm?.addEventListener("submit", async (event) => {
     if (rfxChatMessage) rfxChatMessage.value = "";
     bidRoomCarrierMessageRequestKey = "";
     const deliveryResult = result?.result || {};
-    const accepted = !replyByEmail || Number(deliveryResult.sent || 0) > 0;
+    const draftPrepared = replyByEmail && result?.draft_only && result?.outreach_message?.status === "drafted";
+    const accepted = !replyByEmail || draftPrepared || Number(deliveryResult.sent || 0) > 0;
     const deliveryUnknown = Number(deliveryResult.delivery_unknown || 0) > 0;
     const failure = Array.isArray(deliveryResult.failures) ? String(deliveryResult.failures[0]?.reason || "") : "";
     const replyMode = result?.email_context?.reply_mode === "thread_reply" ? "in the latest Gmail thread" : "as a new email because no related Gmail thread was found";
     const message = !replyByEmail
       ? (result.google_chat_configured ? "Message posted and mirrored to Google Chat." : "Message posted. Google Chat mirror is not configured yet.")
+      : draftPrepared
+        ? `Question prepared ${replyMode}. Review and approve its send in Delivery Queue.`
       : accepted
         ? `Email sent ${replyMode} and recorded in this RFx Delivery Queue.`
         : deliveryUnknown

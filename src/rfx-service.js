@@ -127,10 +127,10 @@ export async function postBidRoomChatMessage(eventId, message) {
 }
 
 export async function sendBidRoomCarrierMessage(eventId, message) {
-  return await callRatewareApi("send_bid_room_carrier_message", {
+  return await callRatewareApi("draft_bid_room_carrier_message", {
     rfx_event_id: eventId,
     confirmed: true,
-    confirmation_action: "send_bid_room_carrier_message",
+    confirmation_action: "draft_bid_room_carrier_message",
     ...message
   });
 }

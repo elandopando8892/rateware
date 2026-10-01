@@ -4943,12 +4943,12 @@ assert.match(rfxEventsHtml, /src="\.\/src\/rfx-events\.js\?v=[^"]+"/, "Bid Room 
 assert.match(stylesSource, /rfx-response-open-room/, "Bid Operations should visually separate the private room action from bid editing and email reply");
 assert.match(rfxEventsSource, /sendBidRoomCarrierMessage/, "Bid Room reply should use the targeted carrier email action");
 assert.match(rfxEventsSource, /idempotency_key: bidRoomCarrierMessageRequestKey/, "Bid Room email reply should preserve one request key across an in-flight send");
-assert.match(rfxServiceSource, /send_bid_room_carrier_message/, "RFx service should expose the targeted carrier email action");
+assert.match(rfxServiceSource, /draft_bid_room_carrier_message/, "RFx service should expose the targeted carrier draft action without a legacy send fallback");
 assert.match(apiSource, /async function sendBidRoomCarrierMessage/, "Rateware API should handle targeted Bid Room carrier email replies");
 assert.match(apiSource, /async function resolveBidRoomGmailReplyContext/, "Targeted carrier email should resolve the latest relevant Gmail thread");
 assert.match(apiSource, /function marksmanSignatureHtml/, "Targeted carrier email should include the trusted MARKSMAN signature");
 assert.match(apiSource, /function bidRoomFollowUpLaneSummaryHtml/, "Targeted carrier email should include a specific lane summary");
-assert.match(apiSource, /requireBulkConfirmation\(input, \{[\s\S]{0,180}action: "send_bid_room_carrier_message"/, "Targeted carrier email should require an action-bound confirmation");
+assert.match(apiSource, /requireBulkConfirmation\(input, \{[\s\S]{0,180}action: input\.action === "draft_bid_room_carrier_message"/, "Targeted carrier draft should require an action-bound confirmation");
 assert.match(apiSource, /contains\("metadata", \{ bid_room_request_key: requestKey \}\)/, "Targeted carrier email should be idempotent");
 assert.match(apiSource, /const routeBookRows = outreachEventLaneRows\(/, "Targeted carrier email should reuse the complete RFx route book");
 assert.match(apiSource, /const \[invitation\] = await requireHydratedRfxInvitationTokens\(supabase, \[invitationRow\], "Carrier follow-up"\)/, "Targeted carrier email should decrypt its private invitation token before building the Bid Room link");
@@ -4960,7 +4960,7 @@ assert.match(apiSource, /routeBookRows\.length > 1 \? "&view=book"/, "Targeted c
 assert.match(apiSource, /threadId: gmailThreadId/, "Gmail replies should pass the matching Gmail thread id to the provider");
 assert.match(apiSource, /In-Reply-To:/, "Gmail replies should preserve email reply headers");
 const bidRoomCarrierEmailAction = apiSource.slice(apiSource.indexOf("async function sendBidRoomCarrierMessage"), apiSource.indexOf("async function sendWhatsappGroupOutreachMessages"));
-assert.match(bidRoomCarrierEmailAction, /sendOutreachMessages\(supabase, user, sendInput\)/, "Targeted carrier reply should use the normal Gmail delivery path");
+assert.doesNotMatch(bidRoomCarrierEmailAction, /sendOutreachMessages\(/, "Targeted carrier question must remain a draft until Delivery Queue approval");
 assert.doesNotMatch(bidRoomCarrierEmailAction, /sendWhatsappOutreachMessages/, "Targeted carrier reply must not send WhatsApp");
 assert.doesNotMatch(bidRoomCarrierEmailAction, /mirrorBidRoomCarrierDelivery/, "Targeted carrier reply must not mirror into Google Chat");
 

@@ -6,6 +6,7 @@
 //
 // Identity and CORS come from the shared rateware modules so a quote is scoped
 // to exactly the same workspace (owner_email) as shippers and RFx events.
+import { quoteQueue, QuoteQueueError } from "./queue.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse } from "../_shared/kinde.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
@@ -1333,7 +1334,7 @@ function emailList(value: unknown): string[] {
 // for the preview and again at send time; the checksum ties the two together.
 async function quoteEmailDraft(supabase: Db, workspace: Workspace, input: Row) {
   const quote = await requireQuote(supabase, workspace, input.quote_id);
-  if (["won", "lost", "archived"].includes(String(quote.status))) {
+  if (["won", "lost", "archived", "expired"].includes(String(quote.status)) || (quote.valid_until && String(quote.valid_until).slice(0, 10) < nowIso().slice(0, 10))) {
     throw new HttpError(400, "Esta cotización ya está cerrada; reábrela para enviarla.");
   }
   const lanes = await quoteLanes(supabase, workspace, [String(quote.id)]);
@@ -1430,8 +1431,8 @@ async function sendQuoteEmail(supabase: Db, workspace: Workspace, input: Row) {
   const finish = async (patch: Row) => {
     const done = await supabase.from("quotedesk_quote_emails").update({ ...patch, updated_at: nowIso() })
       .eq("id", receipt!.id).eq("status", "sending").select().maybeSingle();
-    if (done.error) console.error("QUOTEDESK_EMAIL_RECEIPT_UPDATE_FAILED", done.error.message);
-    return (done.data as Row | null) || { ...receipt, ...patch };
+    if (done.error || !done.data) throw new HttpError(503, "No se pudo guardar el recibo. Revisa la Cola y Enviados antes de reintentar.");
+    return done.data as Row;
   };
 
   let accessToken: string;
@@ -1506,12 +1507,18 @@ async function saveAccessorial(supabase: Db, workspace: Workspace, input: Row) {
 
 // ---------------------------------------------------------------- handler
 
-async function handle(request: Request) {
+const deliveryQueue = quoteQueue({ requireQuote, draft: quoteEmailDraft, send: sendQuoteEmail, validEmail: isEmail });
+
+export function createQuotedeskApiHandler(dependencies: {
+  getClient?: typeof db;
+  resolveSession?: typeof resolveWorkspace;
+} = {}) {
+return async function handle(request: Request) {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
   if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
   try {
-    const supabase = db();
-    const { workspace, claims } = await resolveWorkspace(request, supabase);
+    const supabase = (dependencies.getClient || db)();
+    const { workspace, claims } = await (dependencies.resolveSession || resolveWorkspace)(request, supabase);
     let body: Row;
     try {
       body = record(await request.json());
@@ -1553,7 +1560,13 @@ async function handle(request: Request) {
       case "preview_quote_email":
         return jsonResponse(await previewQuoteEmail(supabase, workspace, body), 200, request);
       case "send_quote_email":
-        return jsonResponse(await sendQuoteEmail(supabase, workspace, body), 200, request);
+        return jsonResponse({ error: "Prepara el correo y aprueba el envío desde la Cola de envío." }, 409, request);
+      case "prepare_quote_email_draft":
+        return jsonResponse(await deliveryQueue.prepare(supabase, workspace, body), 200, request);
+      case "list_quote_queue":
+        return jsonResponse(await deliveryQueue.list(supabase, workspace, body), 200, request);
+      case "send_quote_queue_message":
+        return jsonResponse(await deliveryQueue.send(supabase, workspace, body), 200, request);
       case "list_quote_emails": {
         const quote = await requireQuote(supabase, workspace, body.quote_id);
         return jsonResponse({ rows: await quoteEmails(supabase, workspace, String(quote.id)) }, 200, request);
@@ -1564,12 +1577,13 @@ async function handle(request: Request) {
         return jsonResponse({ error: `Unknown QuoteDesk action: ${text(body.action, 80) || "(none)"}.` }, 400, request);
     }
   } catch (error) {
-    if (error instanceof HttpError) return jsonResponse({ error: error.message }, error.status, request);
+    if (error instanceof HttpError || error instanceof QuoteQueueError) return jsonResponse({ error: error.message }, error.status, request);
     if (error instanceof QuoteInputError) return jsonResponse({ error: error.message }, 400, request);
     const message = error instanceof Error ? error.message : String((error as Row)?.message || "QuoteDesk failed.");
     console.error("QUOTEDESK_API_ERROR", message);
     return jsonResponse({ error: message }, 500, request);
   }
+};
 }
 
-Deno.serve(handle);
+Deno.serve(createQuotedeskApiHandler());

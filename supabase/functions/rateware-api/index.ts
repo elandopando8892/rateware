@@ -1,3 +1,4 @@
+import { isQuoteQueueMessage } from "../_shared/quote-queue-scope.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
@@ -6,6 +7,7 @@ import { adminOnlyDenial, CARRIER_ARCHIVE_ERROR, RATE_BASE_REMOVAL_ERROR, SHIPPE
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import { forwardSourceDownload, forwardSourceRemoval } from "../_shared/source-download-routing.mjs";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
+import { requireEligibleRfxCloseout } from "./rfx-closeout-guards.ts";
 import {
   CARRIER_TEMPLATE_IMPORT_MAX_ROWS,
   carrierTemplateNameKey,
@@ -96,6 +98,7 @@ const CORRELATED_HIGH_RISK_ACTIONS = new Set([
   "generate_outreach_drafts",
   "generate_rfx_award_notices",
   "send_bid_room_carrier_message",
+  "draft_bid_room_carrier_message",
   "send_fcm_customer_quote_email",
   "send_outreach_messages",
   "send_ratebook_distribution",
@@ -4364,6 +4367,23 @@ function bulkIsReadyForApproval(row: Record<string, unknown>) {
     && Boolean(cleanText(row.operation))
     && Boolean(cleanText(row.service))
     && !bulkHasReviewConflict(row);
+}
+
+/** Same blockers as Bidware Review. Other findings remain human-review warnings. */
+function requireStagingApprovalReady(row: Record<string, unknown>) {
+  const issues: string[] = [];
+  if (bulkNeedsNumericRate(row)) issues.push("rate");
+  if (bulkHasAllInText(row)) issues.push("rate_text");
+  if (bulkNeedsLocationMatch(row)) issues.push("location");
+  if (bulkHasCurrencyGap(row)) issues.push("currency");
+  if (!cleanText(row.operation)) issues.push("operation");
+  if (!cleanText(row.service)) issues.push("service");
+  const crossingText = [row.operation, row.service, row.origin_country, row.destination_country, row.mx_border_crossing_point, row.us_border_crossing_point].filter(Boolean).join(" ");
+  if ((/cross|export|import/i.test(crossingText) || row.mx_border_crossing_point || row.us_border_crossing_point)
+    && (!cleanText(row.mx_border_crossing_point) || !cleanText(row.us_border_crossing_point))) issues.push("border");
+  if (issues.length) throw Object.assign(new Error(`Rate cannot be approved until required review fields are resolved: ${issues.join(", ")}.`), {
+    code: "409", stage: "staging_approval_not_ready"
+  });
 }
 
 function bulkColumnText(row: Record<string, unknown>, field: string) {
@@ -10486,6 +10506,26 @@ async function fetchRfxDetailBenchmarkRates(
   };
 }
 
+/** Caller must first authorize the parent event through requireOwnedRfxEvent. */
+async function fetchRfxSegmentConfirmations(supabase: RatewareSupabaseClient, eventId: string) {
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const result = await supabase
+      .from("rfx_segment_confirmations")
+      .select("rfx_lane_vendor_id,vendor_id,segment_key,rubric_key,answer,comment,updated_at")
+      .eq("rfx_event_id", eventId)
+      .order("updated_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (result.error) throw result.error;
+    const page = result.data || [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
 async function requireOwnedRfxEvent(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, eventId: unknown) {
   const id = cleanText(eventId);
   if (!id) throw new Error("RFx event id is required.");
@@ -10975,6 +11015,17 @@ async function closeoutAwardedRfxToRateware(
 ) {
   const event = await requireOwnedRfxEvent(supabase, user, input.event_id || input.rfx_event_id || input.id);
   const decisionSnapshot = await requireCompleteRfxAwardDecisions(supabase, user, event.id, { requireBids: true });
+  // Read and validate the complete awarded set before ANY business mutation.
+  // A stale client or a direct API call must not bypass Bidware's close gates.
+  const [awardRows, confirmations] = await Promise.all([
+    fetchAllRfxLaneVendorRows(
+      supabase,
+      cleanText(event.id) || "",
+      "*, rfx_lanes(*), vendors(id,vendor_name,legal_name,domain,primary_email,base_stage,status)"
+    ),
+    fetchRfxSegmentConfirmations(supabase, cleanText(event.id) || "")
+  ]);
+  requireEligibleRfxCloseout(awardRows, confirmations, RFX_PACKAGE_RUBRICS.map(rubric => rubric.key));
   const finalizedOutcomes = await finalizeRfxBidOutcomes(supabase, user, event.id, decisionSnapshot.invitations);
   const historicalBidStagingIds = decisionSnapshot.invitations
     .filter((row) => cleanNumber(row.bid_rate) !== null)
@@ -10984,11 +11035,6 @@ async function closeoutAwardedRfxToRateware(
   // human action in Review Queue, regardless of the client request payload.
   const targetStatus = "pending_review";
   const now = new Date().toISOString();
-  const awardRows = await fetchAllRfxLaneVendorRows(
-    supabase,
-    cleanText(event.id) || "",
-    "*, rfx_lanes(*), vendors(id,vendor_name,legal_name,domain,primary_email,base_stage,status)"
-  );
   const awards = awardRows
     .filter((row) => cleanText(row.award_role)?.toLowerCase() === "primary")
     .filter((row) => cleanText(row.invitation_status)?.toLowerCase() !== "archived")
@@ -19169,6 +19215,7 @@ async function sendOutreachMessages(
     .in("id", ids)
     .order("created_at", { ascending: true });
   if (messagesResult.error) throw messagesResult.error;
+  if ((messagesResult.data || []).some(isQuoteQueueMessage)) throw Object.assign(new Error("QuoteDesk messages must be approved through the quote delivery queue."), { code: "409" });
 
   const rowsById = new Map<string, Record<string, unknown>>();
   for (const message of messagesResult.data || []) {
@@ -19625,6 +19672,7 @@ async function sendWhatsappOutreachMessages(
     .in("id", ids)
     .order("created_at", { ascending: true });
   if (messagesResult.error) throw messagesResult.error;
+  if ((messagesResult.data || []).some(isQuoteQueueMessage)) throw Object.assign(new Error("QuoteDesk messages must be approved through the quote delivery queue."), { code: "409" });
   const rowsById = new Map<string, Record<string, unknown>>();
   for (const message of messagesResult.data || []) {
     const id = cleanText(message.id);
@@ -20004,6 +20052,7 @@ function existingBidRoomCarrierEmailReply(message: Record<string, unknown>, reus
   const status = cleanText(message.status)?.toLowerCase() || "drafted";
   return {
     reused,
+    draft_only: true,
     outreach_message: message,
     result: {
       sent: status === "sent" ? 1 : 0,
@@ -20034,8 +20083,8 @@ async function sendBidRoomCarrierMessage(
   if (body.length > 600) throw new Error("Keep a direct carrier question under 600 characters.");
   if (!requestKey) throw new Error("A message request key is required to prevent duplicate sends.");
   requireBulkConfirmation(input, {
-    action: "send_bid_room_carrier_message",
-    label: "Carrier message send",
+    action: input.action === "draft_bid_room_carrier_message" ? "draft_bid_room_carrier_message" : "send_bid_room_carrier_message",
+    label: "Carrier question draft",
     count: 1
   });
 
@@ -20239,59 +20288,19 @@ async function sendBidRoomCarrierMessage(
     throw created.error;
   }
 
-  const sendInput = {
-    ids: [created.data.id],
-    provider: "gmail",
-    channel: "email",
-    sender_email: GMAIL_ALLOWED_SENDER,
-    confirmed: true,
-    confirmation_action: "send_outreach_messages"
-  };
-  let result: Record<string, unknown>;
-  try {
-    result = await sendOutreachMessages(supabase, user, sendInput);
-  } catch (error) {
-    const reason = safeOperationalError(error);
-    result = { sent: 0, failed: 1, skipped: 0, delivery_unknown: false, failures: [{ id: created.data.id, reason }] };
-    const failureUpdate = await supabase
-      .from("outreach_messages")
-      .update({
-        status: "failed",
-        delivery_status: "failed",
-        delivery_error: reason,
-        failed_at: now,
-        provider_response_status: "connection_or_provider_error",
-        updated_at: now,
-        metadata: {
-          ...objectRecord(messageRow.metadata),
-          direct_delivery_error: reason,
-          direct_delivery_error_at: now
-        }
-      })
-      .eq("id", created.data.id)
-      .eq("owner_email", user.owner_email);
-    if (failureUpdate.error) throw failureUpdate.error;
-  }
-  const latest = await supabase
-    .from("outreach_messages")
-    .select("*")
-    .eq("id", created.data.id)
-    .eq("owner_email", user.owner_email)
-    .single();
-  if (latest.error) throw latest.error;
+  // Legacy action name retained for compatibility. Operate only prepares a
+  // draft; explicit delivery approval belongs exclusively to Delivery Queue.
   await tryWriteAuditLog(
     supabase,
     user,
-    "bid_room.carrier_question.send",
+    "bid_room.carrier_question.draft",
     "outreach_messages",
     created.data.id,
-    `Sent targeted Gmail carrier reply for ${cleanText(event.rfx_id) || event.id}`,
+    `Prepared targeted carrier question draft for ${cleanText(event.rfx_id) || event.id}`,
     { rfx_event_id: event.id, rfx_lane_vendor_id: invitation.id, vendor_id: vendor.id, channel: "email", request_key: requestKey, reply_mode: emailContext.reply_mode }
   );
   return {
-    reused: false,
-    outreach_message: latest.data,
-    result,
+    ...existingBidRoomCarrierEmailReply(created.data, false),
     email_context: emailContext
   };
 }
@@ -28935,21 +28944,7 @@ export function createRatewareApiHandler(
     if (body.action === "list_rfx_segment_confirmations") {
       // The event owns the scope; never trust owner_email supplied by the caller.
       const event = await requireOwnedRfxEvent(supabase, user, body.event_id);
-      const rows: Record<string, unknown>[] = [];
-      const pageSize = 1000;
-      for (let offset = 0; ; offset += pageSize) {
-        const result = await supabase
-          .from("rfx_segment_confirmations")
-          .select("rfx_lane_vendor_id,vendor_id,segment_key,rubric_key,answer,comment,updated_at")
-          .eq("rfx_event_id", event.id)
-          .order("updated_at", { ascending: false })
-          .order("id", { ascending: true })
-          .range(offset, offset + pageSize - 1);
-        if (result.error) throw result.error;
-        const page = result.data || [];
-        rows.push(...page);
-        if (page.length < pageSize) break;
-      }
+      const rows = await fetchRfxSegmentConfirmations(supabase, event.id);
       return jsonResponse({ rows });
     }
 
@@ -29118,6 +29113,11 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "send_bid_room_carrier_message") {
+      const result = await sendBidRoomCarrierMessage(supabase, user, body);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "draft_bid_room_carrier_message") {
       const result = await sendBidRoomCarrierMessage(supabase, user, body);
       return jsonResponse(result);
     }
@@ -31230,10 +31230,11 @@ export function createRatewareApiHandler(
       });
       const lookup = await supabase
         .from("outreach_messages")
-        .select("id,campaign_id,rfx_event_id,vendor_id,channel,recipient_email,recipient_phone,status")
+        .select("id,campaign_id,rfx_event_id,vendor_id,channel,recipient_email,recipient_phone,status,metadata")
         .eq("owner_email", user.owner_email)
         .in("id", ids);
       if (lookup.error) throw lookup.error;
+      if ((lookup.data || []).some(isQuoteQueueMessage)) return jsonResponse({ error: "QuoteDesk delivery receipts cannot be changed through the generic queue." }, 409);
 
       const lookupById = new Map<string, Record<string, unknown>>();
       for (const row of lookup.data || []) {
@@ -31310,6 +31311,7 @@ export function createRatewareApiHandler(
         .in("id", ids)
         .order("created_at", { ascending: true });
       if (lookup.error) throw lookup.error;
+      if ((lookup.data || []).some(isQuoteQueueMessage)) return jsonResponse({ error: "QuoteDesk delivery receipts cannot be changed through the generic queue." }, 409);
 
       const lookupById = new Map<string, Record<string, unknown>>();
       for (const row of lookup.data || []) {
@@ -33222,6 +33224,11 @@ export function createRatewareApiHandler(
         if (denial) return jsonResponse(denial, 403);
       }
 
+      if (nextStatus === "approved") {
+        const approvalRows = await fetchRateRowsForIds(supabase, ids, "*", user.owner_email);
+        for (const current of approvalRows) requireStagingApprovalReady({ ...current, ...normalizeStagingPatch(patchInput, current) });
+      }
+
       const requiresRowSpecificPatch = patchInput.vendor_domain !== undefined
         || patchInput.trailer !== undefined
         || patchInput.hazmat !== undefined
@@ -33486,7 +33493,7 @@ export function createRatewareApiHandler(
     if (body.action === "update_staging") {
       const currentResult = await supabase
         .from("rate_staging")
-        .select("trailer,hazmat,temperature_controlled,vendor_id,vendor_domain,status")
+        .select(cleanText(objectRecord(body.patch).status)?.toLowerCase() === "approved" ? "*" : "trailer,hazmat,temperature_controlled,vendor_id,vendor_domain,status")
         .eq("id", body.id)
         .eq("owner_email", user.owner_email)
         .single();
@@ -33501,6 +33508,7 @@ export function createRatewareApiHandler(
       }
       Object.assign(patch, await vendorLinkPatch(supabase, user, patchInput, currentRow));
       if (!Object.keys(patch).length) return jsonResponse({ error: "No staging updates provided." }, 400);
+      if (patch.status === "approved") requireStagingApprovalReady({ ...currentRow, ...patch });
 
       const result = await supabase
         .from("rate_staging")
@@ -33541,16 +33549,19 @@ export function createRatewareApiHandler(
       const patchInput = objectRecord(body.patch);
       if (!Object.keys(patchInput).length) return jsonResponse({ error: "No staging updates provided." }, 400);
 
+      const nextStatus = cleanText(normalizeStagingPatch(patchInput, {}).status);
       const currentRows = await fetchRateRowsForIds(
         supabase,
         ids,
-        "id,trailer,hazmat,temperature_controlled,vendor_id,vendor_domain,status",
+        nextStatus === "approved" ? "*" : "id,trailer,hazmat,temperature_controlled,vendor_id,vendor_domain,status",
         user.owner_email
       );
-      const nextStatus = cleanText(normalizeStagingPatch(patchInput, {}).status);
       if (nextStatus && nextStatus !== "approved" && currentRows.some((row) => cleanText(row.status) === "approved")) {
         const denial = adminOnlyDenial("rateware-api", claims as Record<string, unknown>, "bulk_update_staging", RATE_BASE_REMOVAL_ERROR);
         if (denial) return jsonResponse(denial, 403);
+      }
+      if (nextStatus === "approved") {
+        for (const current of currentRows) requireStagingApprovalReady({ ...current, ...normalizeStagingPatch(patchInput, current) });
       }
       const updatedRows: Record<string, unknown>[] = [];
       for (const current of currentRows) {

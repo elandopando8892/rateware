@@ -58,7 +58,7 @@ const READS: Record<string, ReadonlySet<string>> = {
   ]),
   "quotedesk-api": new Set([
     "event_origins", "get_context", "get_quote", "list_fcm_cost_bases", "list_quote_emails", "list_quotes",
-    "preview_quote_email", "suggest_lane_miles",
+    "preview_quote_email", "list_quote_queue", "suggest_lane_miles",
     // The FCM estimate prices a route without saving it, like suggest_lane_miles (opened 2026-09-29).
     "estimate_lane_fcm",
   ]),

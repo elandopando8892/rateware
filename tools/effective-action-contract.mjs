@@ -1,4 +1,6 @@
 import { RFX_SEGMENT_CONFIRMATIONS_ACTION_CONTRACT_EXTENSION as segmentConfirmationsExtension } from '../supabase/functions/_shared/action-contract-rfx-segment-confirmations.mjs';
+import { RFX_CARRIER_QUESTION_DRAFT_ACTION_CONTRACT_EXTENSION as carrierQuestionDraftExtension } from '../supabase/functions/_shared/action-contract-rfx-carrier-question-drafts.mjs';
+import { QUOTEDESK_QUEUE_ACTION_CONTRACT_EXTENSION as quoteQueueExtension } from '../supabase/functions/_shared/action-contract-quotedesk-queue.mjs';
 import { ACTION_CONTRACT as BASE_ACTION_CONTRACT } from '../supabase/functions/_shared/action-contract.mjs';
 import { CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-carrier-list-templates.mjs';
 import { PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-provider-service.mjs';
@@ -485,12 +487,13 @@ export const ACTION_CONTRACT = {
   contractVersion,
   methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award+website-intake+quotedesk+us-diesel+rfx-lane-no-award+rfx-segment-confirmations`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + opsWatchExtension.expectedCountsDelta.governable + teamMembershipExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable + customerRfiLookupsExtension.expectedCountsDelta.governable + segmentConfirmationsExtension.expectedCountsDelta.governable + rfxLaneNoAwardExtension.expectedCountsDelta.governable + 1,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + opsWatchExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge + customerRfiLookupsExtension.expectedCountsDelta.edge + segmentConfirmationsExtension.expectedCountsDelta.edge + rfxLaneNoAwardExtension.expectedCountsDelta.edge + 1,
+    governable: carrierQuestionDraftExtension.expectedCountsDelta.governable + BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + opsWatchExtension.expectedCountsDelta.governable + teamMembershipExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable + customerRfiLookupsExtension.expectedCountsDelta.governable + segmentConfirmationsExtension.expectedCountsDelta.governable + rfxLaneNoAwardExtension.expectedCountsDelta.governable + 1,
+    edge: carrierQuestionDraftExtension.expectedCountsDelta.edge + BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + opsWatchExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge + customerRfiLookupsExtension.expectedCountsDelta.edge + segmentConfirmationsExtension.expectedCountsDelta.edge + rfxLaneNoAwardExtension.expectedCountsDelta.edge + 1,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres + websiteIntakeExtension.expectedCountsDelta.postgres + quotedeskExtension.expectedCountsDelta.postgres + teamMembershipExtension.expectedCountsDelta.postgres,
-    ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi + segmentConfirmationsExtension.expectedCountsDelta.ratewareApi + rfxLaneNoAwardExtension.expectedCountsDelta.ratewareApi,
+    ratewareApi: carrierQuestionDraftExtension.expectedCountsDelta.ratewareApi + BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi + segmentConfirmationsExtension.expectedCountsDelta.ratewareApi + rfxLaneNoAwardExtension.expectedCountsDelta.ratewareApi,
   },
   reviewedMetadataFingerprints: {
+    ...carrierQuestionDraftExtension.reviewedMetadataFingerprints,
     ...BASE_ACTION_CONTRACT.reviewedMetadataFingerprints,
     'edge.rfx-bid-api.peek_invitation': '24fa4f2496a0b577a10bdb6e691c617ddc9dbbbbae8a7ad79d8a7def7b81cfca',
     ...extension.reviewedMetadataFingerprints,
@@ -541,6 +544,7 @@ export const ACTION_CONTRACT = {
     // Shared team-roles read registration; storage authorization is unchanged.
     'edge.rateware-storage-api.get_upload_source_url': 'a56ab23c0a20a9b5f0d7d02cbd2be22a73a5a7b6ab59d8b86fbe5f2e7b47fc7e',
     'edge.rateware-storage-api.remove_upload': 'a56ab23c0a20a9b5f0d7d02cbd2be22a73a5a7b6ab59d8b86fbe5f2e7b47fc7e',
+    ...carrierQuestionDraftExtension.reviewedAuthorizationFingerprints,
   },
   surfaces: [
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
@@ -570,5 +574,22 @@ export const ACTION_CONTRACT = {
     ...rfxLaneNoAwardExtension.surfaces,
     ...segmentConfirmationsExtension.surfaces,
     rfxBidPeekSurface,
+    ...carrierQuestionDraftExtension.surfaces,
+    ...quoteQueueExtension.surfaces,
   ],
 };
+
+// Local Spot review: static source/envelope fingerprints, shared queue scope guard,
+// and the legacy sender's explicit retirement. No runtime activation is implied.
+ACTION_CONTRACT.expectedCounts.governable += quoteQueueExtension.expectedCountsDelta.governable;
+ACTION_CONTRACT.expectedCounts.edge += quoteQueueExtension.expectedCountsDelta.edge;
+Object.assign(ACTION_CONTRACT.reviewedMetadataFingerprints, quoteQueueExtension.reviewedMetadataFingerprints);
+Object.assign(ACTION_CONTRACT.reviewedAuthorizationFingerprints, quoteQueueExtension.reviewedAuthorizationFingerprints);
+ACTION_CONTRACT.surfaces = ACTION_CONTRACT.surfaces.map(entry => {
+  const fn = entry.canonicalId.split('.')[1];
+  const envelope = quoteQueueExtension.reviewedAuthorizationEnvelopes[fn];
+  if (!entry.canonicalId.startsWith('edge.') || !envelope) return entry;
+  ACTION_CONTRACT.reviewedAuthorizationFingerprints[entry.canonicalId] = envelope;
+  return { ...entry, ...(quoteQueueExtension.overrides[entry.canonicalId] || {}),
+    dependencyFiles: quoteQueueExtension.dependencyFiles[fn] };
+});
