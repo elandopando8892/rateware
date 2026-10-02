@@ -870,14 +870,20 @@ assert.match(supabaseConfigSource, /\[functions\.whatsapp-webhook\]\s*verify_jwt
 {
   // Meta reports a reply's sender as bare digits (a Mexican mobile may carry the
   // old "1" after 52) while outreach stores the number it sent to as "+52...".
-  const start = whatsappWebhookSource.indexOf("function inboundPhoneCandidates(");
-  assert.notEqual(start, -1, "WhatsApp webhook should expand the inbound sender into every stored phone spelling");
-  const helper = whatsappWebhookSource.slice(start, whatsappWebhookSource.indexOf("\n}\n", start) + 2).replace("fromPhone: string", "fromPhone");
-  const inboundPhoneCandidates = new Function(`${helper}\nreturn inboundPhoneCandidates;`)();
-  assert.ok(inboundPhoneCandidates("5215512345678").includes("+525512345678"), "A reply from a Mexican mobile reported as 521... must match the +52... number we sent to");
-  assert.ok(inboundPhoneCandidates("525512345678").includes("+525512345678"), "A reply reported as 52... must match the stored +52... number");
-  assert.ok(inboundPhoneCandidates("525512345678").includes("+5215512345678"), "A number saved with the old Mexican mobile 1 must still match");
-  assert.deepEqual(inboundPhoneCandidates("19565550123"), ["+19565550123", "19565550123"], "Non-Mexican numbers only differ by the plus sign");
+  // Exercise the real helper under both checkout line endings, including on Windows.
+  const lfSource = whatsappWebhookSource.replace(/\r\n/g, "\n");
+  for (const source of [lfSource, lfSource.replace(/\n/g, "\r\n")]) {
+    const start = source.indexOf("function inboundPhoneCandidates(");
+    assert.notEqual(start, -1, "WhatsApp webhook should expand the inbound sender into every stored phone spelling");
+    const match = source.slice(start).match(/^[\s\S]*?\r?\n}/);
+    assert.ok(match, "The phone helper must have a complete function body before it is evaluated");
+    const helper = match[0].replace("fromPhone: string", "fromPhone");
+    const inboundPhoneCandidates = new Function(`${helper}\nreturn inboundPhoneCandidates;`)();
+    assert.ok(inboundPhoneCandidates("5215512345678").includes("+525512345678"), "A reply from a Mexican mobile reported as 521... must match the +52... number we sent to");
+    assert.ok(inboundPhoneCandidates("525512345678").includes("+525512345678"), "A reply reported as 52... must match the stored +52... number");
+    assert.ok(inboundPhoneCandidates("525512345678").includes("+5215512345678"), "A number saved with the old Mexican mobile 1 must still match");
+    assert.deepEqual(inboundPhoneCandidates("19565550123"), ["+19565550123", "19565550123"], "Non-Mexican numbers only differ by the plus sign");
+  }
   assert.doesNotMatch(whatsappWebhookSource, /\.eq\("normalized_recipient_phone", fromPhone\)/, "WhatsApp replies must not be matched against the bare sender digits alone");
 }
 assert.match(whatsappWebhookRoutingMigration, /whatsapp_business_connections_webhook_route_idx/, "WhatsApp connection lookup should have a phone and WABA routing index");
@@ -1779,8 +1785,8 @@ assert.match(apiSource, /carrier_template_materialization_operations[\s\S]+carri
 assert.match(apiSource, /claimCarrierTemplateMaterializationMutation[\s\S]{0,2600}status: "mutation_issued"[\s\S]{0,1600}\.eq\("status", "pending"\)[\s\S]{0,500}\.select\(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS\)/, "Participant mutation ownership must atomically advance a full-context pending journal to mutation_issued");
 const materializationMutationClaimCall = apiSource.indexOf("const mutationClaim = await claimCarrierTemplateMaterializationMutation");
 const materializationMutationFlagSet = apiSource.indexOf("mutationIssued = true", materializationMutationClaimCall);
-const materializationParticipantUpsert = apiSource.indexOf('.from("rfx_lane_vendors")\n        .upsert(', materializationMutationFlagSet);
-assert.ok(materializationMutationClaimCall >= 0 && materializationMutationFlagSet > materializationMutationClaimCall && materializationParticipantUpsert > materializationMutationFlagSet, "The runtime mutationIssued flag must be set and used before every participant upsert");
+const materializationParticipantUpsertOffset = apiSource.slice(materializationMutationFlagSet).search(/\.from\("rfx_lane_vendors"\)\r?\n        \.upsert\(/);
+assert.ok(materializationMutationClaimCall >= 0 && materializationMutationFlagSet > materializationMutationClaimCall && materializationParticipantUpsertOffset > 0, "The runtime mutationIssued flag must be set and used before every participant upsert");
 assert.match(apiSource, /select\("id,rfx_event_id,rfx_lane_id,vendor_id,carrier_template_materialization_operation_id,rfx_events!inner\(organization_id\)"\)/, "Final scoped reconciliation must read durable operation attribution");
 assert.match(apiSource, /invitation\.carrier_template_materialization_operation_id[\s\S]{0,300}materializationOperationId[\s\S]{0,300}\? "inserted"[\s\S]{0,80}: "reconciled"/, "Final outcome attribution must come from the committed participant marker");
 assert.match(apiSource, /carrier_template_reconcile_required[\s\S]{0,500}correlation_id:/, "Post-commit enrichment uncertainty should return a retryable reconcile-required result with correlation context");
@@ -4908,7 +4914,10 @@ assert.match(vendorImprovementSource, /data-ci-case-action="record-response"/, "
 assert.match(vendorImprovementSource, /data-ci-case-action="close"/, "Vendor CI should expose a deliberate closure action rather than silently resolving cases");
 
 assert.doesNotMatch(rfxEventsHtml, /id="rfx-chat-delivery-channel"/, "Carrier Ask should not offer WhatsApp or Google Chat delivery choices");
-assert.match(rfxEventsSource, /Reply by email/, "Bid Room Ask should be presented as a Gmail reply action");
+assert.match(rfxEventsSource, /rfxChatSend\.textContent = privateTarget \? "Prepare question" : "Post internally"/, "Bid Room Ask should distinguish a carrier draft from an internal post");
+assert.match(rfxEventsSource, /Prepare a question for review in Delivery queue/, "Carrier question actions must explain their review boundary");
+assert.match(rfxEventsSource, /const draftPrepared = replyByEmail && result\?\.draft_only && result\?\.outreach_message\?\.status === "drafted"/, "A prepared carrier question must be confirmed as a persisted draft");
+assert.match(rfxEventsSource, /Review and approve its send in Delivery Queue\./, "A prepared carrier question must direct the operator to Queue approval");
 assert.match(rfxEventsSource, /initSpreadsheetColumnFilters/, "Carrier bids should reuse the spreadsheet column-filter control");
 assert.match(rfxEventsSource, /function initResponseColumnFilters/, "Carrier bids should initialize dedicated column filters");
 assert.match(rfxEventsSource, /storageKey: "rateware:bid-room:carrier-bids:column-filters:v3"/, "Carrier bid column filters should persist per user workspace");
