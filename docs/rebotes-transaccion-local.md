@@ -1,4 +1,20 @@
-# Rebotes: candidato transaccional, sin aplicar
+# Rebotes: probado en PostgreSQL local; producción pendiente
+
+## Estado vigente · 2/oct/2026, 08:26 UTC
+
+El usuario autorizó SQL exclusivamente en PostgreSQL local aislado. El runner pasó en PostgreSQL **17.11** con la imagen cacheada por SHA, base nueva sintética, sin red, puertos, montajes de host ni volumen persistente. Se aplicó la migración candidata y se ejecutó realmente como service_role. Pasan conservación de contactos/datos/etiquetas, resolución del bloqueo y recibo, replay sin actualización, conflicto de payload, owner ajeno, recibo obsoleto por nuevo rebote, sustituto bloqueado y metadatos de privilegios. Un fallo provocado después del UPDATE del contacto revierte contacto, supresión y recibo.
+
+Dos conexiones se solaparon de verdad en cada escenario: el runner observó la segunda bloqueada por la primera. Mismo UUID devuelve replay; otra decisión rechaza el rebote cerrado. Los triggers sintéticos contaron exactamente un UPDATE de contacto, uno de supresión y un recibo por caso. Después se ejecutó el rollback de `docs/sql/rollback-resolve-vendor-bounce.sql`: función ausente, dos correcciones/recibos conservados y recibos todavía privados con RLS. El contenedor propio se eliminó; la lectura final por etiqueta quedó vacía.
+
+Primera ejecución completa pasó. Se amplió únicamente el arnés para probar también el rollback de la migración; la ejecución posterior pasó de nuevo, sin fallos ni reintentos por causa. Logs locales: `.test-output/vendor-bounce-postgres-first.log` y `vendor-bounce-postgres-rollback.log`. No se repitieron build/contratos de producto porque no cambió su fuente.
+
+Preflight productivo **solo de lectura** por conector Supabase: PostgreSQL 17.6, rateware-api ACTIVE **681**, hash del bundle `d39fa74a523a9c6cad451921a7ce99052d99bc5d4e0994510e04674826eb760f`. Columnas usadas y permisos SELECT/UPDATE de service_role compatibles; bypassrls confirmado. Función y tabla de recibos ausentes. Los triggers BI/captura/lifecycle no se activan por las columnas de este UPDATE; sí se activa `vendors_refresh_search_document`, cuya definición leída recalcula el documento de búsqueda y devuelve NEW. Ese trigger, las demás restricciones completas y JWT/RLS productivos no se ejecutaron en el fixture mínimo. No equivale a aceptación productiva. Evidencia sanitizada en Bidware `.test-output/bounce-recovery/postgres-preflight.json`.
+
+Migración probada SHA256 `70cc9571e15f95d9ca3a23fa368d70a10100d228c4d72aa52d3553c2045d693f`; rollback `e24bc29d6a3ac97e75ce2b31526ac52e117791ccbc00900f116013f5500f3a53`. No SQL de aplicación, despliegue ni corrección de datos en producción. Próximo bloque: preparar comparación exacta con runtime 681 y paquete acotado, verificar recuperación/backup y pedir autorización productiva específica antes de aplicar/publicar. No desplegar todo el checkout por defecto ni volver a las dos escrituras en rollback.
+
+Codex/OpenAI único responsable, mismo modelo/esfuerzo sin cambio verificable; suficiente para pruebas deterministas en motor. Sin Claude/Fable/agentes ni proveedor nuevo. Cuota soportada 08:16:09 UTC: semanal 100% usada, ordinario no disponible, cinco horas no informada, créditos previamente autorizados disponibles; reposición 6/oct 13:08 México. Consumo atribuible desconocido. Límite veinte minutos y dos intentos por causa; no se inventa reserva porcentual. Esta verificación cierra el bloque local, no el objetivo completo.
+
+## Historial de preparación anterior a la autorización
 
 Bloque 2/oct/2026. Objetivo: que una corrección de correo cierre el rebote y su bloqueo junto con el contacto, o que ninguna de esas escrituras quede aplicada. Un recibo por owner/operation_id permite reconocer la repetición de una decisión confirmada. No envía correos ni modifica ofertas/tarifas. La UI conserva su diseño y traducciones; el Operador introduce el sustituto y confirma con Reemplazar. No hay reintento automático.
 

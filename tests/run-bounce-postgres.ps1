@@ -1,4 +1,4 @@
-# Prepared runner; requires explicit human authorization to execute SQL.
+# Isolated runner; requires explicit human authorization to execute SQL.
 [CmdletBinding()]
 param([switch]$SqlAuthorized)
 $ErrorActionPreference = 'Stop'
@@ -85,6 +85,10 @@ try {
     }
   }
   Invoke-TestDocker -DockerArgs @('exec',$testContainerId,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-d','bidware_bounce_test','-f','/tmp/vendor-bounce-concurrency-check.sql')
+  foreach ($relative in @('docs/sql/rollback-resolve-vendor-bounce.sql','tests/sql/vendor-bounce-rollback-check.sql')) {
+    Invoke-TestDocker -DockerArgs @('cp',(Join-Path $testRoot $relative),"${testContainerId}:/tmp/bounce-rollback.sql")
+    Invoke-TestDocker -DockerArgs @('exec',$testContainerId,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-d','bidware_bounce_test','-f','/tmp/bounce-rollback.sql')
+  }
 } finally {
   foreach ($worker in $testJobs) {
     if ($worker.State -notin @('Completed','Failed','Stopped')) { Stop-Job -Job $worker }
