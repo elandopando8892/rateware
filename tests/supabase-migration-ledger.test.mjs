@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -226,7 +226,18 @@ test("clean replay CI verifies pinned hashes, final ledger, and Provider Service
   assert.match(workflow, /run:\s+npm run test:migration-ledger/);
   assert.match(workflow, /tests\/supabase-migration-ledger\.test\.mjs/);
   assert.match(workflow, /count\(\*\).*max\(version\)/s);
-  assert.match(workflow, /402\|20260930005749/);
+  const canonical = readdirSync(path.join(repoRoot, "supabase", "migrations"))
+    .filter((name) => /^\d{14}_.+\.sql$/.test(name))
+    .map((name) => name.slice(0, 14))
+    .sort();
+  const expectedLedger = `${canonical.length}|${canonical.at(-1)}`;
+  const gated = workflow.match(/test "\$ledger" = '(\d+\|\d{14})'/);
+  assert.ok(gated, "workflow must gate the final ledger with a count|version literal");
+  assert.equal(
+    gated[1],
+    expectedLedger,
+    "clean replay ledger gate is out of date with supabase/migrations",
+  );
   assert.match(workflow, /provider_legal_entity_fact_promotions/);
   assert.match(workflow, /provider_onboarding_readiness_evaluations/);
   assert.match(workflow, /provider_onboarding_readiness_results/);

@@ -2,6 +2,18 @@
 
 Fecha: 2/oct/2026. Estado: **candidato local para integración**. No se afirma que `main` esté alineado: el `main` remoto `3aa8f2b3e7e738e6f969ce5f748cfcabb1d5c43f` conserva el handler 681 y requiere una integración PUBLICADA posterior.
 
+## Gate CI actualizado y comprobado · 2/oct/2026 14:50 México
+
+Se encontró un gate obsoleto en `clean-migration-replay.yml`: esperaba `402|20260930005749` mientras el árbol canónico contiene 404 migraciones, con versión final `20261002191824`. Se reutilizó el workflow y test Node existentes; eliminar el gate debilitaría la verificación y añadir otra herramienta duplicaría infraestructura. No hubo cambio de SQL, handler, dependencias ni arquitectura.
+
+Claude Sonnet 5.5 actualizó el literal y sustituyó el test de una constante por la comparación contra cantidad/versión de los archivos canónicos. Run real `db11912bef674a4f9af217ea53d6b8f7`, sesión `fd86a996-fd4a-41d9-aee3-eb3ea17e2721`, release fijado `chat-20261002T203733Z` con manifiesto validado. Modelo solicitado/devuelto `claude-sonnet-5-5`, esfuerzo medio solicitado; el runtime no expuso esfuerzo. Nueve pasos de un máximo de 16, 24.75 segundos, cero reintentos y proceso cerrado/reserva nula. La elección del usuario ya estaba vigente; no hubo nueva petición de permiso para Claude.
+
+Codex revisó el diff y verificó cuatro pruebas positivas. Dos mutaciones temporales independientes (cantidad errónea y versión final errónea) produjeron salida 1 y el diagnóstico esperado. Se restauraron los bytes originales de la corrección y las cuatro pruebas finales volvieron a pasar; `git diff --check` pasó. No se ejecutó aquí el replay completo de las 404 migraciones ni GitHub Actions: la suite PostgreSQL del cambio de rebotes sigue siendo la comprobada en el bloque anterior. Evidencia local: `.test-output/s15-03-ci-ledger/verification.json` y `claude-result.json`.
+
+Consumo reportado por CLI: entrada 8, creación de caché 11,347, lectura de caché 39,062 y salida 2,450 tokens; estimación a tarifa de lista USD 0.0777164, no cargo de la suscripción. Cuota actual, importe real y consumo atribuible del plan desconocidos. No se activó uso extra ni proveedor nuevo.
+
+El paquete permanece LOCAL; publicar fuente y frontend requiere la decisión concreta pendiente. La corrección añade únicamente workflow, prueba y este registro al commit `6ccd7b5d`. No vuelve a aplicar las migraciones productivas ni acredita aceptación real del sprint.
+
 ## Verificación final de Codex · 2/oct/2026
 
 La integración local quedó comprobada después del cierre del escritor Claude. Se restauraron mecánicamente los dos CRLF del SQL aprobado; ambas migraciones en disco tienen exactamente los hashes de la tabla siguiente. Se retiró únicamente la candidata obsoleta `20261002072000…`, después de comprobar su hash original. No se volvió a ejecutar ninguna migración productiva. El índice del handler permanece en `bf462f7c…`, idéntico al candidato ya desplegado.
