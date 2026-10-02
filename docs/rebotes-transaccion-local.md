@@ -1,0 +1,38 @@
+# Rebotes: candidato transaccional, sin aplicar
+
+Bloque 2/oct/2026. Objetivo: que una corrección de correo cierre el rebote y su bloqueo junto con el contacto, o que ninguna de esas escrituras quede aplicada. Un recibo por owner/operation_id permite reconocer la repetición de una decisión confirmada. No envía correos ni modifica ofertas/tarifas. La UI conserva su diseño y traducciones; el Operador introduce el sustituto y confirma con Reemplazar. No hay reintento automático.
+
+## Comparación y contrato
+
+Se inspeccionaron el handler, normalizador, esquema de vendors/supresión, migraciones y RPC internos de consolidación. Es una capacidad estándar de consistencia e idempotencia, sin necesidad de un nuevo proveedor. Alternativas: conservar dos escrituras y advertir del resultado parcial; compensar desde Edge (más llamadas y otra posibilidad de fallo); una función PostgreSQL con recibo y bloqueo de filas. Se recomienda la tercera para la brecha reproducida, usando PostgreSQL/Supabase existentes y sin dependencias nuevas. Referencias: [transacciones PostgreSQL](https://www.postgresql.org/docs/current/tutorial-transactions.html), [funciones Supabase](https://supabase.com/docs/guides/database/functions).
+
+`resolve_vendor_email_bounce(text,uuid,text,text,uuid)` recibe exclusivamente el owner resuelto por el servidor, vendor, correo rebotado, sustituto e identificador. Función invoker; ejecución y recibos restringidos a service_role. Ese rol tiene privilegios amplios: el owner del RPC debe proceder del handler autenticado, nunca del body. Esta preparación no demuestra los JWT ni las políticas productivas.
+
+La función bloquea el vendor y las filas existentes de supresión; actualiza contactos, rebote, bloqueo y recibo dentro de la llamada. Conserva otros contactos/datos/etiquetas y excluye principal y correo anterior de secundarios. Mismo identificador y payload devuelve el estado confirmado sin otra actualización. Payload distinto, un nuevo rebote o contacto/bloqueo cambiado rechazan el recibo anterior. Dos decisiones diferentes sobre un rebote ya cerrado no sobrescriben el resultado.
+
+El handler usa un solo RPC, sin fallback a las dos escrituras; RPC ausente devuelve 503. Validación 400, vendor ajeno/ausente 404, conflicto/estado cambiado 409. La auditoría existente de éxito continúa como registro secundario posterior al commit, omitida en replay; si falla, el recibo transaccional sigue siendo la fuente de confirmación. La auditoría de incidentes existente puede escribir cuando hay 500. No afirmar que toda auditoría es transaccional.
+
+Bidware envía un UUID estable por usuario/vendor/correo/sustituto/fecha de detección durante la permanencia del componente. Un reintento explícito de la misma decisión lo reutiliza. Cuenta, sustituto o nueva detección cambian la intención. No persiste el UUID después de desmontar/recargar; si la respuesta se perdió, la lectura siguiente mostrará el rebote cerrado, y un UUID nuevo rechazará ese rebote ya cerrado en vez de mutarlo. Servidores antiguos ignoran el UUID; la protección transaccional requiere publicar este backend. Callers antiguos sin UUID reciben uno generado, pero no tienen garantía de replay entre sus requests. La limpieza de compatibilidad de Bidware se conserva.
+
+Escritores concurrentes que insertan nuevas filas de supresión o editan contactos fuera del RPC no están globalmente serializados. El chequeo existente de supresión al enviar sigue siendo necesario. No ampliar aquí otros handlers ni levantar un bloqueo comercial por este recibo.
+
+## Archivos y verificación
+
+- Migración candidata `supabase/migrations/20261002072000_resolve_vendor_bounce_atomic.sql`: tabla de recibos con RLS, grants y función. No backfill. **No ejecutada**.
+- `tests/vendor-bounce-replacement.contract.test.ts`: handler real, identidad/RPC simulados. Verifica delegación, owner, permisos, respuestas, replay sin auditoría repetida y falta de RPC. No acredita SQL.
+- `tests/sql/vendor-bounce-fixture.sql` y `vendor-bounce-atomic.sql`: preparados para PostgreSQL; esquema mínimo sintético y casos de contactos/bloqueo/recibo, replay/conflicto/owner, nuevo rebote, fallo forzado tras actualizar vendor, sustituto bloqueado y privilegios. **No ejecutados; sintaxis/rollback SQL pendientes**. Debe añadirse/verificarse concurrencia con dos conexiones antes de aceptar la recuperación.
+- `tests/run-bounce-postgres.ps1`: requiere `-SqlAuthorized`; usa solo la imagen PostgreSQL 17 ya cacheada por SHA, sin pull/red/puertos/montajes de host/volumen persistente. Base nueva `bidware_bounce_test` en tmpfs. Limpia exclusivamente el contenedor creado y verificado por ID/nombre/etiqueta. Parser PowerShell comprobado; runner no ejecutado. No tiene URL ni credenciales productivas.
+
+Después de autorización específica de SQL local: ejecutar el runner, reparar como máximo dos intentos por causa y comprobar concurrencia con dos conexiones. Si pasa, revisar compatibilidad del esquema real mediante lectura y preparar la autorización separada de migración/despliegue productivo. No publicar un handler dependiente de SQL sin completar esa secuencia.
+
+## Publicación y rollback previstos
+
+Orden futuro sujeto a aceptación/autorización: backup y preflight de esquema/privilegios, aplicar migración, comprobar RPC, publicar Edge, probar una corrección controlada autorizada y sus recibos, después publicar Bidware. No ejecutado aquí. El backend falla cerrado si falta la función.
+
+Rollback de datos: no intentar deshacer correcciones confirmadas ni eliminar recibos. Ante incidencia, deshabilitar esta acción (503) y conservar los registros. No volver al handler anterior de dos escrituras como si ofreciera atomicidad. Si es preciso retirar el RPC, primero deshabilitar la acción; `docs/sql/rollback-resolve-vendor-bounce.sql` elimina solo la función, conserva tabla/recibos y requiere su propia confirmación humana. Restaurar una función anterior requiere una versión revisada; no reescribir ramas ajenas.
+
+## Plan y consumo
+
+Codex/OpenAI único escritor/verificador; modelo/esfuerzo principal sin cambio verificable. Actual suficiente para contrato acotado; recomendación gpt-6.1-sol medio si se selecciona en la app. Claude/Fable no invocados: otro modelo no sustituye la prueba en motor y repetiría contexto; cuota, disponibilidad y uso extra desconocidos. Sin agentes, paquetes/lockfiles, nuevas ramas, PR, proveedores ni despliegues.
+
+Lectura soportada 2/oct 07:12:45 UTC: semanal 100% usado, acceso ordinario no disponible, cinco horas no informada, créditos disponibles previamente autorizados; reposición semanal 6/oct 13:08 México. No convertir saldo a dólares ni tokens a porcentaje. Tokens/cargos/cuota atribuibles no observables. Presupuesto inicial 30 minutos, hasta dos intentos por causa, después reevaluar. Reserva mediante tiempo/contexto limitados, sin porcentaje de capacidad inventado. Evidencia y resultados finales se registran en Bidware `docs/aceptacion-rebotes-transaccion-local.md`; no contar fallos como consumo cero.

@@ -28237,95 +28237,46 @@ export function createRatewareApiHandler(
         return jsonResponse({ error: "The replacement email must be different from the bounced email." }, 400);
       }
 
-      const current = await supabase
-        .from("vendors")
-        .select("*")
-        .eq("owner_email", user.owner_email)
-        .eq("id", vendorId)
-        .single();
-      if (current.error) throw current.error;
-
-      const profileData = objectRecord(current.data?.profile_data);
-      const bouncedEmails = Array.isArray(profileData.bounced_emails) ? profileData.bounced_emails : [];
-      const hasBounceRecord = bouncedEmails.some((item) => normalizeEmail(objectRecord(item).email) === bouncedEmail && !objectRecord(item).resolved_at);
-      if (!hasBounceRecord) {
-        return jsonResponse({ error: "This vendor does not have an unresolved delivery failure for that email." }, 400);
+      const suppliedOperationId = cleanText(body.operation_id);
+      if (suppliedOperationId && !UUID_PATTERN.test(suppliedOperationId)) {
+        return jsonResponse({ error: "A valid operation id is required.", code: "bounce_resolution_invalid_input" }, 400);
       }
-
-      const replacementSuppression = await supabase
-        .from("email_suppression_list")
-        .select("id")
-        .eq("owner_email", user.owner_email)
-        .eq("email", replacementEmail)
-        .is("resolved_at", null)
-        .in("status", blockedEmailStatuses())
-        .maybeSingle();
-      if (replacementSuppression.error) throw replacementSuppression.error;
-      if (replacementSuppression.data) {
-        return jsonResponse({ error: "That replacement email is blocked by a delivery failure. Use a different address." }, 400);
-      }
-
-      const now = new Date().toISOString();
-      const primaryEmail = normalizeEmail(current.data?.primary_email);
-      const secondaryEmails = normalizeEmailList(current.data?.secondary_emails)
-        .filter((email) => email !== bouncedEmail && email !== replacementEmail);
-      const nextPrimaryEmail = primaryEmail === bouncedEmail || !primaryEmail ? replacementEmail : primaryEmail;
-      const nextSecondaryEmails = (primaryEmail === bouncedEmail
-        ? secondaryEmails
-        : Array.from(new Set([replacementEmail, ...secondaryEmails])))
-        .filter((email) => email !== nextPrimaryEmail);
-      const nextBouncedEmails = bouncedEmails.map((item) => {
-        const record = objectRecord(item);
-        if (normalizeEmail(record.email) !== bouncedEmail || record.resolved_at) return record;
-        return {
-          ...record,
-          resolved_at: now,
-          resolved_by: user.owner_email,
-          replacement_email: replacementEmail
-        };
+      const bounceOperationId = suppliedOperationId?.toLowerCase() || crypto.randomUUID();
+      const result = await supabase.rpc("resolve_vendor_email_bounce", {
+        p_owner_email: user.owner_email,
+        p_vendor_id: vendorId,
+        p_bounced_email: bouncedEmail,
+        p_replacement_email: replacementEmail,
+        p_operation_id: bounceOperationId
       });
-      const unresolvedBouncesRemain = nextBouncedEmails.some((item) => !objectRecord(item).resolved_at);
-      const tags = normalizeTags(current.data?.tags).filter((tag) => tag !== "email_bounce");
-      if (unresolvedBouncesRemain) tags.push("email_bounce");
-
-      const result = await supabase
-        .from("vendors")
-        .update({
-          primary_email: nextPrimaryEmail,
-          secondary_emails: nextSecondaryEmails,
-          tags: Array.from(new Set(tags)),
-          profile_data: { ...profileData, bounced_emails: nextBouncedEmails },
-          updated_at: now
-        })
-        .eq("owner_email", user.owner_email)
-        .eq("id", vendorId)
-        .select()
-        .single();
-      if (result.error) throw result.error;
-
-      const suppressionUpdate = await supabase
-        .from("email_suppression_list")
-        .update({
-          resolved_at: now,
-          resolved_by: user.owner_email,
-          replacement_email: replacementEmail,
-          updated_at: now
-        })
-        .eq("owner_email", user.owner_email)
-        .eq("email", bouncedEmail)
-        .is("resolved_at", null);
-      if (suppressionUpdate.error) throw suppressionUpdate.error;
-
-      await tryWriteAuditLog(
-        supabase,
-        user,
-        "vendor.email_bounce.resolve",
-        "vendors",
-        vendorId,
-        `Replaced bounced email for ${current.data?.vendor_name || "vendor"}`,
-        { bounced_email: bouncedEmail, replacement_email: replacementEmail }
-      );
-      return jsonResponse({ row: result.data, bounced_email: bouncedEmail, replacement_email: replacementEmail });
+      if (result.error) {
+        const rpcError = objectRecord(result.error);
+        if (rpcError.code === "PGRST202" || rpcError.code === "42883") {
+          return jsonResponse({ error: "Bounce resolution is temporarily unavailable. No replacement was confirmed.", code: "bounce_resolution_unavailable" }, 503);
+        }
+        const failures: Record<string, { status: number; message: string }> = {
+          bounce_resolution_invalid_input: { status: 400, message: "Enter valid contact and operation details." },
+          bounce_vendor_not_found: { status: 404, message: "Vendor not found." },
+          bounce_not_unresolved: { status: 400, message: "This vendor does not have an unresolved delivery failure for that email." },
+          bounce_replacement_blocked: { status: 400, message: "That replacement email is blocked. Use a different address." },
+          bounce_operation_conflict: { status: 409, message: "This operation id belongs to another replacement." },
+          bounce_resolution_state_changed: { status: 409, message: "The contact or its delivery block changed. Reload before making a new decision." }
+        };
+        const code = String(rpcError.message || "");
+        const failure = failures[code];
+        if (failure) return jsonResponse({ error: failure.message, code }, failure.status);
+        throw result.error;
+      }
+      const resolution = objectRecord(result.data);
+      if (!resolution.row) throw new Error("Bounce resolution returned no confirmed vendor.");
+      if (!resolution.replayed) {
+        await tryWriteAuditLog(
+          supabase, user, "vendor.email_bounce.resolve", "vendors", vendorId,
+          `Replaced bounced email for ${objectRecord(resolution.row).vendor_name || "vendor"}`,
+          { bounced_email: bouncedEmail, replacement_email: replacementEmail, operation_id: bounceOperationId }
+        );
+      }
+      return jsonResponse(resolution);
     }
 
     if (body.action === "create_vendor_profile_request") {

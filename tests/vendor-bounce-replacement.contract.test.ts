@@ -1,4 +1,4 @@
-// Real handler, synthetic rows/principals; no network or production writes.
+// Actual Edge handler, synthetic RPC/auth. Does NOT prove SQL transaction behavior.
 import { assert, assertEquals } from "jsr:@std/assert@1.0.14";
 const serve = Deno.serve;
 Object.defineProperty(Deno, "serve", { configurable: true, value: () => ({}) });
@@ -7,94 +7,48 @@ const { createRatewareApiHandler } = await import(
 );
 Object.defineProperty(Deno, "serve", { configurable: true, value: serve });
 const ID = "00000000-0000-4000-8000-000000000001";
-const BAD = "bad@example.test",
-  GOOD = "good@example.test",
-  OTHER = "other@example.test";
+const OP = "00000000-0000-4000-8000-000000000002";
+const BAD = "bad@example.test", GOOD = "good@example.test";
 async function call(
   options: {
-    primary?: string;
-    replacement?: string;
     role?: string;
-    blocked?: boolean;
-    foreign?: boolean;
-    suppressionFail?: boolean;
+    operation?: string;
+    omitOperation?: boolean;
+    rpcError?: { code: string; message: string };
+    replayed?: boolean;
+    missingRow?: boolean;
+    bounced?: string;
+    replacement?: string;
   } = {},
 ) {
-  const vendor: Record<string, unknown> = {
-    id: ID,
-    owner_email: "org:a",
-    vendor_name: "Synthetic carrier",
-    primary_email: options.primary ?? GOOD,
-    secondary_emails: [BAD, OTHER],
-    tags: ["email_bounce", "keep"],
-    profile_data: {
-      note: "keep",
-      bounced_emails: [{ email: BAD, reason: "5.1.1" }],
-    },
-  };
-  const queries: {
-    table: string;
-    filters: Record<string, unknown>;
-    patch?: Record<string, unknown>;
-  }[] = [];
+  const rpcs: { name: string; args: Record<string, unknown> }[] = [];
+  const tables: string[] = [];
   const client = {
+    rpc(name: string, args: Record<string, unknown>) {
+      rpcs.push({ name, args });
+      return Promise.resolve({
+        error: options.rpcError ?? null,
+        data: options.missingRow ? {} : {
+          row: {
+            id: ID,
+            vendor_name: "Synthetic carrier",
+            primary_email: GOOD,
+            secondary_emails: [],
+          },
+          operation_id: args.p_operation_id,
+          replayed: options.replayed ?? false,
+          bounced_email: BAD,
+          replacement_email: GOOD,
+        },
+      });
+    },
     from(table: string) {
-      const q: typeof queries[number] = { table, filters: {} };
-      queries.push(q);
-      const result = () => {
-        if (table === "vendors") {
-          if (options.foreign) {
-            return {
-              data: null,
-              error: { message: "Synthetic foreign row absent" },
-            };
-          }
-          if (q.patch) Object.assign(vendor, structuredClone(q.patch));
-          return { data: structuredClone(vendor), error: null };
-        }
-        if (table === "email_suppression_list") {
-          return {
-            data: !q.patch && options.blocked ? { id: "blocked" } : null,
-            error: q.patch && options.suppressionFail
-              ? { message: "Synthetic suppression failure" }
-              : null,
-          };
-        }
-        return { data: { id: "synthetic-audit" }, error: null };
-      };
-      const chain = {
-        select() {
-          return chain;
-        },
-        eq(key: string, value: unknown) {
-          q.filters[key] = value;
-          return chain;
-        },
-        is(key: string, value: unknown) {
-          q.filters[key] = value;
-          return chain;
-        },
-        in() {
-          return chain;
-        },
-        update(patch: Record<string, unknown>) {
-          q.patch = patch;
-          return chain;
-        },
-        insert() {
-          return chain;
-        },
-        single() {
-          return Promise.resolve(result());
-        },
-        maybeSingle() {
-          return Promise.resolve(result());
-        },
-        then(resolve: (result: unknown) => unknown) {
-          return Promise.resolve(result()).then(resolve);
-        },
-      };
-      return chain;
+      tables.push(table);
+      // Only the optional post-commit audit is allowed outside the RPC.
+      if (table !== "saas_audit_log") {
+        throw Error(`Unexpected direct table access: ${table}`);
+      }
+      return { insert: () => Promise.resolve({ data: null, error: null }) };
     },
   };
   const handler = createRatewareApiHandler({
@@ -125,66 +79,96 @@ async function call(
       body: JSON.stringify({
         action: "replace_bounced_vendor_email",
         id: ID,
-        bounced_email: BAD,
+        bounced_email: options.bounced ?? BAD,
         replacement_email: options.replacement ?? GOOD,
         owner_email: "org:foreign",
+        ...(options.omitOperation
+          ? {}
+          : { operation_id: options.operation ?? OP }),
       }),
     }),
   );
-  return {
-    status: response.status,
-    body: await response.json(),
-    vendor,
-    queries,
-  };
+  return { status: response.status, body: await response.json(), rpcs, tables };
 }
-for (const primary of [GOOD, BAD, ""]) {
-  Deno.test(`confirmed replacement excludes primary from secondary (${primary || "missing primary"})`, async () => {
-    const r = await call({ primary });
-    assertEquals(r.status, 200);
-    assertEquals(r.body.row.primary_email, GOOD);
-    assertEquals(r.body.row.secondary_emails, [OTHER]);
-    assertEquals(r.body.row.tags, ["keep"]);
-    assertEquals(r.body.row.profile_data.note, "keep");
-    assert(r.body.row.profile_data.bounced_emails[0].resolved_at);
-    assertEquals(
-      r.queries.filter((q) => q.table === "vendors" && q.patch).length,
-      1,
-    );
-    for (
-      const q of r.queries.filter((q) =>
-        ["vendors", "email_suppression_list"].includes(q.table)
-      )
-    ) assertEquals(q.filters.owner_email, "org:a");
+Deno.test("one RPC uses resolved owner and caller operation; no direct contact/suppression writes", async () => {
+  const r = await call();
+  assertEquals(r.status, 200);
+  assertEquals(r.rpcs, [{
+    name: "resolve_vendor_email_bounce",
+    args: {
+      p_owner_email: "org:a",
+      p_vendor_id: ID,
+      p_bounced_email: BAD,
+      p_replacement_email: GOOD,
+      p_operation_id: OP,
+    },
+  }]);
+  assertEquals(r.body.operation_id, OP);
+  assertEquals(r.body.replayed, false);
+  assertEquals(r.tables, ["saas_audit_log"]);
+});
+Deno.test("confirmed replay skips the non-transactional audit", async () => {
+  const r = await call({ replayed: true });
+  assertEquals(r.status, 200);
+  assertEquals(r.tables, []);
+});
+Deno.test("legacy caller without operation receives a generated UUID", async () => {
+  const r = await call({ omitOperation: true });
+  assertEquals(r.status, 200);
+  assert(/^[0-9a-f-]{36}$/.test(String(r.rpcs[0].args.p_operation_id)));
+});
+for (const code of ["PGRST202", "42883"]) {
+  Deno.test(`missing RPC ${code} fails closed`, async () => {
+    const r = await call({
+      rpcError: { code, message: "Synthetic missing RPC" },
+    });
+    assertEquals(r.status, 503);
+    assertEquals(r.body.code, "bounce_resolution_unavailable");
+    assertEquals(r.tables, []);
   });
 }
-Deno.test("secondary replacement preserves the current primary and other contacts", async () => {
-  const r = await call({ replacement: "new@example.test" });
-  assertEquals(r.status, 200);
-  assertEquals(r.body.row.primary_email, GOOD);
-  assertEquals(r.body.row.secondary_emails, ["new@example.test", OTHER]);
+for (
+  const [message, status] of [
+    ["bounce_resolution_invalid_input", 400],
+    ["bounce_vendor_not_found", 404],
+    ["bounce_not_unresolved", 400],
+    ["bounce_replacement_blocked", 400],
+    ["bounce_operation_conflict", 409],
+    ["bounce_resolution_state_changed", 409],
+  ] as const
+) {
+  Deno.test(`RPC denial ${message}`, async () => {
+    const r = await call({ rpcError: { code: "P0001", message } });
+    assertEquals(r.status, status);
+    assertEquals(r.body.code, message);
+    assertEquals(r.tables, []);
+  });
+}
+Deno.test("unexpected transaction failure is an error, never confirmed success", async () => {
+  const r = await call({
+    rpcError: { code: "P0001", message: "Synthetic suppression failure" },
+  });
+  assert(r.status >= 500);
+  assertEquals(r.tables, ["saas_audit_log"]); // Existing error incident audit only.
 });
-Deno.test("blocked replacement does not write contacts or suppressions", async () => {
-  const r = await call({ blocked: true });
-  assertEquals(r.status, 400);
-  assert(!r.queries.some((q) => q.patch));
+Deno.test("missing RPC result is not represented as success", async () => {
+  const r = await call({ missingRow: true });
+  assert(r.status >= 500);
+  assertEquals(r.tables, ["saas_audit_log"]); // Existing error incident audit only.
 });
-Deno.test("viewer cannot replace even with vendors permission", async () => {
+Deno.test("viewer cannot call the RPC even with vendors permission", async () => {
   const r = await call({ role: "viewer" });
   assertEquals(r.status, 403);
-  assert(!r.queries.some((q) => q.patch));
+  assertEquals(r.rpcs, []);
 });
-Deno.test("foreign row never receives an update", async () => {
-  const r = await call({ foreign: true });
-  assert(r.status >= 400);
-  assert(!r.queries.some((q) => q.patch));
-});
-Deno.test("suppression failure is not represented as confirmed success", async () => {
-  const r = await call({ suppressionFail: true });
-  assert(r.status >= 400);
-  // Existing two-table handler is not transactional; document this acceptance gap.
-  assertEquals(
-    r.queries.filter((q) => q.table === "vendors" && q.patch).length,
-    1,
-  );
-});
+for (
+  const options of [{ operation: "not-a-uuid" }, { bounced: "invalid" }, {
+    replacement: BAD,
+  }]
+) {
+  Deno.test(`invalid request rejected before RPC ${JSON.stringify(options)}`, async () => {
+    const r = await call(options);
+    assertEquals(r.status, 400);
+    assertEquals(r.rpcs, []);
+  });
+}
