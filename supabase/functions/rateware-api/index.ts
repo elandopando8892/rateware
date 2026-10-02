@@ -28270,9 +28270,10 @@ export function createRatewareApiHandler(
       const secondaryEmails = normalizeEmailList(current.data?.secondary_emails)
         .filter((email) => email !== bouncedEmail && email !== replacementEmail);
       const nextPrimaryEmail = primaryEmail === bouncedEmail || !primaryEmail ? replacementEmail : primaryEmail;
-      const nextSecondaryEmails = primaryEmail === bouncedEmail
+      const nextSecondaryEmails = (primaryEmail === bouncedEmail
         ? secondaryEmails
-        : Array.from(new Set([replacementEmail, ...secondaryEmails]));
+        : Array.from(new Set([replacementEmail, ...secondaryEmails])))
+        .filter((email) => email !== nextPrimaryEmail);
       const nextBouncedEmails = bouncedEmails.map((item) => {
         const record = objectRecord(item);
         if (normalizeEmail(record.email) !== bouncedEmail || record.resolved_at) return record;
