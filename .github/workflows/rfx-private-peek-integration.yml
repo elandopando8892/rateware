@@ -8,6 +8,10 @@ on:
       - "supabase/migrations/**"
       - "supabase/config.toml"
       - "tools/test-rfx-bid-peek-local.mjs"
+      - "tools/build-rfx-peek-preview.mjs"
+      - "tools/build-rfx-peek-preview-schema.mjs"
+      - "tools/test-rfx-peek-preview-schema.mjs"
+      - "tools/test-schema-only-restore.mjs"
       - ".github/workflows/rfx-private-peek-integration.yml"
   workflow_dispatch:
 
@@ -36,9 +40,11 @@ jobs:
             "select has_table_privilege('service_role','public.rfx_events','SELECT'),
                     has_table_privilege('service_role','public.rfx_lanes','SELECT'),
                     has_table_privilege('service_role','public.rfx_lane_vendors','SELECT'),
+                    has_table_privilege('service_role','public.outreach_messages','SELECT'),
                     has_table_privilege('service_role','public.vendors','UPDATE'),
-                    has_table_privilege('anon','public.rfx_lane_vendors','SELECT')")"
-          test "$grants" = 't|t|t|t|f'
+                    has_table_privilege('anon','public.rfx_lane_vendors','SELECT'),
+                    has_table_privilege('anon','public.outreach_messages','SELECT')")"
+          test "$grants" = 't|t|t|t|t|f|f'
           echo 'Server-side RFx reads PASS; browser role denied.'
 
       - name: Exercise real Edge function and local database
@@ -47,5 +53,51 @@ jobs:
         run: node tools/test-rfx-bid-peek-local.mjs
 
       - name: Stop isolated Supabase stack
+        if: always()
+        run: supabase stop --no-backup || true
+
+  schema-only:
+    name: Isolated schema-only restore
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
+        with:
+          version: 2.114.0
+
+      - name: Start source schema in isolated local stack
+        env:
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
+        run: supabase start
+
+      - name: Validate minimal disposable Preview schema
+        env:
+          RFX_PEEK_LOCAL_ONLY: "1"
+        run: node tools/test-rfx-peek-preview-schema.mjs
+
+      - name: Export data-free six-table Preview schema
+        env:
+          RFX_PEEK_SCHEMA_EXPORT_ONLY: "1"
+        run: node tools/build-rfx-peek-preview-schema.mjs supabase_db_alqjqzqagdmcywpjtnnr "$RUNNER_TEMP/loads-private-preview-schema.sql"
+
+      - name: Retain short-lived schema-only artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: loads-private-preview-schema
+          path: ${{ runner.temp }}/loads-private-preview-schema.sql
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Restore schema in separate empty local stack
+        env:
+          RFX_PEEK_LOCAL_ONLY: "1"
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
+        run: node tools/test-schema-only-restore.mjs
+
+      - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup || true

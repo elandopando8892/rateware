@@ -226,7 +226,7 @@ test("clean replay CI verifies pinned hashes, final ledger, and Provider Service
   assert.match(workflow, /run:\s+npm run test:migration-ledger/);
   assert.match(workflow, /tests\/supabase-migration-ledger\.test\.mjs/);
   assert.match(workflow, /count\(\*\).*max\(version\)/s);
-  assert.match(workflow, /402\|20260930005749/);
+  assert.match(workflow, /403\|20260930031500/);
   assert.match(workflow, /provider_legal_entity_fact_promotions/);
   assert.match(workflow, /provider_onboarding_readiness_evaluations/);
   assert.match(workflow, /provider_onboarding_readiness_results/);
@@ -243,5 +243,14 @@ test("Bid Room service-role grants survive a clean replay without browser grants
     assert.match(migration, new RegExp(`grant select, insert, update on table public\\.${table} to service_role;`, "i"));
   }
   assert.match(migration, /grant update on table public\.vendors to service_role;/i);
+  assert.doesNotMatch(migration, /\bgrant\b[^;]*\bto (anon|authenticated)\b/i);
+});
+
+test("private peek can read sent-outreach evidence only through the service role", () => {
+  const migration = readFileSync(
+    path.join(repoRoot, "supabase", "migrations", "20260930031500_private_peek_outreach_read_grant.sql"),
+    "utf8",
+  );
+  assert.match(migration, /grant select on table public\.outreach_messages to service_role;/i);
   assert.doesNotMatch(migration, /\bgrant\b[^;]*\bto (anon|authenticated)\b/i);
 });

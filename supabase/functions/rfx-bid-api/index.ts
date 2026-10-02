@@ -315,6 +315,52 @@ function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+// invited_at records internal authorization, not delivery. Only an accepted
+// outreach message linked to the specific invitation establishes visibility.
+async function privatePeekSentInvitationIds(supabase: RfxBidSupabaseClient, ownerEmail: string, eventIds: string[]) {
+  const sent = new Map<string, number>();
+  const events = [...new Set(eventIds.filter(Boolean))];
+  const accepted = ["sent", "delivered", "read", "replied", "manual_sent", "archived"];
+  for (let start = 0; start < events.length; start += 50) {
+    for (let offset = 0; offset < 10000; offset += 1000) {
+      const result = await supabase.from("outreach_messages")
+        .select("id,status,sent_at,rfx_lane_vendor_id,metadata")
+        .eq("owner_email", ownerEmail)
+        .in("rfx_event_id", events.slice(start, start + 50))
+        .in("status", accepted)
+        .not("sent_at", "is", null)
+        .order("id", { ascending: true })
+        .range(offset, offset + 999);
+      if (result.error) throw result.error;
+      const rows = (result.data || []) as Record<string, unknown>[];
+      for (const message of rows) {
+        const sentAt = Date.parse(String(message.sent_at || ""));
+        if (!accepted.includes(String(cleanText(message.status) || "").toLowerCase()) ||
+          !Number.isFinite(sentAt)) continue;
+        const metadata = objectRecord(message.metadata);
+        const grouped = Array.isArray(metadata.rfx_lane_vendor_ids) ? metadata.rfx_lane_vendor_ids : [];
+        for (const id of [message.rfx_lane_vendor_id, ...grouped]) {
+          const cleanId = cleanText(id);
+          if (cleanId) sent.set(cleanId, Math.max(sent.get(cleanId) || 0, sentAt));
+        }
+      }
+      if (rows.length < 1000) break;
+      if (offset === 9000) throw new Error("Private peek outreach evidence exceeded its bounded read.");
+    }
+  }
+  return sent;
+}
+
+function privatePeekHasCurrentSend(sent: Map<string, number> | null, invitation: Record<string, unknown>) {
+  const sentAt = sent?.get(cleanText(invitation.id) || "");
+  if (sentAt === undefined) return false;
+  // A manual re-invite can reuse the same row and token. An older delivery
+  // cannot authorize that newer invitation; the current send must be as recent
+  // as invited_at when that timestamp is available.
+  const invitedAt = Date.parse(String(invitation.invited_at || ""));
+  return invitation.invited_at == null || (Number.isFinite(invitedAt) && sentAt >= invitedAt);
+}
+
 function normalizeDomain(value: unknown) {
   const text = cleanText(value);
   if (!text) return null;
@@ -4889,10 +4935,18 @@ Deno.serve(async (request) => {
         `, !readOnlyPeek);
       if (!invitation) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
       const result = { data: invitation };
+      const sentParticipationStatuses = ["invited", "viewed", "responded", "quoted", "bid_submitted", "awarded"];
+      const currentEvent = relationRecord(result.data.rfx_events);
+      const ownerEmail = cleanText(currentEvent.owner_email);
       if (readOnlyPeek && (
-        ["archived", "revoked", "declined"].includes(String(cleanText(result.data.invitation_status) || "").toLowerCase()) ||
-        cleanText(relationRecord(result.data.rfx_events).status) !== "open"
+        !sentParticipationStatuses.includes(String(cleanText(result.data.invitation_status) || "").toLowerCase()) ||
+        cleanText(currentEvent.status) !== "open" || !ownerEmail
       )) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
+      const rootSent = readOnlyPeek
+        ? await privatePeekSentInvitationIds(supabase, ownerEmail!, [cleanText(result.data.rfx_event_id) || ""])
+        : null;
+      if (readOnlyPeek && !privatePeekHasCurrentSend(rootSent, result.data))
+        return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
 
       if (!readOnlyPeek && !result.data.viewed_at) {
         await supabase
@@ -4914,8 +4968,6 @@ Deno.serve(async (request) => {
         .in("invitation_status", ["quoted", "bid_submitted", "awarded"]);
       if (peersResult.error) throw peersResult.error;
 
-      const currentEvent = relationRecord(result.data.rfx_events);
-      const ownerEmail = cleanText(currentEvent.owner_email);
       const bidHistory = !readOnlyPeek && (body.refresh_only !== true || body.include_history === true)
         ? await invitationBidHistory(supabase, result.data)
         : [];
@@ -4927,13 +4979,13 @@ Deno.serve(async (request) => {
           invitation: readOnlyPeek ? invitationWithoutToken(carrierInvitation(result.data)) : carrierInvitation(result.data),
           live_board: readOnlyPeek ? { ...liveBoard, current_invitation_token: undefined } : liveBoard,
           current_book_row: readOnlyPeek && currentRow ? invitationWithoutToken(currentRow) : currentRow,
+          ...(readOnlyPeek ? { delivery_evidence: { contractVersion: "rateware-private-book-sent.v1", source: "outreach_messages", sentOnly: true } } : {}),
           ...(!readOnlyPeek && body.include_history === true ? { bid_history: bidHistory } : {})
         });
         if (readOnlyPeek) response.headers.set("Cache-Control", "private, no-store, max-age=0");
         return response;
       }
-      const invitedResult = ownerEmail
-        ? await supabase
+      let invitedQuery = supabase
             .from("rfx_lane_vendors")
             .select(`
               id,
@@ -4978,15 +5030,28 @@ Deno.serve(async (request) => {
               rfx_lanes(*)
             `)
             .eq("vendor_id", result.data.vendor_id)
-            .eq("rfx_events.owner_email", ownerEmail)
-            .neq("invitation_status", "archived")
+            .eq("rfx_events.owner_email", ownerEmail);
+      invitedQuery = readOnlyPeek
+        ? invitedQuery.in("invitation_status", sentParticipationStatuses)
+        : invitedQuery.neq("invitation_status", "archived");
+      const invitedResult = ownerEmail
+        ? await invitedQuery
             .order("responded_at", { ascending: false, nullsFirst: false })
             .limit(500)
         : { data: [], error: null };
       if (invitedResult.error) throw invitedResult.error;
       // The private book is scoped to this carrier. Hydrate every lane token so
       // each active invitation in the same RFx can be opened and quoted in place.
-      const invitedRows = (invitedResult.data || []) as Record<string, unknown>[];
+      let invitedRows = (invitedResult.data || []) as Record<string, unknown>[];
+      if (readOnlyPeek) {
+        const otherEvents = [...new Set(invitedRows.map((row) => cleanText(row.rfx_event_id) || ""))]
+          .filter((id) => id && id !== cleanText(result.data.rfx_event_id));
+        const otherSent = otherEvents.length
+          ? await privatePeekSentInvitationIds(supabase, ownerEmail!, otherEvents)
+          : new Map<string, number>();
+        invitedRows = invitedRows.filter((row) => (cleanText(row.rfx_event_id) === cleanText(result.data.rfx_event_id)
+          ? privatePeekHasCurrentSend(rootSent, row) : privatePeekHasCurrentSend(otherSent, row)));
+      }
       // A peek never returns invitation tokens, so it must not depend on the
       // encryption key merely to include a carrier's encrypted-token rows.
       // Keep the ordinary Bid Room path's token hydration unchanged.
@@ -5051,6 +5116,7 @@ Deno.serve(async (request) => {
         live_board: readOnlyPeek ? { ...liveBoard, current_invitation_token: undefined } : liveBoard,
         carrier_book: readOnlyPeek ? { ...book, invited: book.invited.map(invitationWithoutToken),
           quoted: book.quoted.map(invitationWithoutToken) } : book,
+        ...(readOnlyPeek ? { delivery_evidence: { contractVersion: "rateware-private-book-sent.v1", source: "outreach_messages", sentOnly: true } } : {}),
         ...(!readOnlyPeek ? { bid_history: bidHistory, segment_confirmations: segmentConfirmations } : {})
       });
       if (readOnlyPeek) response.headers.set("Cache-Control", "private, no-store, max-age=0");

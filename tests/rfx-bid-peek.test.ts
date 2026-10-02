@@ -16,6 +16,7 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
   const envNames = ["SUPABASE_URL", "RATEWARE_SUPABASE_SERVICE_ROLE_KEY"];
   const previous = Object.fromEntries(envNames.map((name) => [name, Deno.env.get(name)]));
   let handler: ((request: Request) => Response | Promise<Response>) | undefined;
+  let reauthorizedResent = false;
   const queries: Array<{ method: string; url: string }> = [];
   const row = {
     id: "invitation-a", rfx_event_id: "event-a", rfx_lane_id: "lane-a", vendor_id: "vendor-a",
@@ -38,6 +39,21 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
     invitation_token_encrypted: "opaque-test-ciphertext",
     rfx_lanes: { ...row.rfx_lanes, id: "lane-a2", lane_number: 2 },
   };
+  const unsentSameVendorRow = {
+    ...row, id: "invitation-draft", rfx_lane_id: "lane-draft",
+    invitation_status: "drafted", invitation_token: "legacy-test-token-draft",
+    rfx_lanes: { ...row.rfx_lanes, id: "lane-draft", lane_number: 3 },
+  };
+  const authorizedButUnsentRow = {
+    ...row, id: "invitation-authorized", rfx_lane_id: "lane-authorized",
+    invitation_token: "legacy-test-token-authorized",
+    rfx_lanes: { ...row.rfx_lanes, id: "lane-authorized", lane_number: 4 },
+  };
+  const reauthorizedButNotResentRow = {
+    ...row, id: "invitation-reauthorized", rfx_lane_id: "lane-reauthorized",
+    invitation_token: "legacy-test-token-reauthorized", invited_at: "2026-09-29T12:00:00Z",
+    rfx_lanes: { ...row.rfx_lanes, id: "lane-reauthorized", lane_number: 5 },
+  };
   try {
     Deno.env.set("SUPABASE_URL", "https://supabase-mock.invalid");
     Deno.env.set("RATEWARE_SUPABASE_SERVICE_ROLE_KEY", "synthetic-service-role-test-only");
@@ -57,7 +73,8 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
       }
       if (url.pathname.endsWith("/rfx_lane_vendors") && url.searchParams.has("invitation_token")) {
         const requested = url.searchParams.get("invitation_token");
-        const found = [row, foreignRow].find((candidate) => requested === `eq.${candidate.invitation_token}`);
+        const found = [row, foreignRow, unsentSameVendorRow, authorizedButUnsentRow, reauthorizedButNotResentRow]
+          .find((candidate) => requested === `eq.${candidate.invitation_token}`);
         return new Response(JSON.stringify(found || null), { status: 200, headers });
       }
       if (url.pathname.endsWith("/rfx_lane_vendors") && url.searchParams.has("rfx_lane_id")) {
@@ -66,9 +83,21 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
       if (url.pathname.endsWith("/rfx_lane_vendors") && url.searchParams.has("vendor_id")) {
         const vendorId = url.searchParams.get("vendor_id");
         const ownerEmail = url.searchParams.get("rfx_events.owner_email");
-        return new Response(JSON.stringify([row, encryptedSameVendorRow, foreignRow].filter((candidate) =>
-          vendorId === `eq.${candidate.vendor_id}` && ownerEmail === `eq.${candidate.rfx_events.owner_email}`
+        const sentOnly = url.searchParams.get("invitation_status")?.startsWith("in.");
+        return new Response(JSON.stringify([row, encryptedSameVendorRow, unsentSameVendorRow, authorizedButUnsentRow, reauthorizedButNotResentRow, foreignRow].filter((candidate) =>
+          vendorId === `eq.${candidate.vendor_id}` && ownerEmail === `eq.${candidate.rfx_events.owner_email}` &&
+          (!sentOnly || candidate.invitation_status !== "drafted")
         )), { status: 200, headers });
+      }
+      if (url.pathname.endsWith("/outreach_messages")) {
+        return new Response(JSON.stringify([
+          { id: "message-a", status: "sent", sent_at: "2026-09-29T10:00:00Z", rfx_lane_vendor_id: "invitation-a", metadata: {} },
+          { id: "message-a2", status: "archived", sent_at: "2026-09-29T11:00:00Z", rfx_lane_vendor_id: null, metadata: { rfx_lane_vendor_ids: ["invitation-a2"] } },
+          { id: "message-b", status: "sent", sent_at: "2026-09-29T10:00:00Z", rfx_lane_vendor_id: "invitation-b", metadata: {} },
+          { id: "message-reauthorized", status: "sent", sent_at: "2026-09-29T10:00:00Z", rfx_lane_vendor_id: "invitation-reauthorized", metadata: {} },
+          ...(reauthorizedResent ? [{ id: "message-resent", status: "sent", sent_at: "2026-09-29T12:01:00Z", rfx_lane_vendor_id: "invitation-reauthorized", metadata: {} }] : []),
+          { id: "message-bounce", status: "bounced", sent_at: "2026-09-29T10:00:00Z", rfx_lane_vendor_id: "invitation-authorized", metadata: {} },
+        ]), { status: 200, headers });
       }
       if (["rfx_lanes", "contact_history", "rfx_segment_confirmations"].some((table) =>
         url.pathname.endsWith(`/${table}`))) {
@@ -88,6 +117,7 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
     assertEquals(tokenPaths(payload).join(","), "");
     assertEquals(/invitation_token(?:_hash|_encrypted)?/.test(JSON.stringify(payload)), false);
     assertEquals(payload.current_book_row.invitation_id, "invitation-a");
+    assertEquals(payload.delivery_evidence.contractVersion, "rateware-private-book-sent.v1");
     assertEquals(response.headers.get("Cache-Control"), "private, no-store, max-age=0");
     const fullResponse = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -96,7 +126,16 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
     assertEquals(fullResponse.status, 200);
     const fullPayload = await fullResponse.json();
     assertEquals(fullPayload.carrier_book.invited[0].invitation_id, "invitation-a");
+    assertEquals(fullPayload.delivery_evidence.sentOnly, true);
     assertEquals(fullPayload.carrier_book.invited.length, 2);
+    assert(!fullPayload.carrier_book.invited.some((entry: { invitation_id: string }) =>
+      entry.invitation_id === "invitation-draft"), "an unsent draft must not appear in a carrier peek");
+    assert(!fullPayload.carrier_book.invited.some((entry: { invitation_id: string }) =>
+      entry.invitation_id === "invitation-authorized"), "authorization without a delivered message is not visibility");
+    assert(!fullPayload.carrier_book.invited.some((entry: { invitation_id: string }) =>
+      entry.invitation_id === "invitation-reauthorized"), "an old send cannot authorize a newer re-invite");
+    assert(queries.some((query) => new URL(query.url).searchParams.get("invitation_status")?.startsWith("in.")),
+      "the database query must exclude unsent rows before projection");
     assert(fullPayload.carrier_book.invited.some((entry: { invitation_id: string }) =>
       entry.invitation_id === "invitation-a2"), "encrypted-token invitation must remain in a tokenless peek");
     assertEquals(JSON.stringify(fullPayload).includes("opaque-test-ciphertext"), false);
@@ -119,12 +158,43 @@ Deno.test("peek_invitation returns the existing carrier projection without any d
     assertEquals(foreignPayload.carrier_book.invited.length, 1);
     assertEquals(foreignPayload.carrier_book.invited[0].invitation_id, "invitation-b");
     assertEquals(tokenPaths(foreignPayload).join(","), "");
+    const unsentRoot = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token-draft" }),
+    }));
+    assertEquals(unsentRoot.status, 404);
+    const authorizedRoot = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token-authorized" }),
+    }));
+    assertEquals(authorizedRoot.status, 404);
+    const reauthorizedRoot = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token-reauthorized" }),
+    }));
+    assertEquals(reauthorizedRoot.status, 404);
+    reauthorizedResent = true;
+    const resentRoot = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token-reauthorized" }),
+    }));
+    assertEquals(resentRoot.status, 200);
     row.invitation_status = "revoked";
     const revoked = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token" }),
     }));
     assertEquals(revoked.status, 404);
+    row.invitation_status = "invited";
+    row.rfx_events.status = "closed";
+    const closed = await handler(new Request("https://rateware.example/functions/v1/rfx-bid-api", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "peek_invitation", token: "legacy-test-token" }),
+    }));
+    assertEquals(closed.status, 404);
+    const closedPayload = await closed.json();
+    assert(!closedPayload.carrier_book);
+    assertEquals(tokenPaths(closedPayload).length, 0);
     assert(queries.length >= 2);
     assert(queries.every((query) => query.method === "GET"));
   } finally {
