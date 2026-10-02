@@ -1,6 +1,12 @@
-# Rebotes: probado en PostgreSQL local; producción pendiente
+# Rebotes: candidato LOCAL alineado con backend 682; integración pendiente
 
-## Estado vigente · 2/oct/2026, 08:26 UTC
+## Estado vigente · 2/oct/2026 (candidato LOCAL, no es main alineado)
+
+Las migraciones vigentes del paquete son `supabase/migrations/20261002190932_resolve_vendor_bounce_atomic.sql` y `supabase/migrations/20261002191824_restrict_vendor_bounce_receipt_grants.sql`, con los timestamps del ledger productivo. El runner `tests/run-bounce-postgres.ps1` las usa en ese orden. Codex retiró la candidata obsoleta `20261002072000_resolve_vendor_bounce_atomic.sql` tras comprobar su hash; nunca fue aplicada en producción. La suite final completa pasó con ambas migraciones, ACL, preservación, concurrencia y rollback; contenedor retirado. Detalle, hashes y límites en `docs/s15-03-fuente-alineada-682.md`. En esta integración no se aplicó SQL productivo ni se publicó nada.
+
+Todo lo que sigue desde "Estado vigente · 2/oct/2026, 08:26 UTC" es historial de la migración anterior; sus instrucciones y hashes ya no son vigentes.
+
+## Historial · 2/oct/2026, 08:26 UTC (migración 20261002072000, obsoleta)
 
 El usuario autorizó SQL exclusivamente en PostgreSQL local aislado. El runner pasó en PostgreSQL **17.11** con la imagen cacheada por SHA, base nueva sintética, sin red, puertos, montajes de host ni volumen persistente. Se aplicó la migración candidata y se ejecutó realmente como service_role. Pasan conservación de contactos/datos/etiquetas, resolución del bloqueo y recibo, replay sin actualización, conflicto de payload, owner ajeno, recibo obsoleto por nuevo rebote, sustituto bloqueado y metadatos de privilegios. Un fallo provocado después del UPDATE del contacto revierte contacto, supresión y recibo.
 

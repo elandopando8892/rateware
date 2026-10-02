@@ -68,7 +68,8 @@ begin
       or p_replacement_email = any(coalesce(v_vendor.secondary_emails, '{}'::text[])))
       or exists(select 1 from public.email_suppression_list s where s.owner_email = p_owner_email
         and s.email in (p_bounced_email, p_replacement_email) and s.resolved_at is null
-        and s.status in ('hard_bounce', 'soft_bounce', 'delivery_incomplete', 'complaint', 'unsubscribed', 'manual')) then
+        and (s.status in ('hard_bounce', 'soft_bounce', 'delivery_incomplete')
+          or (s.email = p_replacement_email and s.status in ('complaint', 'unsubscribed', 'manual')))) then
       raise exception 'bounce_resolution_state_changed';
     end if;
     return jsonb_build_object('row', to_jsonb(v_vendor), 'replayed', true, 'operation_id', p_operation_id,
@@ -106,7 +107,8 @@ begin
     updated_at = v_now where owner_email = p_owner_email and id = p_vendor_id returning * into v_vendor;
   update public.email_suppression_list set resolved_at = v_now, resolved_by = p_owner_email,
     replacement_email = p_replacement_email, updated_at = v_now
-    where owner_email = p_owner_email and email = p_bounced_email and resolved_at is null;
+    where owner_email = p_owner_email and email = p_bounced_email and resolved_at is null
+      and status in ('hard_bounce', 'soft_bounce', 'delivery_incomplete');
   insert into public.vendor_email_bounce_resolutions(owner_email, operation_id, vendor_id, bounced_email, replacement_email, resolved_at)
     values (p_owner_email, p_operation_id, p_vendor_id, p_bounced_email, p_replacement_email, v_now);
   return jsonb_build_object('row', to_jsonb(v_vendor), 'replayed', false, 'operation_id', p_operation_id,

@@ -8,6 +8,9 @@ $testImage = 'sha256:7296f210ae81031ec955dbad9a67a84fe958572a2153b8d0826a6475229
 $testName = 'bidware-bounce-test-' + [guid]::NewGuid().ToString('N').Substring(0,12)
 $testContainerId = $null
 $testJobs = @()
+$suiteError = $null
+$cleanupError = $null
+$suiteCompleted = $false
 function Invoke-TestDocker {
   param([string[]]$DockerArgs)
   $output = & docker @DockerArgs
@@ -47,11 +50,26 @@ try {
   }
   if (-not $ready) { throw 'Isolated PostgreSQL did not become ready.' }
   Invoke-TestDocker -DockerArgs @('exec',$testContainerId,'psql','-U','postgres','-d','bidware_bounce_test','-c','select version();')
-  $sqlFiles = @('tests/sql/vendor-bounce-fixture.sql','supabase/migrations/20261002072000_resolve_vendor_bounce_atomic.sql','tests/sql/vendor-bounce-atomic.sql')
-  foreach ($relative in $sqlFiles) {
-    $sqlFile = Join-Path $testRoot $relative
+  # Order matters: broad default grants must exist before the first migration; ACL and preservation run before atomic/concurrency/rollback.
+  $sqlFiles = @(
+    @{ Path='tests/sql/vendor-bounce-fixture.sql' },
+    @{ Path='tests/sql/vendor-bounce-default-grants.sql' },
+    @{ Path='supabase/migrations/20261002190932_resolve_vendor_bounce_atomic.sql'; AfterQuery="select has_table_privilege('service_role','public.vendor_email_bounce_resolutions','UPDATE') and has_table_privilege('service_role','public.vendor_email_bounce_resolutions','DELETE');" },
+    @{ Path='supabase/migrations/20261002191824_restrict_vendor_bounce_receipt_grants.sql' },
+    @{ Path='tests/sql/vendor-bounce-receipt-grants.sql' },
+    @{ Path='tests/sql/vendor-bounce-suppression-preservation.sql'; PsqlVars=@('-v','require_preservation=true') },
+    @{ Path='tests/sql/vendor-bounce-atomic.sql' }
+  )
+  foreach ($entry in $sqlFiles) {
+    $sqlFile = Join-Path $testRoot $entry.Path
     Invoke-TestDocker -DockerArgs @('cp',$sqlFile,"${testContainerId}:/tmp/bounce-test.sql")
-    Invoke-TestDocker -DockerArgs @('exec',$testContainerId,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-d','bidware_bounce_test','-f','/tmp/bounce-test.sql')
+    $extraVars = if ($entry.PsqlVars) { [string[]]$entry.PsqlVars } else { [string[]]@() }
+    Invoke-TestDocker -DockerArgs (@('exec',$testContainerId,'psql','-X','-v','ON_ERROR_STOP=1') + $extraVars + @('-U','postgres','-d','bidware_bounce_test','-f','/tmp/bounce-test.sql'))
+    if ($entry.AfterQuery) {
+      $afterResult = Invoke-TestDocker -DockerArgs @('exec',$testContainerId,'psql','-X','-At','-v','ON_ERROR_STOP=1','-U','postgres','-d','bidware_bounce_test','-c',$entry.AfterQuery)
+      if (($afterResult -join '').Trim() -ne 't') { throw "Default grants were not broad before the ACL migration (got: $($afterResult -join ''))." }
+      Write-Output 'PASS: broad default grants reproduced before ACL migration'
+    }
   }
   $concurrencyFiles = @('seed','first','replay','conflict','check')
   foreach ($name in $concurrencyFiles) {
@@ -89,15 +107,28 @@ try {
     Invoke-TestDocker -DockerArgs @('cp',(Join-Path $testRoot $relative),"${testContainerId}:/tmp/bounce-rollback.sql")
     Invoke-TestDocker -DockerArgs @('exec',$testContainerId,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-d','bidware_bounce_test','-f','/tmp/bounce-rollback.sql')
   }
+  $suiteCompleted = $true
+} catch {
+  $suiteError = $_
 } finally {
-  foreach ($worker in $testJobs) {
-    if ($worker.State -notin @('Completed','Failed','Stopped')) { Stop-Job -Job $worker }
-    Remove-Job -Job $worker
-  }
-  if ($testContainerId -match '^[0-9a-f]{64}$') {
-    $testMetadata = (Invoke-TestDocker -DockerArgs @('inspect',$testContainerId) | ConvertFrom-Json)[0]
-    if ($testMetadata.Id -eq $testContainerId -and $testMetadata.Name -eq "/$testName" -and $testMetadata.Config.Labels.'bidware.bounce-test' -eq 'true') {
-      Invoke-TestDocker -DockerArgs @('rm','--force',$testContainerId) | Out-Null
-    } else { throw 'Cleanup refused: container identity does not match the test created here.' }
+  try {
+    foreach ($worker in $testJobs) {
+      if ($worker.State -notin @('Completed','Failed','Stopped')) { Stop-Job -Job $worker }
+      Remove-Job -Job $worker
+    }
+    if ($testContainerId -match '^[0-9a-f]{64}$') {
+      $testMetadata = (Invoke-TestDocker -DockerArgs @('inspect',$testContainerId) | ConvertFrom-Json)[0]
+      if ($testMetadata.Id -eq $testContainerId -and $testMetadata.Name -eq "/$testName" -and $testMetadata.Config.Labels.'bidware.bounce-test' -eq 'true') {
+        Invoke-TestDocker -DockerArgs @('rm','--force',$testContainerId) | Out-Null
+      } else { throw 'Cleanup refused: container identity does not match the test created here.' }
+    }
+  } catch {
+    $cleanupError = $_
   }
 }
+# Exit decision is outside finally so neither a suite failure nor a cleanup failure can be hidden.
+if ($suiteError) { [Console]::Error.WriteLine("SUITE FAILED: $($suiteError.Exception.Message)") }
+if ($cleanupError) { [Console]::Error.WriteLine("CLEANUP FAILED: $($cleanupError.Exception.Message)") }
+if ($suiteError -or $cleanupError -or -not $suiteCompleted) { exit 1 }
+Write-Output 'PASS: complete bounce suite, including preservation, ACL, concurrency and rollback'
+exit 0
