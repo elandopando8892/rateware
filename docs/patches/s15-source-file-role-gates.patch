@@ -1,0 +1,19 @@
+diff --git a/supabase/functions/create-raw-upload/index.ts b/supabase/functions/create-raw-upload/index.ts
+index 0f866d7b..361dbe2b 100644
+--- a/supabase/functions/create-raw-upload/index.ts
++++ b/supabase/functions/create-raw-upload/index.ts
+@@ -3,0 +4 @@ import { requireRatewareUser } from "../_shared/auth.ts";
++import { teamRoleDenial } from "../_shared/team-roles.ts";
+@@ -80,0 +82,2 @@ Deno.serve(async (request) => {
++    const roleDenial = teamRoleDenial("create-raw-upload", identity as Record<string, unknown>, { action: "create_raw_upload" });
++    if (roleDenial) return jsonResponse(roleDenial, 403);
+diff --git a/supabase/functions/interpret-upload/index.ts b/supabase/functions/interpret-upload/index.ts
+index 6c591c4f..b881cb16 100644
+--- a/supabase/functions/interpret-upload/index.ts
++++ b/supabase/functions/interpret-upload/index.ts
+@@ -8 +8 @@ import { requireRatewareUser } from "../_shared/auth.ts";
+-import { adminOnlyDenial, RATE_BASE_REMOVAL_ERROR } from "../_shared/team-roles.ts";
++import { adminOnlyDenial, RATE_BASE_REMOVAL_ERROR, teamRoleDenial } from "../_shared/team-roles.ts";
+@@ -2451,0 +2452,2 @@ Deno.serve(async (request) => {
++    const roleDenial = teamRoleDenial("interpret-upload", identity as Record<string, unknown>, { action: "interpret_upload" });
++    if (roleDenial) return jsonResponse(roleDenial, 403);

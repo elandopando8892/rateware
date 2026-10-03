@@ -5,7 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "./vendor/xlsx-0.20.3.mjs";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
-import { adminOnlyDenial, RATE_BASE_REMOVAL_ERROR } from "../_shared/team-roles.ts";
+import { adminOnlyDenial, RATE_BASE_REMOVAL_ERROR, teamRoleDenial } from "../_shared/team-roles.ts";
 import { resolveSourceFileUser, SOURCE_FILE_ACTIONS } from "../_shared/source-file-access.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import { decideServiceFromResolution, resolveServiceEvidence } from "../_shared/service-normalization.mjs";
@@ -2449,6 +2449,8 @@ Deno.serve(async (request) => {
   let identity: Awaited<ReturnType<typeof requireRatewareUser>>;
   try {
     identity = await requireRatewareUser(request);
+    const roleDenial = teamRoleDenial("interpret-upload", identity as Record<string, unknown>, { action: "interpret_upload" });
+    if (roleDenial) return jsonResponse(roleDenial, 403);
     user = await resolveSourceFileUser(supabase, identity);
   } catch (error) {
     return jsonResponse({ error: interpretationErrorMessage(error, "Authentication required.") }, runtimeIdentityStatus(error) === 403 ? 403 : 401);
