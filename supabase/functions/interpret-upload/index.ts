@@ -11,7 +11,6 @@ import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspa
 import { decideServiceFromResolution, resolveServiceEvidence } from "../_shared/service-normalization.mjs";
 import { normalizedAllInFromFuel } from "../_shared/rate-normalization.mjs";
 import { downloadStorageObject } from "../_shared/object-storage.ts";
-import { buildInterpretationRequestBody, runEmailInterpretation, selectInterpretationModel } from "./email-interpretation-policy.mjs";
 
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
@@ -1981,21 +1980,7 @@ async function uploadOpenAIFile(file: Blob, filename: string) {
   return await response.json();
 }
 
-async function requestRatewareInterpretation(systemPrompt: string, userContent: Record<string, unknown>[], documentType?: string) {
-  if (documentType === "email") {
-    const body = buildInterpretationRequestBody({
-      documentType, defaultModel: OPENAI_MODEL, systemPrompt, userContent, schema: RATEWARE_SCHEMA
-    });
-    const { interpretation, metadata } = await runEmailInterpretation({
-      fetchImpl: (url: string, init: RequestInit) => fetch(url, {
-        ...init,
-        headers: { ...init.headers, Authorization: `Bearer ${OPENAI_API_KEY}` }
-      }),
-      body,
-      onHttpError: (response: Response) => openAIErrorMessage(response, "OpenAI interpretation failed")
-    });
-    return { ...interpretation, __email_model_metadata: metadata };
-  }
+async function requestRatewareInterpretation(systemPrompt: string, userContent: Record<string, unknown>[]) {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -2267,13 +2252,12 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
     userContent.push({ type: "input_file", file_id: openAIFile.id });
   }
 
-  const firstRawResult = await requestRatewareInterpretation(systemPrompt, userContent, rawUpload.document_type);
-  const { __email_model_metadata: emailModelMetadata = null, ...firstRawInterpretation } = firstRawResult;
+  const firstRawInterpretation = await requestRatewareInterpretation(systemPrompt, userContent);
   const firstRawRows = interpretationRows(firstRawInterpretation);
   const firstInterpretation = applyKnownTableRepair(rawUpload, firstRawInterpretation);
   const firstRepairUsed = firstInterpretation !== firstRawInterpretation;
   if (!shouldAuditSparseInterpretation(rawUpload, firstInterpretation)) {
-    const firstAuditedInterpretation = attachInterpretationAuditMeta(firstInterpretation, {
+    return attachInterpretationAuditMeta(firstInterpretation, {
       first_pass_rows: firstRawRows.length,
       audit_pass_used: false,
       audit_pass_rows: null,
@@ -2281,7 +2265,6 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
       deterministic_repair_used: firstRepairUsed,
       ...interpretationSummaryAuditMeta(firstInterpretation)
     });
-    return emailModelMetadata ? { ...firstAuditedInterpretation, __email_model_metadata: emailModelMetadata } : firstAuditedInterpretation;
   }
 
   const auditPrompt = [
@@ -2306,7 +2289,7 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
     }
   ];
 
-  const auditedRawInterpretation = await requestRatewareInterpretation(auditPrompt, auditContent, rawUpload.document_type);
+  const auditedRawInterpretation = await requestRatewareInterpretation(auditPrompt, auditContent);
   const auditedInterpretation = applyKnownTableRepair(rawUpload, auditedRawInterpretation);
   const auditedRepairUsed = auditedInterpretation !== auditedRawInterpretation;
   const auditedRows = interpretationRows(auditedInterpretation);
@@ -2494,7 +2477,7 @@ Deno.serve(async (request) => {
 
   const job = await supabase.from("interpretation_jobs").insert({
     raw_upload_id,
-    model: selectInterpretationModel(rawUpload.document_type, OPENAI_MODEL),
+    model: OPENAI_MODEL,
     correction_note: correctionNote || null
   }).select().single();
 
@@ -2573,9 +2556,7 @@ Deno.serve(async (request) => {
       rawUpload.rfx_hint,
       typeof interpretation.summary === "object" && interpretation.summary ? (interpretation.summary as Record<string, unknown>).document_notes : null
     ].filter(Boolean).join(" ")).map((row) => addRowAudit(row, rawUpload));
-    const baseUploadAudit = buildUploadAudit(rawUpload, interpretation, rows);
-    const emailModelMetadata = (interpretation as unknown as Record<string, unknown>).__email_model_metadata ?? null;
-    const uploadAudit = emailModelMetadata ? { ...baseUploadAudit, email_model_metadata: emailModelMetadata } : baseUploadAudit;
+    const uploadAudit = buildUploadAudit(rawUpload, interpretation, rows);
 
     if (rows.length) {
       const archivePrevious = await supabase

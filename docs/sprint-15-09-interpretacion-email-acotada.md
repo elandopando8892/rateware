@@ -1,6 +1,6 @@
-# S15 — Interpretación EML acotada (publicada; prueba operativa pendiente)
+# S15 — Interpretación EML acotada (retirada por falta de acceso al modelo)
 
-Estado: **publicado con autorización humana**. S15 **no está cerrado**. El commit `cc40fedc7eb0afeef6400b25b6c947373a60d0cd` se publicó por fast-forward a `main`; `interpret-upload` está ACTIVE v307. La carga del EML controlado por Operador respondió 403 antes de interpretar: no hubo llamada OpenAI ni cambios de variables globales.
+Estado: **paquete retirado de producción tras el intento autorizado**. S15 **no está cerrado**. `cc40fedc` se publicó y `interpret-upload` pasó a v307. Después de registrar la identidad autorizada del Operador, una carga 200 guardó el EML; la única interpretación respondió 500 porque el proyecto OpenAI no tiene acceso a `gpt-6-luna`. Se restauró exactamente el bundle anterior v306 como **ACTIVE v308**, sin otro intento API. No se cambiaron variables globales.
 
 ## Benchmark de opciones (revisado 2/oct/2026)
 
@@ -33,7 +33,7 @@ Estimación conservadora a tarifa de lista, usando bytes como cota aproximada de
 
 ## Capacidad de la cuenta
 
-Acceso de la cuenta API al modelo **no verificado**; no se hizo ninguna llamada de prueba. El valor actual de `OPENAI_MODEL` es desconocido y no se modifica.
+Acceso de la cuenta API a `gpt-6-luna`: **denegado en el único intento autorizado**. No hay usage ni cargo confirmado; el fallo no se cuenta como consumo cero. El valor actual de `OPENAI_MODEL` es desconocido y no se modifica. El paquete acotado queda recuperable en Git `cc40fedc`, sin modelo alternativo automático.
 
 ## Cableado en `index.ts`
 
@@ -61,7 +61,9 @@ Desde la sesión real Operador `carriers@xbfreight.com`, se seleccionaron el car
 
 Diagnóstico acotado: `create-raw-upload` ACTIVE v260 exige `resolveSourceFileUser` con identidad canónica registrada. La cuenta Operador está confirmada, tiene rol operator y organización revisada `org_dbc2fd12c76`; el enlace de organización está activo y coincide con workspace_registry. Falta únicamente su fila en `external_identities` (cero filas para provider supabase y su subject Auth). El contrato compartido de identidad coincide con interpret-upload; no es evidencia de un fallo de GPT-6 Luna ni del despliegue v307.
 
-La reparación propuesta reutiliza el registro canónico existente: revisar y registrar solo la identidad de esa cuenta, conservando rol, organización y Auth metadata. Activar un registro de identidad habilita acceso a archivos y requiere autorización específica antes del SQL. No se ejecutó INSERT/UPDATE ni se debilitó el requisito. Acceso API y resultado EML siguen sin comprobar. Evidencia sanitizada en Bidware `.test-output/s15-production/eml-publication-and-upload-20261003.json`.
+La reparación de identidad fue autorizada y ejecutada: un INSERT guardado, ensayo con ROLLBACK y después COMMIT, registro activo `a05f13b0-c99d-466d-ae97-211282b33bd5`. Rol, organización y Auth metadata conservados. Luego un POST create-raw-upload 200 y un POST interpret-upload 500: el proyecto no tiene acceso a `gpt-6-luna`. Archivo único `a7800f34-7977-4437-b326-45e25987ae0a`, 1313 bytes y SHA-256 igual al fixture; job único `cd1dcad9-b810-4c2d-a133-890491f5f69b`, failed, modelo solicitado Luna, cero filas staging y cero aprobadas. No hubo reintento, fallback ni nueva copia.
+
+Como la v307 imponía un modelo no disponible a todos los EML, se retiró inmediatamente: `interpret-upload` ACTIVE v308, bundle `371faa0e90fad2f503f19c4afec2fc84adf4647d7c084b2a7b0047d7a3905778`. Readback confirmó sus 12 archivos idénticos al bundle v306; autenticación previa conservada. La retirada de código en Git restablece el handler anterior; helper/tests retirados siguen recuperables en cc40fedc y evidencia local. El original y su job fallido permanecen para recuperación por ID después de resolver acceso y autorizar otro intento. No se acepta extracción ni tarifa pendiente. Evidencia sanitizada en Bidware `.test-output/s15-production/eml-interpretation-20261003.json`.
 
 ## Rollback
 
