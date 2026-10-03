@@ -1,0 +1,43 @@
+diff --git a/supabase/functions/interpret-upload/index.ts b/supabase/functions/interpret-upload/index.ts
+index b881cb16..953acc4e 100644
+--- a/supabase/functions/interpret-upload/index.ts
++++ b/supabase/functions/interpret-upload/index.ts
+@@ -13,0 +14 @@ import { downloadStorageObject } from "../_shared/object-storage.ts";
++import { buildInterpretationRequestBody, runEmailInterpretation, selectInterpretationModel } from "./email-interpretation-policy.mjs";
+@@ -1983 +1984,15 @@ async function uploadOpenAIFile(file: Blob, filename: string) {
+-async function requestRatewareInterpretation(systemPrompt: string, userContent: Record<string, unknown>[]) {
++async function requestRatewareInterpretation(systemPrompt: string, userContent: Record<string, unknown>[], documentType?: string) {
++  if (documentType === "email") {
++    const body = buildInterpretationRequestBody({
++      documentType, defaultModel: OPENAI_MODEL, systemPrompt, userContent, schema: RATEWARE_SCHEMA
++    });
++    const { interpretation, metadata } = await runEmailInterpretation({
++      fetchImpl: (url: string, init: RequestInit) => fetch(url, {
++        ...init,
++        headers: { ...init.headers, Authorization: `Bearer ${OPENAI_API_KEY}` }
++      }),
++      body,
++      onHttpError: (response: Response) => openAIErrorMessage(response, "OpenAI interpretation failed")
++    });
++    return { ...interpretation, __email_model_metadata: metadata };
++  }
+@@ -2255 +2270,2 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
+-  const firstRawInterpretation = await requestRatewareInterpretation(systemPrompt, userContent);
++  const firstRawResult = await requestRatewareInterpretation(systemPrompt, userContent, rawUpload.document_type);
++  const { __email_model_metadata: emailModelMetadata = null, ...firstRawInterpretation } = firstRawResult;
+@@ -2260 +2276 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
+-    return attachInterpretationAuditMeta(firstInterpretation, {
++    const firstAuditedInterpretation = attachInterpretationAuditMeta(firstInterpretation, {
+@@ -2267,0 +2284 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
++    return emailModelMetadata ? { ...firstAuditedInterpretation, __email_model_metadata: emailModelMetadata } : firstAuditedInterpretation;
+@@ -2292 +2309 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
+-  const auditedRawInterpretation = await requestRatewareInterpretation(auditPrompt, auditContent);
++  const auditedRawInterpretation = await requestRatewareInterpretation(auditPrompt, auditContent, rawUpload.document_type);
+@@ -2482 +2499 @@ Deno.serve(async (request) => {
+-    model: OPENAI_MODEL,
++    model: selectInterpretationModel(rawUpload.document_type, OPENAI_MODEL),
+@@ -2561 +2578,3 @@ Deno.serve(async (request) => {
+-    const uploadAudit = buildUploadAudit(rawUpload, interpretation, rows);
++    const baseUploadAudit = buildUploadAudit(rawUpload, interpretation, rows);
++    const emailModelMetadata = (interpretation as unknown as Record<string, unknown>).__email_model_metadata ?? null;
++    const uploadAudit = emailModelMetadata ? { ...baseUploadAudit, email_model_metadata: emailModelMetadata } : baseUploadAudit;

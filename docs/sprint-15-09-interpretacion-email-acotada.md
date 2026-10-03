@@ -4,6 +4,8 @@ Estado: **paquete EML retirado de producción tras el intento autorizado**. S15 
 
 ## Benchmark de opciones (revisado 2/oct/2026)
 
+Actualización 3/oct: el usuario confirmó gpt-5.6-luna/none, permitido en el proyecto. El nuevo [paquete S15-13](sprint-15-13-eml-gpt56-local.md) está integrado y probado localmente (20 EML + 16 roles), pendiente de publicación y nuevo intento autorizado. Producción sigue v309. El resto de este documento conserva el histórico del paquete gpt-6-luna retirado; sus precios/modelo no describen el paquete local nuevo.
+
 Fuente vigente: [documentación oficial de GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) (Responses + Structured Outputs, `reasoning.effort: none`, tarifa standard USD 0.10/M entrada y USD 0.50/M salida). Acceso de la cuenta API todavía desconocido.
 
 | Opción | Resultado |
