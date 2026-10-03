@@ -1,6 +1,10 @@
-# Sprint 15.13 — Paquete local EML gpt-5.6-luna (PROBADO LOCALMENTE, NO DESPLEGADO)
+# Sprint 15.13 — Paquete EML gpt-5.6-luna (PUBLICADO Y COMPROBADO)
 
-Fecha: 2026-10-03. Estado: integrado y probado localmente, pendiente de autorización de publicación y un nuevo intento. No se ha subido, desplegado ni publicado este paquete.
+Actualización 2026-10-03, 14:00 México: el usuario pidió completar todos los trabajos después de revisar el paquete y el límite de un intento hasta USD 0.25. Se publicó ff8cf6d7701ffe0a37e4ea253b634c850248b4e0 por fast-forward e interpret-upload quedó ACTIVE v310, bundle ecbac22647e92c381866dd4564ae7036fe5b100079e8fd6b49376d17c98076dd. Los 13 archivos se releyeron y coinciden exactamente con el paquete revisado; verify_jwt=false y autenticación personalizada conservados. rateware-api 682 y create-raw-upload 261 sin cambios.
+
+Una interpretación real mediante Admin en Bidware respondió 200. Job 673043c7-3f5f-4ce0-8483-6ab70168cf6a, una fila 493837bb-1de6-486c-9c00-4c3be19ab96d pending_review, 20/20 campos contrastados con el fixture y cero aprobadas. Archivo a7800f34-7977-4437-b326-45e25987ae0a reutilizado, sin nueva subida; job fallido anterior conservado. Modelo solicitado/observado gpt-5.6-luna; 2399 tokens entrada, 461 salida, 2860 total; cargo real desconocido. La autorización de este intento ya se utilizó, sin retry/fallback. POST anónimo posterior: 401.
+
+Recarga y UI de Revisión verificadas. Recuperación de bytes original sigue bloqueada por ERR_BLOCKED_BY_CLIENT; Consulta/otra organización, replay autenticado y aceptación humana pendientes. Evidencia completa: Bidware docs/sprint-15-15-publicacion-y-aceptacion.md y .test-output/s15-production/eml-success-20261003.json. Lo que sigue conserva la preparación histórica local y sus límites; no implica otro intento autorizado ni que el Sprint esté cerrado.
 
 ## Decisión
 - Modelo para correos (`email`): `gpt-5.6-luna`, razonamiento `none`, confirmado directamente por la persona usuaria el 2026-10-03.
