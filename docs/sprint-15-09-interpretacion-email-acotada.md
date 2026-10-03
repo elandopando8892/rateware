@@ -1,6 +1,6 @@
 # S15 — Interpretación EML acotada (retirada por falta de acceso al modelo)
 
-Estado: **paquete retirado de producción tras el intento autorizado**. S15 **no está cerrado**. `cc40fedc` se publicó y `interpret-upload` pasó a v307. Después de registrar la identidad autorizada del Operador, una carga 200 guardó el EML; la única interpretación respondió 500 porque el proyecto OpenAI no tiene acceso a `gpt-6-luna`. Se restauró exactamente el bundle anterior v306 como **ACTIVE v308**, sin otro intento API. No se cambiaron variables globales.
+Estado: **paquete EML retirado de producción tras el intento autorizado**. S15 **no está cerrado**. `cc40fedc` se publicó y `interpret-upload` pasó a v307. Después de registrar la identidad autorizada del Operador, una carga 200 guardó el EML; la única interpretación respondió 500 porque el proyecto OpenAI no tiene acceso a `gpt-6-luna`. Se restauró exactamente el bundle anterior v306 como v308. La publicación posterior autorizada `42d68a5c` añadió solo el gate de rol y actualizó team-roles: **ACTIVE v309**, sin nuevo intento API ni requisito de Luna. No se cambiaron variables globales. [Permisos, readback y bundles de rollback](sprint-15-11-identidad-y-permisos-archivos.md).
 
 ## Benchmark de opciones (revisado 2/oct/2026)
 
