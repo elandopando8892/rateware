@@ -1,6 +1,6 @@
-# S15 — Interpretación EML acotada (preparación local)
+# S15 — Interpretación EML acotada (publicada; prueba operativa pendiente)
 
-Estado: **preparado localmente, sin publicar**. S15 **no está cerrado**. No hay deploy, push, llamadas a la API ni cambios de variables globales.
+Estado: **publicado con autorización humana**. S15 **no está cerrado**. El commit `cc40fedc7eb0afeef6400b25b6c947373a60d0cd` se publicó por fast-forward a `main`; `interpret-upload` está ACTIVE v307. La carga del EML controlado por Operador respondió 403 antes de interpretar: no hubo llamada OpenAI ni cambios de variables globales.
 
 ## Benchmark de opciones (revisado 2/oct/2026)
 
@@ -53,7 +53,15 @@ Primera llamada `1736c647c1164a80ac36ceb3b2593379`: escribió helper, siguiente 
 
 ## Publicación
 
-La publicación de `interpret-upload` está **pendiente de confirmación concreta** del usuario, que eligió el modelo y el intento. No equivale a una autorización genérica de backend nuevo, y la autorización previa de publicación de Bidware no cubre este paquete Rateware por sí sola.
+El usuario autorizó expresamente publicar `cc40fedc`, desplegar únicamente `interpret-upload` y efectuar una interpretación del fixture con presupuesto USD 0.25, sin reintento. Push y `ls-remote` confirmaron `main` en ese SHA. Despliegue ACTIVE v307, bundle `d9ac0bf8c226851e9749387ed5ef5db2d946bb90fd59b7af4104604d34cf3262`; readback confirmó index y helper iguales a los probados y los otros 11 archivos idénticos al bundle v306. Se conservó `verify_jwt=false` preexistente y la autenticación propia del handler. No se desplegó otra función.
+
+### Comprobación operativa y bloqueo
+
+Desde la sesión real Operador `carriers@xbfreight.com`, se seleccionaron el carrier piloto existente y `sprint-15-tarifa-controlada.eml`, RFx vacío. Un solo clic Subir y leer produjo OPTIONS 200 y **POST create-raw-upload 403**, respuesta `External identity is not registered.` No se llamó a interpret-upload ni se reintentó la carga. SELECT READ ONLY confirmó cero raw_uploads y cero rate_staging para ese archivo antes y después.
+
+Diagnóstico acotado: `create-raw-upload` ACTIVE v260 exige `resolveSourceFileUser` con identidad canónica registrada. La cuenta Operador está confirmada, tiene rol operator y organización revisada `org_dbc2fd12c76`; el enlace de organización está activo y coincide con workspace_registry. Falta únicamente su fila en `external_identities` (cero filas para provider supabase y su subject Auth). El contrato compartido de identidad coincide con interpret-upload; no es evidencia de un fallo de GPT-6 Luna ni del despliegue v307.
+
+La reparación propuesta reutiliza el registro canónico existente: revisar y registrar solo la identidad de esa cuenta, conservando rol, organización y Auth metadata. Activar un registro de identidad habilita acceso a archivos y requiere autorización específica antes del SQL. No se ejecutó INSERT/UPDATE ni se debilitó el requisito. Acceso API y resultado EML siguen sin comprobar. Evidencia sanitizada en Bidware `.test-output/s15-production/eml-publication-and-upload-20261003.json`.
 
 ## Rollback
 
