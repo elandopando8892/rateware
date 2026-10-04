@@ -1,6 +1,6 @@
 # Base 3 — Aislamiento local de escrituras del catálogo
 
-Fecha: 3/oct/2026. Estado: **desarrollo local implementado; SQL/concurrencia real pendientes de autorización**. El usuario pidió continuar con el siguiente desarrollo después del hallazgo de Base 2. No hay autorización nueva para SQL o publicación productivos. El esquema efectivo de Rateware queda pendiente: el conector disponible sólo enumeró dos proyectos de staging ajenos a ese runtime; no se consultaron sus datos.
+Fecha: 3/oct/2026. Estado: **arreglo local implementado y validado, incluida concurrencia real en PostgreSQL aislado**. El usuario pidió continuar con el siguiente desarrollo después del hallazgo de Base 2 y después autorizó el ensayo SQL local concreto. No hay autorización nueva para SQL o publicación productivos. El esquema efectivo de Rateware queda pendiente: el conector disponible sólo enumeró dos proyectos de staging ajenos a ese runtime; no se consultaron sus datos.
 
 ## Objetivo y decisión
 
@@ -26,7 +26,7 @@ Codex/OpenAI conserva el rol de escritor/integrador local de la sesión; Claude 
 
 Cierre local: handler real con identidad/base simuladas; semántica HTTP del SDK instalado; regresiones de roles/lecturas; SQL y concurrencia en PostgreSQL aislado con dos conexiones realmente solapadas. Roles y datos de prueba no acreditan JWT/RLS reales. La imagen PostgreSQL 17 cacheada está disponible por digest; el runner no debe descargar, abrir red/puertos, montar rutas ni usar volúmenes persistentes.
 
-La convención del usuario exige confirmación humana antes de aplicar SQL/migraciones. Preparar código, arnés y SQL está autorizado; **ejecutar el SQL de este nuevo ensayo local necesita confirmación concreta**, mediante el runner con `-SqlAuthorized`. Se pedirá sobre los archivos preparados, sin extenderla a producción. Hasta entonces se completan las verificaciones sin SQL.
+La convención del usuario exige confirmación humana antes de aplicar SQL/migraciones. Se preparó primero código, arnés y SQL; el usuario respondió **«autorizo»** a la pregunta concreta de ejecutar los cinco archivos únicamente en PostgreSQL local efímero sin red/puertos/volúmenes/datos reales. Con esa confirmación se ejecutó el runner con `-SqlAuthorized`. La autorización no se extiende a producción.
 
 Rollback del código: revertir exclusivamente el commit de este arreglo. No reintroducir el upsert inseguro como fallback automático. El runner sólo elimina su contenedor después de comprobar id, nombre y etiqueta propios; estado sintético efímero. Publicación futura requiere comprobar esquema/runtime real y su autorización específica; no desplegar todo el checkout por defecto.
 
@@ -52,14 +52,22 @@ La primera ejecución sin tipos de las nuevas pruebas dio 20 aprobados y tres fa
 
 La suite `node tests/rateware-stability.test.mjs` **falla** en línea 3911: espera un patrón anterior `identity = await requireRatewareUser(request); user = await resolveSourceFileUser(supabase, identity)` en `interpret-upload/index.ts`. Se verificó que la fuente actual es idéntica a HEAD (`SHA-256 72960ac78b8892a1eec82ea6aba7c197c4602047396df289b4028623534d3c7c`) y que el patrón no coincide en ninguna de ambas. Es una discrepancia preexistente fuera del catálogo, preservada. No se declara verde la suite general ni listo un despliegue de todo el checkout.
 
-Pendientes: ejecutar los **cinco SQL preparados** con confirmación humana, comprobar los dos solapamientos reales y cero UPDATE ajenos, actualizar esta evidencia y cerrar la validación local. El arnés usa PostgreSQL 17 y una tabla/grants/trigger sintéticos mínimos; sus sentencias equivalen al INSERT/UPDATE que emite PostgREST pero no ejecutan su servidor, JWT o políticas productivas. Contador de mutaciones y roles del fixture no son auditoría productiva.
+Validación SQL completada con esa autorización: **PostgreSQL 17.11**, 18 comprobaciones y **dos solapamientos observados** mediante `pg_stat_activity`/`pg_blocking_pids`. En el caso ajeno: un INSERT de A, INSERT duplicado ignorado y **UPDATE 0** de B; owner A y fila única conservados. En el caso propio: un INSERT, duplicado ignorado y **UPDATE 1**, sin cambiar owner ni duplicar fila. Triggers sintéticos comprobaron esos conteos. También pasaron reactivación, ownerless, referencia inmutable y reintento sin otra inserción. Primera ejecución SQL exitosa, sin correcciones ni reintentos.
 
-Después de la autorización concreta, desde este checkout:
+El arnés usa una tabla/grants/trigger sintéticos mínimos; sus sentencias equivalen al INSERT/UPDATE que emite PostgREST pero no ejecutan su servidor, JWT o políticas productivas. Contador de mutaciones y roles del fixture no son auditoría productiva. La prueba sólo cierra el arreglo local, no la integración real.
+
+Comando ejecutado desde este checkout:
 
 ```powershell
 pwsh -NoProfile -File tests/run-catalog-owner-postgres.ps1 -SqlAuthorized
 ```
 
 El runner exige socket Docker local (npipe/unix), imagen cacheada por digest, `--pull=never`, `--network=none`, tmpfs, ningún puerto/montaje/volumen de host. Observa la primera transacción dormida y la segunda bloqueada por ella, espera las dos salidas, verifica filas y contador de INSERT/UPDATE; elimina únicamente el contenedor propio con id/nombre/etiqueta validados. Un error de prueba o limpieza devuelve exit 1. Los SQL no son migraciones, no cambian la base real y nunca se deben dirigir a producción.
+
+El proceso terminó con **exit 0** y la lectura posterior por `marksman.catalog-owner-test=true` quedó vacía: contenedor propio retirado. Log local: `.test-output/catalog-owner/postgres-20261003-183952.log`; SHA-256 `711fc700e65a939e3917184e32b3e011863fc291bbe463a51f121c99b9a1d977`. Handler probado: SHA-256 `ee7344277c01abf29dd8aa56b7382bb319fe7c6d84e77a31aa864ab9c4a868be`. Las verificaciones de contrato/SDK/types y SQL corresponden a esa fuente; después sólo se actualizó documentación. Checkpoint del arreglo: **`6d4733a08baf4ff9fc638d5e912c5474c9a291ec`**, commit local, sin push/merge/publicación.
+
+La comprobación inicial byte a byte de manifests contra blobs Git produjo un falso rechazo por CRLF del checkout frente a LF de Git. Se verificaron nuevamente normalizando sólo los saltos de línea: `package.json` y `package-lock.json` coinciden con HEAD; no se editaron. El checkpoint contiene únicamente las diez rutas declaradas. Se preservó `.test-output/` ajeno.
+
+Siguiente paso para una publicación futura: resolver la discrepancia preexistente de la suite general y disponer de acceso soportado al proyecto Rateware para inspeccionar esquema, permisos y runtime actuales. Preparar el diff exacto contra ese runtime; pedir autorización de publicación sólo con el paquete comprobado. No se propone una migración ni se solicita enviar datos comerciales para este arreglo.
 
 El probe histórico de Base 2 esperaba reproducir el defecto en la fuente `e030ff8c`; no debe interpretarse como un test verde del handler corregido. Para este estado se usa la nueva regresión negativa. No se sobrescribieron los resultados ni la baseline histórica de Base 2.
