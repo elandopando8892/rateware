@@ -1,0 +1,168 @@
+{
+  "observed_at_utc": "2026-10-04 02:22:04 UTC",
+  "project_id": "alqjqzqagdmcywpjtnnr",
+  "project_name": "rateware-prod",
+  "authorization": "User authorized only the prepared metadata SELECT; no deployment or data mutation",
+  "source": "supabase_execute_sql: inspect-catalog-write-prerequisites.sql; one successful execution, no retry",
+  "catalog_write_prerequisites": {
+    "table": "public.rateware_catalog_items",
+    "grants": [
+      {
+        "role": "postgres",
+        "grantable": false,
+        "privilege": "DELETE"
+      },
+      {
+        "role": "postgres",
+        "grantable": false,
+        "privilege": "INSERT"
+      },
+      {
+        "role": "postgres",
+        "grantable": false,
+        "privilege": "MAINTAIN"
+      },
+      {
+        "role": "postgres",
+        "grantable": false,
+        "privilege": "REFERENCES"
+      },
+      {
+        "role": "postgres",
+        "grantable": false,
+        "privilege": "SELECT"
+      },
+      {
+        "role": "postgres",
+        "grantable": false,
+        "privilege": "TRIGGER"
+      },
+      {
+        "role": "postgres",
+        "grantable": false,
+        "privilege": "TRUNCATE"
+      },
+      {
+        "role": "postgres",
+        "grantable": false,
+        "privilege": "UPDATE"
+      },
+      {
+        "role": "service_role",
+        "grantable": false,
+        "privilege": "DELETE"
+      },
+      {
+        "role": "service_role",
+        "grantable": false,
+        "privilege": "INSERT"
+      },
+      {
+        "role": "service_role",
+        "grantable": false,
+        "privilege": "MAINTAIN"
+      },
+      {
+        "role": "service_role",
+        "grantable": false,
+        "privilege": "REFERENCES"
+      },
+      {
+        "role": "service_role",
+        "grantable": false,
+        "privilege": "SELECT"
+      },
+      {
+        "role": "service_role",
+        "grantable": false,
+        "privilege": "TRIGGER"
+      },
+      {
+        "role": "service_role",
+        "grantable": false,
+        "privilege": "TRUNCATE"
+      },
+      {
+        "role": "service_role",
+        "grantable": false,
+        "privilege": "UPDATE"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "rateware_catalog_items_category_idx",
+        "ready": true,
+        "valid": true,
+        "unique": false,
+        "primary": false,
+        "definition": "CREATE INDEX rateware_catalog_items_category_idx ON public.rateware_catalog_items USING btree (category, active)"
+      },
+      {
+        "name": "rateware_catalog_items_code_idx",
+        "ready": true,
+        "valid": true,
+        "unique": false,
+        "primary": false,
+        "definition": "CREATE INDEX rateware_catalog_items_code_idx ON public.rateware_catalog_items USING btree (category, code)"
+      },
+      {
+        "name": "rateware_catalog_items_pkey",
+        "ready": true,
+        "valid": true,
+        "unique": true,
+        "primary": true,
+        "definition": "CREATE UNIQUE INDEX rateware_catalog_items_pkey ON public.rateware_catalog_items USING btree (id)"
+      },
+      {
+        "name": "rateware_catalog_items_source_category_raw_value_normalized_key",
+        "ready": true,
+        "valid": true,
+        "unique": true,
+        "primary": false,
+        "definition": "CREATE UNIQUE INDEX rateware_catalog_items_source_category_raw_value_normalized_key ON public.rateware_catalog_items USING btree (source, category, raw_value, normalized_value)"
+      }
+    ],
+    "policies": [
+      {
+        "name": "authenticated users can read catalog items",
+        "using": "true",
+        "command": "r",
+        "role_oids": [
+          "16485"
+        ],
+        "permissive": true,
+        "with_check": null
+      }
+    ],
+    "triggers": [],
+    "owner_role": "postgres",
+    "backend_role": {
+      "name": "service_role",
+      "superuser": false,
+      "bypass_rls": true
+    },
+    "row_security": true,
+    "table_exists": true,
+    "force_row_security": false
+  },
+  "runtime": {
+    "slug": "rateware-api",
+    "status": "ACTIVE",
+    "version": 682,
+    "verify_jwt": false,
+    "ezbr_sha256": "584ee02d695071e8904880eb0bf4934ccaf244db3f568360abb302731ee76f4d"
+  },
+  "assessment": {
+    "unique_index_match": "rateware_catalog_items_source_category_raw_value_normalized_key",
+    "required_backend_privileges": [
+      "SELECT",
+      "INSERT",
+      "UPDATE"
+    ],
+    "user_triggers": 0,
+    "production_data_rows_read": 0,
+    "production_mutations": 0,
+    "deployment_executed": false,
+    "scope": "Catalog write prerequisites only; not JWT/user/tenant operational acceptance"
+  }
+}

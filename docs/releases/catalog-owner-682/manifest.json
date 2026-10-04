@@ -99,5 +99,8 @@
   "only_changed_file": "functions/rateware-api/index.ts",
   "deployment": "not authorized or executed",
   "schema_columns": "observed through list_tables",
-  "unique_indexes_grants_triggers": "read-only SQL prepared, not executed"
+  "unique_indexes_grants_triggers": "verified through user-authorized metadata SELECT; exact unique index valid and ready, backend grants compatible, no user triggers",
+  "write_prerequisites_evidence": "catalog-write-prerequisites-observed.json",
+  "metadata_query_sha256": "aa80fd9bffb389396f1e1c6befb5b557f278d12df05f69d517ab83809472f4ab",
+  "metadata_observed_at_utc": "2026-10-04 02:22:04 UTC"
 }
