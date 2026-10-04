@@ -1,0 +1,103 @@
+{
+  "project_id": "alqjqzqagdmcywpjtnnr",
+  "project_name": "rateware-prod",
+  "baseline_version": 682,
+  "baseline_ezbr_sha256": "584ee02d695071e8904880eb0bf4934ccaf244db3f568360abb302731ee76f4d",
+  "verify_jwt": false,
+  "files": [
+    {
+      "name": "functions/rateware-api/index.ts",
+      "baseline_sha256": "bf462f7cf0df32648a54d085017c7e114cceaf0751b2526d38a24681140d7eee",
+      "candidate_sha256": "ee7344277c01abf29dd8aa56b7382bb319fe7c6d84e77a31aa864ab9c4a868be",
+      "unchanged": false
+    },
+    {
+      "name": "functions/_shared/quote-queue-scope.ts",
+      "baseline_sha256": "f529535f92ee1741be79c5db180e872159bb5bdbafab573a4f67a0f7cb9a0bd0",
+      "candidate_sha256": "f529535f92ee1741be79c5db180e872159bb5bdbafab573a4f67a0f7cb9a0bd0",
+      "unchanged": true
+    },
+    {
+      "name": "functions/_shared/kinde.ts",
+      "baseline_sha256": "6e581e431a1f5bc7f628ab550ff10bb4a924496463c9c87ce3a93ac049520aae",
+      "candidate_sha256": "6e581e431a1f5bc7f628ab550ff10bb4a924496463c9c87ce3a93ac049520aae",
+      "unchanged": true
+    },
+    {
+      "name": "functions/_shared/bid-room-google-chat.ts",
+      "baseline_sha256": "805a548e9e003c557e25139b03348467e014ac76ed0c4eab7a8f38eb10f44f08",
+      "candidate_sha256": "805a548e9e003c557e25139b03348467e014ac76ed0c4eab7a8f38eb10f44f08",
+      "unchanged": true
+    },
+    {
+      "name": "functions/_shared/auth.ts",
+      "baseline_sha256": "de3753441f1d58475bc3bed0c6d51c5625027de28b029b402201b796e975d797",
+      "candidate_sha256": "de3753441f1d58475bc3bed0c6d51c5625027de28b029b402201b796e975d797",
+      "unchanged": true
+    },
+    {
+      "name": "functions/_shared/team-roles.ts",
+      "baseline_sha256": "449cd291286646f7841b2f7fdc1244af99ec30cfd5e1641f667388ff15d33b27",
+      "candidate_sha256": "449cd291286646f7841b2f7fdc1244af99ec30cfd5e1641f667388ff15d33b27",
+      "unchanged": true
+    },
+    {
+      "name": "functions/_shared/runtime-identity.ts",
+      "baseline_sha256": "ac5e0d2f8eb6784aeb0d3d41f1faf4446af20ca7839352bbf154b9b8b27ba3ab",
+      "candidate_sha256": "ac5e0d2f8eb6784aeb0d3d41f1faf4446af20ca7839352bbf154b9b8b27ba3ab",
+      "unchanged": true
+    },
+    {
+      "name": "functions/_shared/identity-contract.mjs",
+      "baseline_sha256": "50dc05e0c76e8139fe3ccd57d53f2014ff093d3e6a30414202a24e2ae88c1231",
+      "candidate_sha256": "50dc05e0c76e8139fe3ccd57d53f2014ff093d3e6a30414202a24e2ae88c1231",
+      "unchanged": true
+    },
+    {
+      "name": "functions/_shared/workspace.ts",
+      "baseline_sha256": "0f4be9711f82492a15fb27dc89bfb42f627000e413ff82b180383ddd7d8fcdcd",
+      "candidate_sha256": "0f4be9711f82492a15fb27dc89bfb42f627000e413ff82b180383ddd7d8fcdcd",
+      "unchanged": true
+    },
+    {
+      "name": "functions/_shared/source-download-routing.mjs",
+      "baseline_sha256": "896af4843f5072b600b04a1aaf98da66904e3dcd2c162f539c8114ded4427735",
+      "candidate_sha256": "896af4843f5072b600b04a1aaf98da66904e3dcd2c162f539c8114ded4427735",
+      "unchanged": true
+    },
+    {
+      "name": "functions/rateware-api/rfx-closeout-guards.ts",
+      "baseline_sha256": "f6045a4e89d5ef7824e72c5429c27fafd8dfb5a81949a5740c05e476691d4162",
+      "candidate_sha256": "f6045a4e89d5ef7824e72c5429c27fafd8dfb5a81949a5740c05e476691d4162",
+      "unchanged": true
+    },
+    {
+      "name": "functions/rateware-api/rfx-demand-values.ts",
+      "baseline_sha256": "42b180b214907d25cba12e1e31bdbd20daec863dadfddb3562833595cfff882f",
+      "candidate_sha256": "42b180b214907d25cba12e1e31bdbd20daec863dadfddb3562833595cfff882f",
+      "unchanged": true
+    },
+    {
+      "name": "functions/rateware-api/carrier-list-templates.ts",
+      "baseline_sha256": "ee5c1b7379c7a282ba48b1b34f56b3e61657b6c7c0a4fc3c7cc7febf629feac8",
+      "candidate_sha256": "ee5c1b7379c7a282ba48b1b34f56b3e61657b6c7c0a4fc3c7cc7febf629feac8",
+      "unchanged": true
+    },
+    {
+      "name": "functions/rateware-api/growth.ts",
+      "baseline_sha256": "21d95199d89c84bbf3f12593b0b2aa90023d1df2b3d6cd97c474ff94ccad7c0c",
+      "candidate_sha256": "21d95199d89c84bbf3f12593b0b2aa90023d1df2b3d6cd97c474ff94ccad7c0c",
+      "unchanged": true
+    },
+    {
+      "name": "functions/rateware-api/outreach-pagination.js",
+      "baseline_sha256": "9dc8b2ddf00000187d43595711d6d153ba27114c67491e7b7be609e9b1fce97a",
+      "candidate_sha256": "9dc8b2ddf00000187d43595711d6d153ba27114c67491e7b7be609e9b1fce97a",
+      "unchanged": true
+    }
+  ],
+  "only_changed_file": "functions/rateware-api/index.ts",
+  "deployment": "not authorized or executed",
+  "schema_columns": "observed through list_tables",
+  "unique_indexes_grants_triggers": "read-only SQL prepared, not executed"
+}

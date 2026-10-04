@@ -1,6 +1,6 @@
 # Base 3 — Aislamiento local de escrituras del catálogo
 
-Fecha: 3/oct/2026. Estado: **arreglo local implementado y validado, incluida concurrencia real en PostgreSQL aislado**. El usuario pidió continuar con el siguiente desarrollo después del hallazgo de Base 2 y después autorizó el ensayo SQL local concreto. No hay autorización nueva para SQL o publicación productivos. El esquema efectivo de Rateware queda pendiente: el conector disponible sólo enumeró dos proyectos de staging ajenos a ese runtime; no se consultaron sus datos.
+Fecha: 3/oct/2026. Estado: **arreglo local implementado y validado, incluida concurrencia real en PostgreSQL aislado**. El usuario pidió continuar con el siguiente desarrollo después del hallazgo de Base 2 y después autorizó el ensayo SQL local concreto. No hay autorización nueva para SQL o publicación productivos. El listado del conector sólo enumeró dos proyectos de staging; una consulta directa posterior con la referencia pública conocida sí recuperó Rateware. Véase el paquete acotado abajo: columnas/RLS observados; índices, grants y triggers pendientes de la lectura SQL preparada.
 
 ## Objetivo y decisión
 
@@ -88,3 +88,11 @@ Comprobaciones ejecutadas el 3 de octubre de 2026:
 - `git diff --check`: exit 0. El diff de implementación de esta continuación está limitado al guard; `interpret-upload/index.ts` y `rateware-api/index.ts` permanecen sin cambios respecto al checkpoint probado.
 
 La nueva consulta soportada `supabase_list_projects` volvió a mostrar sólo `marksman-quickpay-staging` y `freya-navigator-staging`. Rateware no figura entre los proyectos accesibles. No se intentaron SQL, lecturas de filas reales, extracción de credenciales, otro login ni despliegues. Falta que la conexión Supabase de esta sesión tenga acceso al proyecto Rateware correcto; entonces se podrán verificar en lectura el esquema, restricciones, permisos y bundle/version del runtime y preparar un paquete acotado contra él. El diff local `6d4733a0` sigue siendo el checkpoint del arreglo, no prueba de correspondencia con producción. No se declara listo ni aplicado un paquete productivo.
+
+## Continuación: acceso comprobado y candidato contra 682
+
+El párrafo anterior conserva el diagnóstico de ese checkpoint. Se corrigió su conclusión: una omisión de `list_projects` no acreditaba falta de acceso. `get_project` directo con la referencia pública conocida de la configuración devolvió `rateware-prod`; `list_edge_functions`/`get_edge_function` recuperaron **rateware-api 682**, sin login ni cambio de permisos. Se observaron columnas, PK y RLS por `list_tables`; no se ejecutó SQL ni se leyeron contenidos de filas.
+
+[Paquete local y evidencia](releases/catalog-owner-682/README.md): el patch se aplicó a los quince archivos recuperados de 682, conserva catorce dependencias idénticas byte a byte y produjo el mismo SHA del handler ensayado. **25/25 contratos/SDK** pasaron contra ese candidato exacto, con chequeo normal del arnés y transportes sintéticos. Snapshot y candidato propios permanecen locales; no se desplegó.
+
+Ya no falta acceso al proyecto. Falta confirmar índices únicos, ACL y triggers con [un SELECT de metadatos preparado](releases/catalog-owner-682/inspect-catalog-write-prerequisites.sql), previa confirmación humana conforme a la convención de SQL del usuario. Sólo después podrá solicitarse GO de publicación de este paquete exacto. No confundir la verificación de hashes o la RLS habilitada con esa revisión completa ni con permisos/JWT reales.

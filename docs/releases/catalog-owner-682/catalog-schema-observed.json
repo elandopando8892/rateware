@@ -1,0 +1,81 @@
+{
+  "name": "public.rateware_catalog_items",
+  "rls_enabled": true,
+  "primary_keys": [
+    "id"
+  ],
+  "columns": [
+    {
+      "name": "id",
+      "format": "uuid",
+      "options": [
+        "updatable"
+      ]
+    },
+    {
+      "name": "created_at",
+      "format": "timestamptz",
+      "options": [
+        "updatable"
+      ]
+    },
+    {
+      "name": "updated_at",
+      "format": "timestamptz",
+      "options": [
+        "updatable"
+      ]
+    },
+    {
+      "name": "source",
+      "format": "text",
+      "options": [
+        "updatable"
+      ]
+    },
+    {
+      "name": "category",
+      "format": "text",
+      "options": [
+        "updatable"
+      ]
+    },
+    {
+      "name": "raw_value",
+      "format": "text",
+      "options": [
+        "updatable"
+      ]
+    },
+    {
+      "name": "normalized_value",
+      "format": "text",
+      "options": [
+        "updatable"
+      ]
+    },
+    {
+      "name": "code",
+      "format": "text",
+      "options": [
+        "nullable",
+        "updatable"
+      ]
+    },
+    {
+      "name": "metadata",
+      "format": "jsonb",
+      "options": [
+        "updatable"
+      ]
+    },
+    {
+      "name": "active",
+      "format": "bool",
+      "options": [
+        "updatable"
+      ]
+    }
+  ],
+  "source": "supabase_list_tables verbose; no row contents; unique indexes/grants/triggers not provided"
+}

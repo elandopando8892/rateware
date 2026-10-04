@@ -1,0 +1,105 @@
+diff --git a/supabase/functions/rateware-api/index.ts b/supabase/functions/rateware-api/index.ts
+index 8cfa4fd7..0206f111 100644
+--- a/supabase/functions/rateware-api/index.ts
++++ b/supabase/functions/rateware-api/index.ts
+@@ -31731,6 +31731,8 @@ export function createRatewareApiHandler(
+     }
+ 
+     if (body.action === "save_catalog_value") {
++      const ownerEmail = cleanText(user.owner_email);
++      if (!ownerEmail) return jsonResponse({ error: "A resolved workspace is required to change the catalog." }, 403);
+       const input = objectRecord(body.catalog_value || body);
+       const category = cleanText(input.category);
+       const rawValue = cleanText(input.raw_value || input.rawValue || input.value);
+@@ -31743,7 +31745,7 @@ export function createRatewareApiHandler(
+       }
+       const code = cleanText(input.code) || catalogCode(normalizedValue);
+       const metadata = {
+-        owner_email: user.owner_email,
++        owner_email: ownerEmail,
+         owner_user_id: user.owner_user_id,
+         note: cleanText(input.note),
+         created_from: "settings_catalog_manager"
+@@ -31758,25 +31760,43 @@ export function createRatewareApiHandler(
+         active: true,
+         updated_at: new Date().toISOString()
+       };
+-      const result = await supabase
++      const savedColumns = "id,source,category,raw_value,normalized_value,code,metadata,active,updated_at";
++      // Never merge a global-key collision: that could replace another workspace's owner.
++      const inserted = await supabase
+         .from("rateware_catalog_items")
+-        .upsert(row, { onConflict: "source,category,raw_value,normalized_value" })
+-        .select("id,source,category,raw_value,normalized_value,code,metadata,active,updated_at")
+-        .single();
+-      if (result.error) throw result.error;
++        .upsert(row, { onConflict: "source,category,raw_value,normalized_value", ignoreDuplicates: true })
++        .select(savedColumns);
++      if (inserted.error) throw inserted.error;
++      let saved = inserted.data?.[0];
++      if (!saved) {
++        // The owner predicate is part of the mutation, not a check before an unsafe upsert.
++        const updated = await supabase.from("rateware_catalog_items")
++          .update(row)
++          .eq("source", row.source)
++          .eq("category", category)
++          .eq("raw_value", rawValue)
++          .eq("normalized_value", normalizedValue)
++          .eq("metadata->>owner_email", ownerEmail)
++          .select(savedColumns);
++        if (updated.error) throw updated.error;
++        saved = updated.data?.[0];
++        if (!saved) return jsonResponse({ error: "This catalog alias is unavailable in this workspace.", code: "CATALOG_ALIAS_CONFLICT" }, 409);
++      }
+       await writeAuditLog(
+         supabase,
+         user,
+         "catalog.value.save",
+         "rateware_catalog_items",
+-        result.data.id,
++        saved.id,
+         `Saved ${category} catalog value "${normalizedValue}"`,
+         { category, raw_value: rawValue, normalized_value: normalizedValue, code }
+       );
+-      return jsonResponse({ row: result.data });
++      return jsonResponse({ row: saved });
+     }
+ 
+     if (body.action === "archive_catalog_value") {
++      const ownerEmail = cleanText(user.owner_email);
++      if (!ownerEmail) return jsonResponse({ error: "A resolved workspace is required to change the catalog." }, 403);
+       const id = cleanText(body.id);
+       if (!id) return jsonResponse({ error: "Catalog value id is required." }, 400);
+       requireBulkConfirmation(body, { action: "archive_catalog_value", label: "Catalog value archive", count: 1 });
+@@ -31790,16 +31810,19 @@ export function createRatewareApiHandler(
+       if (current.data.source !== "rateware_manual_catalog") {
+         return jsonResponse({ error: "Only manual catalog values can be archived from Admin Catalogs." }, 400);
+       }
+-      if (!isManualCatalogOwnedBy(current.data, user)) {
++      if (cleanText(objectRecord(current.data.metadata).owner_email) !== ownerEmail) {
+         return jsonResponse({ error: "This manual catalog value belongs to another workspace." }, 403);
+       }
+       const result = await supabase
+         .from("rateware_catalog_items")
+         .update({ active: false, updated_at: new Date().toISOString() })
+         .eq("id", id)
+-        .select("id,source,category,raw_value,normalized_value,code,metadata,active,updated_at")
+-        .single();
++        .eq("source", "rateware_manual_catalog")
++        .eq("metadata->>owner_email", ownerEmail)
++        .select("id,source,category,raw_value,normalized_value,code,metadata,active,updated_at");
+       if (result.error) throw result.error;
++      const archived = result.data?.[0];
++      if (!archived) return jsonResponse({ error: "Catalog value changed. Refresh before archiving.", code: "CATALOG_ALIAS_CONFLICT" }, 409);
+       await writeAuditLog(
+         supabase,
+         user,
+@@ -31809,7 +31832,7 @@ export function createRatewareApiHandler(
+         `Archived ${current.data.category} catalog value "${current.data.normalized_value}"`,
+         { category: current.data.category, raw_value: current.data.raw_value, normalized_value: current.data.normalized_value }
+       );
+-      return jsonResponse({ row: result.data });
++      return jsonResponse({ row: archived });
+     }
+ 
+     if (body.action === "list_location_catalog_values") {
