@@ -97,7 +97,10 @@
     }
   ],
   "only_changed_file": "functions/rateware-api/index.ts",
-  "deployment": "not authorized or executed",
+  "deployment": "authorized and executed; ACTIVE 683; all 15 deployed files match candidate exactly",
+  "deployed_version": 683,
+  "deployed_ezbr_sha256": "36ff466229e39ca7f23d7a5b06472eb2343fdd6a9972d64441bb16e4d3c21dcc",
+  "deployment_evidence": "deployment-observed.json",
   "schema_columns": "observed through list_tables",
   "unique_indexes_grants_triggers": "verified through user-authorized metadata SELECT; exact unique index valid and ready, backend grants compatible, no user triggers",
   "write_prerequisites_evidence": "catalog-write-prerequisites-observed.json",

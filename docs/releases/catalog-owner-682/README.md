@@ -1,6 +1,6 @@
 # Catálogo: paquete acotado contra runtime 682
 
-3/oct/2026. **Candidato local preparado y probado; publicación no autorizada ni ejecutada.** No sustituye el cierre operativo del Sprint 15.
+3/oct/2026. **Publicado como rateware-api 683; código exacto verificado y dos lecturas autenticadas productivas aprobadas.** Las escrituras reales entre organizaciones siguen sin comprobarse; no sustituye el cierre operativo del Sprint 15.
 
 ## Baseline comprobada
 
@@ -25,7 +25,17 @@ Cambio: impedir que un upsert por clave global transfiera un alias entre equipos
 - [Resultado sanitizado](catalog-write-prerequisites-observed.json): índice `rateware_catalog_items_source_category_raw_value_normalized_key` único, válido y ready para `(source, category, raw_value, normalized_value)`; ACL explícita de `service_role` con SELECT, INSERT y UPDATE; RLS habilitado, sin FORCE, y rol con BYPASSRLS; ningún trigger de usuario. El aislamiento del backend depende de sus filtros de owner. La observación de ACL/política no acredita aceptación real con JWT, usuarios o equipos diferentes.
 - El listado posterior confirmó de nuevo **682 ACTIVE**, el mismo bundle y el mismo flag JWT. El verificador del paquete volvió a pasar. Un primer parseo local de la respuesta encontró la etiqueta citada en el texto explicativo; se corrigió para leer la etiqueta real con salto de línea, reutilizando la respuesta almacenada. No hubo otra consulta ni mutación.
 
-Los prerequisitos de escritura del paquete están comprobados. Sigue pendiente la autorización concreta de publicación de estos quince archivos y su lectura autenticada posterior; la autorización recibida cubre sólo el SELECT. Antes de publicar, comprobar nuevamente versión/bundle para detectar cambios desde 682. No generar datos comerciales o aliases productivos para completar pruebas sin su propio alcance.
+Los prerequisitos de escritura del paquete están comprobados. Después se propuso publicar estos quince archivos y comprobar una lectura autenticada; el usuario indicó continuar con ese siguiente paso. La publicación y las lecturas se completaron como se registra abajo. No generar datos comerciales o aliases productivos para completar pruebas sin su propio alcance.
+
+## Publicación y comprobación real
+
+El 3/oct/2026, 20:41 de México, `list_edge_functions` volvió a confirmar 682 y su bundle sin cambios; el verificador local también pasó. Una llamada `deploy_edge_function` publicó sólo los quince archivos del candidato, con el flag JWT de la baseline. Resultado: **683 ACTIVE**, bundle `36ff466229e39ca7f23d7a5b06472eb2343fdd6a9972d64441bb16e4d3c21dcc`. `get_edge_function` posterior recuperó los quince archivos y cada contenido coincidió exactamente con el candidato enviado: handler del catálogo cambiado, catorce dependencias conservadas.
+
+En la sesión Chrome existente de Bidware productivo, con rol visible Administrator, la navegación normal a Tarifario disparó `list_catalog_values`: **HTTP 200**, `rows` como arreglo, 74 filas devueltas y cero filas activas de `border_crossing` en esa respuesta. QuoteDesk disparó `list_staging_options`: **HTTP 200**, cero opciones de la categoría genérica `border_crossing`, 13 cruces mexicanos y 14 estadounidenses; `Laredo, TX` no aparece entre los mexicanos. Sólo se registraron conteos/estados, sin tokens ni datos de carriers. La pestaña volvió a Archivos; la observación de red se desactivó.
+
+[Evidencia de publicación y lecturas](deployment-observed.json). No se ejecutaron SQL, migraciones, sync, envíos ni escrituras de prueba durante esta publicación. El SELECT anterior queda documentado por separado. Estas lecturas reales comprueban disponibilidad y forma de respuestas para Admin; no prueban escrituras productivas, concurrencia productiva ni acceso con otra organización. Los 25 contratos/SDK y la concurrencia SQL siguen siendo evidencia local.
+
+El primer empaquetado local se truncó por el límite de salida del comando antes de invocar el despliegue; se cargó el mismo JSON en fragmentos acotados. No se modificó código ni se repitió la publicación. Modelo/versión/esfuerzo nativos y consumo no observables; no se invocó otro proveedor ni inferencia externa.
 
 ## Verificar y recuperar
 
@@ -41,7 +51,7 @@ Los tests se copiaron sin modificar a `candidate/tests/` y se ejecutaron desde e
 deno test --cached-only --allow-env --allow-read --node-modules-dir=none --no-lock tests/catalog-owner.contract.test.ts tests/catalog-owner-sdk.test.ts
 ```
 
-La verificación del candidato es de sólo lectura. Si el runtime cambia, falta un archivo o un hash difiere, detener y reconstruir el paquete sobre la nueva baseline; no usar este snapshot como prueba de versión vigente. Para una publicación futura, repetir la comprobación de versión/bundle por conector, enviar únicamente los quince archivos del candidato y conservar el flag JWT. No desplegar por ahora. Recuperación futura: republicar el snapshot 682 sólo con decisión explícita y explicación de que reintroduce el defecto de ownership; no hacer fallback automático. No hay rollback de datos que ejecutar, pues este trabajo no cambió datos.
+La verificación del candidato es de sólo lectura y valida el paquete histórico construido sobre 682, no el runtime vigente 683. Si el runtime cambia, falta un archivo o un hash difiere, detener y reconstruir el paquete sobre la nueva baseline. Para otra publicación, repetir la comprobación de versión/bundle por conector. Recuperación futura: republicar el snapshot 682 sólo con decisión explícita y explicación de que reintroduce el defecto de ownership; no hacer fallback automático. No hay rollback de datos que ejecutar, pues este trabajo no cambió datos.
 
 `verify-candidate.ps1` pasó contra el snapshot/candidato sellados; dos pruebas negativas rechazaron una versión cambiada a 683 en una copia y una carpeta candidata vacía. El candidato no se alteró para esas pruebas y pasó la última verificación. El script no ejecuta SQL ni despliega.
 
@@ -49,4 +59,4 @@ El primer `git diff --cached --check` señaló los espacios obligatorios de tres
 
 ## Ejecutor y presupuesto
 
-Codex/OpenAI conserva el rol de operador/integrador local de la sesión; modelo/versión/esfuerzo efectivos no observables. Claude se consideró sin ventaja para sellar un artefacto verificable; no se invocó. Hasta 60 minutos efectivos y dos ciclos por causa; sin instalaciones, cargos activados o inferencia externa. Consumo/cuota/cargos nativos no observables. Sólo snapshot/candidato propios y estos documentos se escriben; se preserva `.test-output/` ajeno. Sin rama nueva, worktree nuevo, push, PR o despliegue. La única ejecución SQL productiva fue el SELECT de metadatos autorizado, sin datos comerciales ni mutaciones.
+Codex/OpenAI conserva el rol de operador/integrador de la sesión; modelo/versión/esfuerzo efectivos no observables. Claude se consideró sin ventaja para sellar un artefacto verificable; no se invocó. Hasta 60 minutos efectivos y dos ciclos por causa; sin instalaciones, cargos activados o inferencia externa. Consumo/cuota/cargos nativos no observables. Sólo snapshot/candidato propios y estos documentos se escriben; se preserva `.test-output/` ajeno. Sin rama nueva, worktree nuevo, push o PR. Se ejecutó el despliegue autorizado 683 y dos lecturas reales; la única ejecución SQL productiva fue el SELECT de metadatos autorizado anterior, sin mutaciones de datos.

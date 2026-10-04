@@ -1,0 +1,116 @@
+{
+  "observed_at_utc": "2026-10-04 02:43:45 UTC",
+  "project_id": "alqjqzqagdmcywpjtnnr",
+  "authorization": "User instructed to continue with the next step after exact package publication and authenticated read were proposed; no SQL or test data mutation authorized.",
+  "baseline": {
+    "version": 682,
+    "ezbr_sha256": "584ee02d695071e8904880eb0bf4934ccaf244db3f568360abb302731ee76f4d"
+  },
+  "deployment": {
+    "tool": "supabase_deploy_edge_function",
+    "attempts": 1,
+    "version": 683,
+    "status": "ACTIVE",
+    "verify_jwt": false,
+    "ezbr_sha256": "36ff466229e39ca7f23d7a5b06472eb2343fdd6a9972d64441bb16e4d3c21dcc",
+    "entrypoint": "functions/rateware-api/index.ts",
+    "file_count": 15
+  },
+  "source_verification": {
+    "tool": "supabase_get_edge_function",
+    "exact_content_matches": 15,
+    "changed_files_from_682": 1,
+    "unchanged_dependencies": 14,
+    "candidate_entrypoint_sha256": "ee7344277c01abf29dd8aa56b7382bb319fe7c6d84e77a31aa864ab9c4a868be",
+    "files": [
+      {
+        "name": "functions/rateware-api/index.ts",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/_shared/quote-queue-scope.ts",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/_shared/kinde.ts",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/_shared/bid-room-google-chat.ts",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/_shared/auth.ts",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/_shared/team-roles.ts",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/_shared/runtime-identity.ts",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/_shared/identity-contract.mjs",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/_shared/workspace.ts",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/_shared/source-download-routing.mjs",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/rateware-api/rfx-closeout-guards.ts",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/rateware-api/rfx-demand-values.ts",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/rateware-api/carrier-list-templates.ts",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/rateware-api/growth.ts",
+        "exact_content_match": true
+      },
+      {
+        "name": "functions/rateware-api/outreach-pagination.js",
+        "exact_content_match": true
+      }
+    ]
+  },
+  "authenticated_reads": {
+    "surface": "Existing Chrome production Bidware session; visible role Administrator",
+    "origin": "https://bidware.heymarksman.com",
+    "request_observation": "CDP Network events from normal UI navigation, no injected requests or captured credentials",
+    "list_catalog_values": {
+      "http_status": 200,
+      "rows_is_array": true,
+      "row_count": 74,
+      "active_border_crossing_rows_returned": 0
+    },
+    "list_staging_options": {
+      "http_status": 200,
+      "border_crossing_option_count": 0,
+      "laredo_tx_in_mexican_crossings": false,
+      "mx_crossings_count": 13,
+      "us_crossings_count": 14
+    }
+  },
+  "limits": {
+    "production_write_acceptance": false,
+    "cross_organization_acceptance": false,
+    "sql_executed_this_publication": false,
+    "migrations_executed": false,
+    "sync_executed": false,
+    "test_data_created": false,
+    "sprint_15_closed": false
+  },
+  "local_packaging_note": "Initial JSON read was truncated by command output limits before deployment. Loaded the same payload in bounded chunks; one deployment call, no source change."
+}
