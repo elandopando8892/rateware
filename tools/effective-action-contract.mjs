@@ -1,3 +1,4 @@
+import { SPOT_CONVERSION_ACTION_CONTRACT_EXTENSION as spotConversionExtension } from '../supabase/functions/_shared/action-contract-spot-conversion.mjs';
 import { RFX_SEGMENT_CONFIRMATIONS_ACTION_CONTRACT_EXTENSION as segmentConfirmationsExtension } from '../supabase/functions/_shared/action-contract-rfx-segment-confirmations.mjs';
 import { RFX_CARRIER_QUESTION_DRAFT_ACTION_CONTRACT_EXTENSION as carrierQuestionDraftExtension } from '../supabase/functions/_shared/action-contract-rfx-carrier-question-drafts.mjs';
 import { QUOTEDESK_QUEUE_ACTION_CONTRACT_EXTENSION as quoteQueueExtension } from '../supabase/functions/_shared/action-contract-quotedesk-queue.mjs';
@@ -593,3 +594,14 @@ ACTION_CONTRACT.surfaces = ACTION_CONTRACT.surfaces.map(entry => {
   return { ...entry, ...(quoteQueueExtension.overrides[entry.canonicalId] || {}),
     dependencyFiles: quoteQueueExtension.dependencyFiles[fn] };
 });
+
+// Local Spot conversion candidate. Only reviewed source deltas; preserve existing drift and dispositions.
+for (const [key, delta] of Object.entries(spotConversionExtension.expectedCountsDelta)) {
+  ACTION_CONTRACT.expectedCounts[key] += delta;
+}
+Object.assign(ACTION_CONTRACT.reviewedMetadataFingerprints, spotConversionExtension.reviewedMetadataFingerprints);
+Object.assign(ACTION_CONTRACT.reviewedAuthorizationFingerprints, spotConversionExtension.reviewedAuthorizationFingerprints);
+ACTION_CONTRACT.surfaces = ACTION_CONTRACT.surfaces.map(entry => ({
+  ...entry, ...(spotConversionExtension.overrides[entry.canonicalId] || {}),
+}));
+ACTION_CONTRACT.surfaces.push(...spotConversionExtension.surfaces);

@@ -7,6 +7,7 @@
 // Identity and CORS come from the shared rateware modules so a quote is scoped
 // to exactly the same workspace (owner_email) as shippers and RFx events.
 import { quoteQueue, QuoteQueueError } from "./queue.ts";
+import { convertSpotRequest, listSpotRequestQuotes, SpotConversionError } from "./spot-conversion.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse } from "../_shared/kinde.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
@@ -367,6 +368,11 @@ async function nextFolioNumber(supabase: Db, workspace: Workspace) {
 }
 
 async function createQuote(supabase: Db, workspace: Workspace, input: Row) {
+  // Published intake clients identify their multi-request conversion with this
+  // marker. Refuse it before any read/write; manual RFI quotes remain supported.
+  if (input.channel === "rfi" && String(input.notes ?? "").startsWith("Solicitud del cliente por liga (")) {
+    throw new HttpError(409, "Actualiza Bidware para convertir esta solicitud desde Shipper intake.");
+  }
   const shipper = await requireShipper(supabase, workspace, input.shipper_id);
   const shipperId = text(shipper.id) as string;
   const opportunityId = optionalUuid(input.shipper_opportunity_id, "La oportunidad");
@@ -1537,6 +1543,10 @@ return async function handle(request: Request) {
         return jsonResponse(await getQuote(supabase, workspace, body.id), 200, request);
       case "create_quote":
         return jsonResponse({ quote: await createQuote(supabase, workspace, record(body.quote)) }, 200, request);
+      case "convert_spot_request_to_quote":
+        return jsonResponse(await convertSpotRequest(supabase, workspace, claims, body), 200, request);
+      case "list_spot_request_quotes":
+        return jsonResponse(await listSpotRequestQuotes(supabase, workspace, body), 200, request);
       case "update_quote":
         return jsonResponse({ quote: await updateQuote(supabase, workspace, body.id, record(body.patch)) }, 200, request);
       case "set_quote_status":
@@ -1577,7 +1587,7 @@ return async function handle(request: Request) {
         return jsonResponse({ error: `Unknown QuoteDesk action: ${text(body.action, 80) || "(none)"}.` }, 400, request);
     }
   } catch (error) {
-    if (error instanceof HttpError || error instanceof QuoteQueueError) return jsonResponse({ error: error.message }, error.status, request);
+    if (error instanceof HttpError || error instanceof QuoteQueueError || error instanceof SpotConversionError) return jsonResponse({ error: error.message }, error.status, request);
     if (error instanceof QuoteInputError) return jsonResponse({ error: error.message }, 400, request);
     const message = error instanceof Error ? error.message : String((error as Row)?.message || "QuoteDesk failed.");
     console.error("QUOTEDESK_API_ERROR", message);
