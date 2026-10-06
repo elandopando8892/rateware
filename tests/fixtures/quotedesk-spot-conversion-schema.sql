@@ -29,4 +29,4 @@ create table public.saas_audit_log (
 \ir ../../supabase/migrations/20260924054441_quotedesk_quotes.sql
 grant usage on schema public to service_role, anon, authenticated;
 grant select, insert, update, delete on all tables in schema public to service_role;
-\ir ../../supabase/migrations/20261006220131_quotedesk_spot_conversion_atomic.sql
+\ir ../../supabase/migrations/20261006234153_quotedesk_spot_conversion_atomic.sql

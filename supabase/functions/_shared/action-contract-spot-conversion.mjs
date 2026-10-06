@@ -1,4 +1,4 @@
-// Static reviewed local candidate. No runtime permission or production activation is implied.
+// Static reviewed source. Permissions unchanged. Migration name matches applied history.
 export const SPOT_CONVERSION_ACTION_CONTRACT_EXTENSION = {
   "contractVersion": "1.3.0",
   "expectedCountsDelta": {
@@ -10,7 +10,7 @@ export const SPOT_CONVERSION_ACTION_CONTRACT_EXTENSION = {
   "reviewedMetadataFingerprints": {
     "edge.quotedesk-api.convert_spot_request_to_quote": "06be176664fa216f9a4dc5811b8809acd7e34591315df1cffff09c6683d8fad2",
     "edge.quotedesk-api.list_spot_request_quotes": "e909d62a360e972df2753672a48272f7f4aace50390032768e7e4bcfde040ef3",
-    "rpc.public.quotedesk_convert_spot_request(text,text,text,text,uuid,timestamptz)": "81aa561a2666321602cda3c78d8ade6fed2ae16c48877f6decb52ebcca78a1c9"
+    "rpc.public.quotedesk_convert_spot_request(text,text,text,text,uuid,timestamptz)": "73e640a708e1d23606f188fc285932d66d59a6d2dbb4eda8fb16f1b9fb3675b9"
   },
   "reviewedAuthorizationFingerprints": {
     "edge.create-raw-upload.create_raw_upload": "e78b0ee67856f2504899e564e231e16cf80f16e0ddee6ec69d135ca4a1a6f251",
@@ -601,7 +601,7 @@ export const SPOT_CONVERSION_ACTION_CONTRACT_EXTENSION = {
       "canonicalId": "rpc.public.quotedesk_convert_spot_request(text,text,text,text,uuid,timestamptz)",
       "actionName": "public.quotedesk_convert_spot_request",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20261006220131_quotedesk_spot_conversion_atomic.sql",
+      "sourceFile": "supabase/migrations/20261006234153_quotedesk_spot_conversion_atomic.sql",
       "handler": "public.quotedesk_convert_spot_request(text,text,text,text,uuid,timestamptz)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.quotedesk_convert_spot_request(text,text,text,text,uuid,timestamptz)",
       "businessModule": "Commercial",
@@ -622,7 +622,7 @@ export const SPOT_CONVERSION_ACTION_CONTRACT_EXTENSION = {
         "direct"
       ],
       "dependencyFiles": [
-        "supabase/migrations/20261006220131_quotedesk_spot_conversion_atomic.sql"
+        "supabase/migrations/20261006234153_quotedesk_spot_conversion_atomic.sql"
       ],
       "rpcSignature": "text,text,text,text,uuid,timestamptz",
       "notes": "Local candidate, not applied. Service-role-only atomic Spot conversion with source lock, version and durable receipt."
