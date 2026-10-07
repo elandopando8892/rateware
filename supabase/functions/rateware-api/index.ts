@@ -4518,6 +4518,15 @@ function outreachMessageTrackingState(message: Record<string, unknown>): Outreac
   return "drafted";
 }
 
+function outreachMessageDeliveryState(message: Record<string, unknown>): OutreachTrackingState {
+  // Pending follow-ups stay visible even after the carrier has quoted.
+  // Carrier classification remains unchanged for dedupe and audience totals.
+  const status = cleanText(message.status)?.toLowerCase();
+  const hasReceipt = Boolean(message.sent_at || message.manual_sent_at || message.provider_message_id);
+  if (!hasReceipt && (status === "drafted" || status === "queued" || status === "sending")) return status;
+  return outreachMessageTrackingState(message);
+}
+
 function outreachDedupeContactKey(message: Record<string, unknown>) {
   const vendorId = cleanText(message.vendor_id);
   const email = cleanText(message.recipient_email)?.toLowerCase();
@@ -4631,7 +4640,7 @@ function enrichOutreachMessage(message: Record<string, unknown>) {
   return {
     ...message,
     contact_key: outreachContactKey(message),
-    tracking_state: outreachMessageTrackingState(message),
+    tracking_state: outreachMessageDeliveryState(message),
     next_action: outreachNextAction(message),
     outcome_reason: outreachOutcomeReason(message)
   };
