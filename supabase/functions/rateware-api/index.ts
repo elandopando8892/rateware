@@ -1,4 +1,6 @@
+import { acquireSendLease, finishSendLease, quotaPause, SEND_SPACING_MS, SEND_WINDOW_MS } from "./gmail-send-guard.mjs";
 import { isQuoteQueueMessage } from "../_shared/quote-queue-scope.ts";
+import { createRfxProjectOnce, projectOperationId, readRfxProjectCreationReceipt } from "./rfx-project-create.mjs";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
@@ -19069,6 +19071,8 @@ async function claimOutreachMessageForSend(
 ) {
   const status = cleanText(message.status)?.toLowerCase() || "";
   if (!OUTREACH_SENDABLE_STATUSES.has(status)) return null;
+  // A manual status change is not evidence that an uncertain attempt failed.
+  if (message.send_started_at && (!message.send_completed_at || !message.failed_at)) return null;
   const attemptId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
   const result = await supabase
@@ -19092,6 +19096,9 @@ async function claimOutreachMessageForSend(
     .eq("id", message.id)
     .eq("owner_email", user.owner_email)
     .eq("status", status)
+    .is("sent_at", null)
+    .is("manual_sent_at", null)
+    .is("provider_message_id", null)
     .select("*")
     .maybeSingle();
   if (result.error) throw result.error;
@@ -19275,8 +19282,18 @@ async function sendOutreachMessages(
   const now = new Date().toISOString();
   const sentRows: Record<string, unknown>[] = [];
   let deliveryUnknown = 0;
+  const lease = await acquireSendLease(supabase, user.owner_email, senderEmail);
+  const started = Date.now();
+  let nextSendAt = 0;
+  let cooldownUntil: string | null = null;
+  let stopReason: string | null = null;
+  try {
 
   for (const message of messages) {
+    if (stopReason || Date.now() - started >= SEND_WINDOW_MS) {
+      skipped.push({ id: message.id, reason: stopReason || "Delivery time budget reached. Review remaining drafts in the queue." });
+      continue;
+    }
     const status = cleanText(message.status)?.toLowerCase();
     if (status && !["drafted", "queued", "failed"].includes(status)) {
       failures.push({ id: message.id, reason: `Message is ${status}.` });
@@ -19341,6 +19358,8 @@ async function sendOutreachMessages(
       continue;
     }
 
+    // Space attempts, including failures, before taking the next durable message claim.
+    if (nextSendAt > Date.now()) await new Promise(resolve => setTimeout(resolve, nextSendAt - Date.now()));
     let claim: Awaited<ReturnType<typeof claimOutreachMessageForSend>> = null;
     try {
       claim = await claimOutreachMessageForSend(supabase, user, message, {
@@ -19366,10 +19385,17 @@ async function sendOutreachMessages(
 
     let providerAccepted = false;
     try {
+      // A slow claim must not send after this worker's bounded lease window.
+      if (Date.now() - started >= SEND_WINDOW_MS) {
+        stopReason = "Delivery time budget reached. Review remaining drafts in the queue.";
+        throw new Error(stopReason);
+      }
       let response: Response;
       try {
         const gmailThreadId = cleanText(objectRecord(message.metadata).gmail_thread_id);
+        nextSendAt = Date.now() + SEND_SPACING_MS;
         response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+          signal: AbortSignal.timeout(20_000),
           method: "POST",
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -19387,12 +19413,15 @@ async function sendOutreachMessages(
       }
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        cooldownUntil = quotaPause(response.status, data, response.headers.get("retry-after"));
+        if (cooldownUntil) stopReason = "Gmail quota pause until " + cooldownUntil + ". Remaining messages were not sent.";
         const reason = cleanText(data?.error?.message) || cleanText(data?.error_description) || `Gmail send failed (${response.status}).`;
         const responseError = new Error(reason);
         (responseError as Error & { deliveryUncertain?: boolean }).deliveryUncertain = response.status === 408 || response.status >= 500;
         throw responseError;
       }
       providerAccepted = true;
+      if (!cleanText(data.id)) throw new Error("Gmail returned success without a message receipt; reconcile before retrying.");
 
       const updateResult = await updateClaimedOutreachMessage(supabase, user, message.id, claim.attemptId, {
         status: "sent",
@@ -19475,7 +19504,7 @@ async function sendOutreachMessages(
     } catch (error) {
       const reason = safeOperationalError(error);
       const uncertain = providerAccepted || Boolean((error as Error & { deliveryUncertain?: boolean })?.deliveryUncertain);
-      if (uncertain) deliveryUnknown += 1;
+      if (uncertain) { deliveryUnknown += 1; stopReason = "Gmail result is uncertain. Reconcile before approving remaining messages."; }
       failures.push({ id: message.id, recipient_email: message.recipient_email, reason, delivery_unknown: uncertain });
       try {
         await markClaimedOutreachFailure(supabase, user, message, claim.attemptId, reason, uncertain, {
@@ -19485,11 +19514,13 @@ async function sendOutreachMessages(
           sender_connection_type: gmailConnectionType,
           provider: "gmail",
           gmail_connection_id: gmailConnectionId,
+          ...(cooldownUntil ? { next_action: "Wait for Gmail quota cooldown, then review and approve in queue", next_action_at: cooldownUntil } : {}),
           send_result: {
             channel: "email",
             provider: "gmail",
             connection_id: gmailConnectionId,
-            sender: senderEmail
+            sender: senderEmail,
+            ...(cooldownUntil ? { quota_cooldown_until: cooldownUntil } : {})
           }
         });
         await writeOutreachDeliveryIssueHistory(supabase, user, message, {
@@ -19509,6 +19540,10 @@ async function sendOutreachMessages(
         // The send claim remains locked if persistence is unavailable, preventing an unsafe retry.
       }
     }
+  }
+
+  } finally {
+    await finishSendLease(supabase, user.owner_email, lease, cooldownUntil);
   }
 
   const sentCampaignIds = [...new Set(sentRows.map((row) => cleanText(row.campaign_id)).filter(Boolean))];
@@ -25787,23 +25822,38 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "create_rfx_process_project") {
+      if (body.dry_run === true) {
+        const shipper = await requireOwnedShipper(supabase, user, body.customer_id);
+        if (!shipper?.id) return jsonResponse({ code: "SHIPPER_ACCESS_DENIED" }, 403);
+        return jsonResponse({ allowed: true, shipperId: shipper.id, action: "create_rfx_process_project", writes: 0 });
+      }
+      operationId = projectOperationId(request.headers.get("x-operation-id"), body.operation_id);
       const row = withOwner(normalizeRfxProjectInput(objectRecord(body.project || body)), user);
-      const result = await supabase.from("rfx_projects").insert(row).select().single();
-      if (result.error) throw result.error;
+      if (row.customer_id) {
+        const shipper = await requireOwnedShipper(supabase, user, row.customer_id);
+        if (!shipper?.id) return jsonResponse({ code: "SHIPPER_ACCESS_DENIED" }, 403);
+      }
+      const result = await createRfxProjectOnce(supabase, row, operationId);
       await writeRfxProcessAudit(
         supabase,
         user,
-        result.data.id,
+        result.row.id,
         "rfx_project_created",
         "rfx_projects",
-        result.data.id,
-        `Created RFx Project ${result.data.title}`,
-        { status: result.data.status, opportunity_type: result.data.opportunity_type }
+        result.row.id,
+        `Created RFx Project ${result.row.title}`,
+        { status: result.row.status, opportunity_type: result.row.opportunity_type },
+        operationId
       );
-      return jsonResponse({ row: result.data });
+      return jsonResponse(result);
     }
 
     if (body.action === "get_rfx_process_project") {
+      if (Object.hasOwn(body, "operation_id")) {
+        const receiptOperationId = projectOperationId(null, body.operation_id);
+        const expected = withOwner(normalizeRfxProjectInput(objectRecord(body.project)), user);
+        return jsonResponse(await readRfxProjectCreationReceipt(supabase, expected, receiptOperationId));
+      }
       return jsonResponse(await getRfxProcessProjectDetail(supabase, user, body.project_id || body.id, body.app_origin || body.appOrigin));
     }
 
