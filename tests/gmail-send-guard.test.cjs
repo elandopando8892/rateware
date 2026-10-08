@@ -10,8 +10,9 @@ function database(statuses=['drafted','drafted','drafted']){
 }
 async function harness(responses){
  const guards=await import('../supabase/functions/rateware-api/gmail-send-guard.mjs');
+ const {gmailFailureEvidence}=await import('../supabase/functions/rateware-api/gmail-delivery-evidence.mjs');
  const db=database(),calls=[],waits=[],leases=[];
- const globals={...guards,BULK_SEND_LIMIT:100,GMAIL_ALLOWED_SENDER:'sender',OUTREACH_SENDABLE_STATUSES:new Set(['drafted','queued','failed']),cleanText:v=>v==null?null:String(v).trim()||null,objectRecord:v=>v||{},normalizeBulkIds:v=>v,requireBulkConfirmation:()=>{},isQuoteQueueMessage:()=>false,suppressedEmailSet:async()=>new Set(),gmailAccessToken:async()=>'',gmailConnectionIdentity:async()=>({id:'connection'}),gmailRawMessage:m=>m.id,crypto,
+ const globals={...guards,gmailFailureEvidence,BULK_SEND_LIMIT:100,GMAIL_ALLOWED_SENDER:'sender',OUTREACH_SENDABLE_STATUSES:new Set(['drafted','queued','failed']),cleanText:v=>v==null?null:String(v).trim()||null,objectRecord:v=>v||{},normalizeBulkIds:v=>v,requireBulkConfirmation:()=>{},isQuoteQueueMessage:()=>false,suppressedEmailSet:async()=>new Set(),gmailAccessToken:async()=>'',gmailConnectionIdentity:async()=>({id:'connection'}),gmailRawMessage:m=>m.id,crypto,
   acquireSendLease:async(...args)=>{const l=await guards.acquireSendLease(...args);leases.push(l);return l;},safeOperationalError:e=>e.message||String(e),outreachSendResult:(stage,v)=>({stage,...v}),withOwner:r=>r,writeOutreachSentHistory:async()=>{},writeOutreachDeliveryIssueHistory:async()=>{},messageInvitationIds:()=>[],writeAuditLog:async()=>{},tryWriteAuditLog:async()=>{},
   setTimeout:(fn,ms)=>{waits.push(ms);fn();},fetch:async(url,options)=>{calls.push(JSON.parse(options.body).raw);const response=responses.shift()||{status:200,data:{id:'receipt-'+calls.length}};if(response.throw)throw new Error('Transport lost');return {ok:response.status===200,status:response.status,headers:new Headers(response.headers||{}),json:async()=>response.data};}
  };
@@ -38,6 +39,8 @@ test('real send handler stops at quota; remaining messages unchanged and cooldow
  const h=await harness([{status:429,data:{error:{message:'Quota exceeded'}},headers:{'retry-after':'600'}}]);
  const r=await h.send();assert.equal(h.calls.length,1);assert.equal(r.failed,1);assert.equal(r.skipped,2);
  assert.deepEqual(h.db.state.outreach_messages.map(r=>r.status),['failed','drafted','drafted']);
+ assert.equal(h.db.state.outreach_messages[0].send_result.http_status,429);
+ assert.equal(h.db.state.outreach_messages[0].delivery_error,'Quota exceeded');
  assert.ok(h.db.state.gmail_mailbox_connections[0].metadata.outreach_send_guard.cooldown_until);
  await assert.rejects(h.send(),/quota pause/);assert.equal(h.calls.length,1);
 });

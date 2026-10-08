@@ -1,4 +1,5 @@
 import { acquireSendLease, finishSendLease, quotaPause, SEND_SPACING_MS, SEND_WINDOW_MS } from "./gmail-send-guard.mjs";
+import { gmailFailureEvidence, readLatestOutreachIssue } from "./gmail-delivery-evidence.mjs";
 import { isQuoteQueueMessage } from "../_shared/quote-queue-scope.ts";
 import { createRfxProjectOnce, projectOperationId, readRfxProjectCreationReceipt } from "./rfx-project-create.mjs";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
@@ -19426,6 +19427,7 @@ async function sendOutreachMessages(
         if (cooldownUntil) stopReason = "Gmail quota pause until " + cooldownUntil + ". Remaining messages were not sent.";
         const reason = cleanText(data?.error?.message) || cleanText(data?.error_description) || `Gmail send failed (${response.status}).`;
         const responseError = new Error(reason);
+        (responseError as Error & { gmailEvidence?: ReturnType<typeof gmailFailureEvidence> }).gmailEvidence = gmailFailureEvidence(response.status, data);
         (responseError as Error & { deliveryUncertain?: boolean }).deliveryUncertain = response.status === 408 || response.status >= 500;
         throw responseError;
       }
@@ -19513,6 +19515,7 @@ async function sendOutreachMessages(
     } catch (error) {
       const reason = safeOperationalError(error);
       const uncertain = providerAccepted || Boolean((error as Error & { deliveryUncertain?: boolean })?.deliveryUncertain);
+      const gmailEvidence = (error as Error & { gmailEvidence?: ReturnType<typeof gmailFailureEvidence> })?.gmailEvidence || {};
       if (uncertain) { deliveryUnknown += 1; stopReason = "Gmail result is uncertain. Reconcile before approving remaining messages."; }
       failures.push({ id: message.id, recipient_email: message.recipient_email, reason, delivery_unknown: uncertain });
       try {
@@ -19529,7 +19532,8 @@ async function sendOutreachMessages(
             provider: "gmail",
             connection_id: gmailConnectionId,
             sender: senderEmail,
-            ...(cooldownUntil ? { quota_cooldown_until: cooldownUntil } : {})
+            ...(cooldownUntil ? { quota_cooldown_until: cooldownUntil } : {}),
+            ...gmailEvidence
           }
         });
         await writeOutreachDeliveryIssueHistory(supabase, user, message, {
@@ -19542,7 +19546,8 @@ async function sendOutreachMessages(
           extraMetadata: {
             gmail_connection_id: gmailConnectionId,
             sender_connection_type: gmailConnectionType,
-            delivery_unknown: uncertain
+            delivery_unknown: uncertain,
+            ...gmailEvidence
           }
         });
       } catch (_) {
@@ -31208,7 +31213,8 @@ export function createRatewareApiHandler(
       if (result.error) throw result.error;
       if (!result.data) return jsonResponse({ row: null });
       const rows = await hydrateOutreachInvitationTokens(supabase, [result.data as Record<string, unknown>]);
-      return jsonResponse({ row: rows[0] ? enrichOutreachMessage(rows[0]) : null });
+      const diagnostic = rows[0] ? await readLatestOutreachIssue(supabase, user.owner_email, rows[0]) : {};
+      return jsonResponse({ row: rows[0] ? { ...enrichOutreachMessage(rows[0]), ...diagnostic } : null });
     }
 
     if (body.action === "send_outreach_messages") {
