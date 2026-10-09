@@ -1,3 +1,4 @@
+import { verifyOutreachGmailMessage } from "./gmail-message-verification.mjs";
 import { checkGmailConnection } from "./gmail-connection-check.mjs";
 import { acquireSendLease, finishSendLease, quotaPause, SEND_SPACING_MS, SEND_WINDOW_MS } from "./gmail-send-guard.mjs";
 import { gmailFailureEvidence, readLatestOutreachIssue } from "./gmail-delivery-evidence.mjs";
@@ -31198,6 +31199,10 @@ export function createRatewareApiHandler(
         limit,
         has_more: offset + rows.length < total
       });
+    }
+
+    if (body.action === "verify_outreach_gmail_message") {
+      return jsonResponse(await verifyOutreachGmailMessage({ client: supabase, user, sender: GMAIL_ALLOWED_SENDER, messageId: body.id, eventId: body.rfx_event_id, resolveToken: gmailAccessToken }));
     }
 
     if (body.action === "get_outreach_message") {
