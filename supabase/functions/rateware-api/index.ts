@@ -1,3 +1,4 @@
+import { checkGmailConnection } from "./gmail-connection-check.mjs";
 import { acquireSendLease, finishSendLease, quotaPause, SEND_SPACING_MS, SEND_WINDOW_MS } from "./gmail-send-guard.mjs";
 import { gmailFailureEvidence, readLatestOutreachIssue } from "./gmail-delivery-evidence.mjs";
 import { isQuoteQueueMessage } from "../_shared/quote-queue-scope.ts";
@@ -31592,6 +31593,10 @@ export function createRatewareApiHandler(
 
     if (body.action === "list_observability_events") {
       return jsonResponse(await buildObservabilityEvents(supabase, user, body));
+    }
+
+    if (body.action === "check_gmail_connection") {
+      return jsonResponse(await checkGmailConnection({ client: supabase, user, sender: GMAIL_ALLOWED_SENDER, resolveToken: gmailAccessToken }));
     }
 
     if (body.action === "list_gmail_connections") {
