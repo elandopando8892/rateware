@@ -23,6 +23,7 @@
     "test:quotedesk": "node --test tests/quotedesk-calc.test.mjs tests/quotedesk-email-routes.test.mjs tests/quotedesk-fcm.test.mjs tests/fcm-sync.test.mjs tests/fcm-engine-check.test.mjs",
     "test:ops-watch": "node --test tests/ops-daily-watch.test.mjs",
     "test:us-diesel": "node --test tests/us-diesel-sync.test.mjs",
+    "test:steel-intake": "node --test tests/steel-intake-api.test.mjs && deno check --node-modules-dir=none --no-lock supabase/functions/steel-intake-api/index.ts",
     "test:release-preflight": "node --test tests/release-preflight.test.mjs",
     "test:rateware-correlation": "deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/rateware-correlation.contract.test.ts",
     "test:rfx-lane-no-award": "deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/rfx-lane-no-award.contract.test.ts tests/rfx-bid-void-lanes.test.ts",

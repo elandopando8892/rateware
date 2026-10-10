@@ -447,6 +447,11 @@ verify_jwt = false
 [functions.website-lead-intake]
 verify_jwt = false
 
+# The Steel Marketplace llama servidor a servidor con Bearer <STEEL_INTAKE_SECRET>; la
+# funcion compara el SHA-256 del secreto. No hay JWT de Supabase que verificar.
+[functions.steel-intake-api]
+verify_jwt = false
+
 # Provider Gmail uses Supabase Auth for the operator API and a one-time OAuth
 # state for the Google callback. Both functions authenticate inside the runtime.
 [functions.provider-gmail-intake-api]
