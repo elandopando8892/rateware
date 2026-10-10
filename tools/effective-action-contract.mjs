@@ -16,6 +16,7 @@ import { TEAM_MEMBERSHIP_ACTION_CONTRACT_EXTENSION } from '../supabase/functions
 import { OBJECT_STORAGE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-object-storage.mjs';
 import { CUSTOMER_RFI_LOOKUPS_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-customer-rfi-lookups.mjs';
 import { RFX_LANE_NO_AWARD_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-rfx-lane-no-award.mjs';
+import { STEEL_INTAKE_ACTION_CONTRACT_EXTENSION as steelIntakeExtension } from '../supabase/functions/_shared/action-contract-steel-intake.mjs';
 
 const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
 const carrierTemplateExtension = CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION;
@@ -605,3 +606,12 @@ ACTION_CONTRACT.surfaces = ACTION_CONTRACT.surfaces.map(entry => ({
   ...entry, ...(spotConversionExtension.overrides[entry.canonicalId] || {}),
 }));
 ACTION_CONTRACT.surfaces.push(...spotConversionExtension.surfaces);
+
+// steel-intake-api: new service-to-service Edge Function and its two service-role RPCs.
+// Edge actions stay pending human approval until the first observed exchange with a receipt.
+for (const [key, delta] of Object.entries(steelIntakeExtension.expectedCountsDelta)) {
+  ACTION_CONTRACT.expectedCounts[key] += delta;
+}
+Object.assign(ACTION_CONTRACT.reviewedMetadataFingerprints, steelIntakeExtension.reviewedMetadataFingerprints);
+Object.assign(ACTION_CONTRACT.reviewedAuthorizationFingerprints, steelIntakeExtension.reviewedAuthorizationFingerprints);
+ACTION_CONTRACT.surfaces.push(...steelIntakeExtension.surfaces);
