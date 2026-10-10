@@ -4,7 +4,7 @@ export const SEND_WINDOW_MS = 90_000;
 export const SEND_LEASE_MS = 180_000;
 export function quotaPause(status, data, retryAfter, now = Date.now()) {
   const diagnostic = JSON.stringify(data || {});
-  if (status !== 429 && !(status === 403 && /rateLimitExceeded|userRateLimitExceeded|quota|rate limit/i.test(diagnostic))) return null;
+  if (status !== 429 && !(status === 403 && /rateLimitExceeded|userRateLimitExceeded|dailyLimitExceeded|quota|rate limit/i.test(diagnostic))) return null;
   const seconds = Number(retryAfter);
   const headerUntil = retryAfter && Number.isFinite(seconds) ? now + Math.max(0, seconds) * 1000 : Date.parse(retryAfter || "");
   return new Date(Math.max(now + 300_000, Number.isFinite(headerUntil) ? headerUntil : 0)).toISOString();
