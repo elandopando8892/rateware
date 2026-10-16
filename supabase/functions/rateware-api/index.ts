@@ -1,3 +1,4 @@
+import { issueRfxRfiLink } from "./rfx-rfi-link.mjs";
 import { verifyOutreachGmailMessage } from "./gmail-message-verification.mjs";
 import { checkGmailConnection } from "./gmail-connection-check.mjs";
 import { acquireSendLease, finishSendLease, quotaPause, SEND_SPACING_MS, SEND_WINDOW_MS } from "./gmail-send-guard.mjs";
@@ -23344,54 +23345,10 @@ async function getRfxProcessProjectDetail(supabase: RatewareSupabaseClient, user
   };
 }
 
-async function createRfxRfiMagicLink(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+async function createRfxRfiMagicLink(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>, actorId?: string) {
   const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
-  const now = new Date().toISOString();
-  const existing = await supabase
-    .from("rfx_rfi_magic_links")
-    .select("id,status,expires_at,created_at,token_encrypted")
-    .eq("project_id", project.id)
-    .eq("status", "active")
-    .gt("expires_at", now)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (existing.error) throw existing.error;
-  if (existing.data) {
-    const recoveredToken = await decryptRfxMagicLinkToken(existing.data.token_encrypted);
-    return {
-      reused: true,
-      row: { id: existing.data.id, status: existing.data.status, expires_at: existing.data.expires_at, created_at: existing.data.created_at },
-      link: recoveredToken ? rfxProjectPublicLink(recoveredToken, input.app_origin || input.appOrigin) : null,
-      recoverable: Boolean(recoveredToken),
-      message: recoveredToken
-        ? "The active Customer RFI link is still valid."
-        : "This legacy Customer RFI link cannot be displayed because its original token was not retained. Revoke it once to issue a fixed, copyable link."
-    };
-  }
-  const token = rfxMagicToken();
-  const tokenHash = await hashRfxMagicToken(token);
-  const days = Math.min(Math.max(Number(input.expires_in_days || input.expiresInDays) || 14, 1), 90);
-  const row = withOwner({
-    project_id: project.id,
-    token_hash: tokenHash,
-    token_encrypted: await encryptRfxMagicLinkToken(token),
-    expires_at: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
-    metadata: {
-      customer_email: project.customer_contact_email || null,
-      generated_from: "rfx_process"
-    }
-  }, user);
-  const result = await supabase.from("rfx_rfi_magic_links").insert(row).select("id,status,expires_at,created_at").single();
-  if (result.error) throw result.error;
-  await supabase
-    .from("rfx_projects")
-    .update({ status: "rfi_sent", updated_at: new Date().toISOString() })
-    .eq("id", project.id)
-    .eq("owner_email", user.owner_email);
-  const link = rfxProjectPublicLink(token, input.app_origin || input.appOrigin);
-  await writeRfxProcessAudit(supabase, user, project.id, "rfi_magic_link_sent", "rfx_rfi_magic_links", result.data.id, `Generated Customer RFI magic link for ${project.title}`, { expires_at: result.data.expires_at });
-  return { row: result.data, token, link };
+  return issueRfxRfiLink({client:supabase,project,user,input,actorId,
+    generateToken:rfxMagicToken,encrypt:encryptRfxMagicLinkToken,decrypt:decryptRfxMagicLinkToken});
 }
 
 async function createRfxDemandSnapshot(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
@@ -25903,7 +25860,7 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "create_rfx_rfi_magic_link") {
-      return jsonResponse(await createRfxRfiMagicLink(supabase, user, body));
+      return jsonResponse(await createRfxRfiMagicLink(supabase, user, body, typeof claims.sub === 'string' ? claims.sub : undefined));
     }
 
     if (body.action === "revoke_rfx_rfi_magic_link") {

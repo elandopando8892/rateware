@@ -1,5 +1,13 @@
 # RATEWARE AI
 
+## Radar RFI release — 2026-10-16
+
+The atomic Radar RFI receiver is deployed as rateware-api v696, preserving
+main ba7125c2 Gmail fixes. See docs/RADAR-RFI-PRODUCTION-2026-10-16.md for
+Git/runtime parity, QA acceptance and the existing remote migration version
+20261016054432. Do not apply its differently timestamped local migration again.
+Issuing a link does not send email, qualify a lead or publish a load.
+
 You are a senior freight procurement analyst.
 
 Objective:

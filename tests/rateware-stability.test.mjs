@@ -973,7 +973,10 @@ assert.match(customerRfiHtml, /import-rfi-segment-template/, "Customer RFI shoul
 assert.match(customerRfiHtml, /rfi-segment-template-copy/, "Customer RFI template help and status should use a dedicated layout row");
 assert.doesNotMatch(customerRfiHtml, /id="download-rfi-template"/, "Customer RFI should not expose a duplicate route-level template download");
 assert.doesNotMatch(customerRfiHtml, /id="import-rfi-workbook"/, "Customer RFI should not expose a duplicate route-level workbook import");
-assert.match(apiSource, /The active Customer RFI link is still valid/, "RFx Process should reuse an active Customer RFI link instead of issuing duplicates");
+assert.match(apiSource, /return issueRfxRfiLink\(/, "RFx Process must route issuance through the atomic receiver; replay behavior is exercised in rfx-rfi-link tests");
+const rfiLinkSource = readFileSync(new URL("../supabase/functions/rateware-api/rfx-rfi-link.mjs", import.meta.url), "utf8");
+assert.match(rfiLinkSource, /client\.rpc\('issue_rfx_rfi_link_once'/, "RFI issuance must use the database reservation instead of a read-then-insert");
+assert.match(rfiLinkSource, /reused:data\.reused/, "The public receipt must preserve the database winner's reuse result");
 assert.match(customerRfiSource, /Ubicacion de salida/, "Customer RFI route schedule should align to the customer RFI origin columns");
 assert.match(customerRfiSource, /Ubicacion de llegada/, "Customer RFI route schedule should align to the customer RFI destination columns");
 assert.match(customerRfiSource, /Volumen semanal esperado/, "Customer RFI route schedule should include expected weekly volume from the RFI template");

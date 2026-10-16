@@ -1,3 +1,4 @@
+import { RADAR_RFI_LINK_ACTION_CONTRACT_EXTENSION as radarRfiLinkExtension } from '../supabase/functions/_shared/action-contract-radar-rfi-link.mjs';
 import { SPOT_CONVERSION_ACTION_CONTRACT_EXTENSION as spotConversionExtension } from '../supabase/functions/_shared/action-contract-spot-conversion.mjs';
 import { RFX_SEGMENT_CONFIRMATIONS_ACTION_CONTRACT_EXTENSION as segmentConfirmationsExtension } from '../supabase/functions/_shared/action-contract-rfx-segment-confirmations.mjs';
 import { RFX_CARRIER_QUESTION_DRAFT_ACTION_CONTRACT_EXTENSION as carrierQuestionDraftExtension } from '../supabase/functions/_shared/action-contract-rfx-carrier-question-drafts.mjs';
@@ -605,3 +606,9 @@ ACTION_CONTRACT.surfaces = ACTION_CONTRACT.surfaces.map(entry => ({
   ...entry, ...(spotConversionExtension.overrides[entry.canonicalId] || {}),
 }));
 ACTION_CONTRACT.surfaces.push(...spotConversionExtension.surfaces);
+
+// Register this receiver only; preserve unrelated baseline dispositions and drift.
+for(const [key,delta] of Object.entries(radarRfiLinkExtension.expectedCountsDelta)) ACTION_CONTRACT.expectedCounts[key]+=delta;
+Object.assign(ACTION_CONTRACT.reviewedMetadataFingerprints,radarRfiLinkExtension.reviewedMetadataFingerprints);
+Object.assign(ACTION_CONTRACT.reviewedAuthorizationFingerprints,radarRfiLinkExtension.reviewedAuthorizationFingerprints);
+ACTION_CONTRACT.surfaces.push(...radarRfiLinkExtension.surfaces);
