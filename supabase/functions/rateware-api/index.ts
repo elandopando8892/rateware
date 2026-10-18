@@ -32603,8 +32603,9 @@ export function createRatewareApiHandler(
         .select("id,original_filename,storage_provider,storage_bucket,storage_path,mime_type")
         .eq("id", body.id)
         .eq("owner_email", user.owner_email)
-        .single();
+        .maybeSingle();
       if (upload.error) throw upload.error;
+      if (!upload.data) return jsonResponse({ error: "Source file was not found." }, 404);
       if (!upload.data?.storage_bucket || !upload.data?.storage_path) {
         return jsonResponse({ error: "Source file is missing from storage." }, 404);
       }
