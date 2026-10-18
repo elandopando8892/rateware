@@ -1,3 +1,4 @@
+import { OUTREACH_APPROVAL_CONTRACT, OUTREACH_VERSION_CONFLICT, expectedOutreachVersions, requireOutreachVersion } from "./outreach-send-version.mjs";
 import { issueRfxRfiLink } from "./rfx-rfi-link.mjs";
 import { verifyOutreachGmailMessage } from "./gmail-message-verification.mjs";
 import { checkGmailConnection } from "./gmail-connection-check.mjs";
@@ -19080,7 +19081,8 @@ async function claimOutreachMessageForSend(
   supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   message: Record<string, unknown>,
-  trace: Record<string, unknown> = {}
+  trace: Record<string, unknown> = {},
+  expectedUpdatedAt?: string
 ) {
   const status = cleanText(message.status)?.toLowerCase() || "";
   if (!OUTREACH_SENDABLE_STATUSES.has(status)) return null;
@@ -19088,7 +19090,7 @@ async function claimOutreachMessageForSend(
   if (message.send_started_at && (!message.send_completed_at || !message.failed_at)) return null;
   const attemptId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
-  const result = await supabase
+  let query = supabase
     .from("outreach_messages")
     .update({
       ...trace,
@@ -19111,8 +19113,9 @@ async function claimOutreachMessageForSend(
     .eq("status", status)
     .is("sent_at", null)
     .is("manual_sent_at", null)
-    .is("provider_message_id", null)
-    .select("*")
+    .is("provider_message_id", null);
+  if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
+  const result = await query.select("*")
     .maybeSingle();
   if (result.error) throw result.error;
   return result.data ? { row: result.data as Record<string, unknown>, attemptId, startedAt } : null;
@@ -19239,6 +19242,7 @@ async function sendOutreachMessages(
     count: ids.length
   });
 
+  const expectedVersions = expectedOutreachVersions(ids, input.expected_versions);
   const messagesResult = await supabase
     .from("outreach_messages")
     .select("*")
@@ -19266,8 +19270,10 @@ async function sendOutreachMessages(
       failures.push({ id, reason: `Message channel is ${cleanText(message.channel) || "unknown"}; expected email.` });
       continue;
     }
+    requireOutreachVersion(message, expectedVersions.get(id));
     messages.push(message);
   }
+  if (failures.length) throw Object.assign(new Error(OUTREACH_VERSION_CONFLICT), { code: "409" });
   if (!messages.length) {
     return {
       sent: 0,
@@ -19302,11 +19308,13 @@ async function sendOutreachMessages(
   let stopReason: string | null = null;
   try {
 
-  for (const message of messages) {
+  for (let message of messages) {
     if (stopReason || Date.now() - started >= SEND_WINDOW_MS) {
       skipped.push({ id: message.id, reason: stopReason || "Delivery time budget reached. Review remaining drafts in the queue." });
       continue;
     }
+    const approvedUpdatedAt = expectedVersions.get(String(message.id))!;
+    const approval = { approval_contract: OUTREACH_APPROVAL_CONTRACT, approved_updated_at: approvedUpdatedAt };
     const status = cleanText(message.status)?.toLowerCase();
     if (status && !["drafted", "queued", "failed"].includes(status)) {
       failures.push({ id: message.id, reason: `Message is ${status}.` });
@@ -19318,7 +19326,7 @@ async function sendOutreachMessages(
     }
     if (!cleanText(message.recipient_email)) {
       failures.push({ id: message.id, reason: "Missing recipient email." });
-      await supabase
+      const validationResult = await supabase
         .from("outreach_messages")
         .update({
           status: "failed",
@@ -19333,20 +19341,23 @@ async function sendOutreachMessages(
           send_result: outreachSendResult("completed", {
             channel: "email",
             provider: "gmail",
+            ...approval,
             outcome: "validation_failed",
             error: "Missing recipient email."
           }),
           updated_at: now
         })
         .eq("id", message.id)
-        .eq("owner_email", user.owner_email);
+        .eq("owner_email", user.owner_email)
+        .eq("updated_at", approvedUpdatedAt).select("id").maybeSingle();
+      if (validationResult.error || !validationResult.data) stopReason = OUTREACH_VERSION_CONFLICT;
       continue;
     }
     const recipientEmail = cleanText(message.recipient_email)?.toLowerCase() || "";
     if (suppressedEmails.has(recipientEmail)) {
       const reason = "Recipient email is blocked because a prior delivery failure was detected.";
       failures.push({ id: message.id, recipient_email: message.recipient_email, reason });
-      await supabase
+      const validationResult = await supabase
         .from("outreach_messages")
         .update({
           status: "bounced",
@@ -19361,13 +19372,16 @@ async function sendOutreachMessages(
           send_result: outreachSendResult("completed", {
             channel: "email",
             provider: "gmail",
+            ...approval,
             outcome: "suppressed",
             error: reason
           }),
           updated_at: now
         })
         .eq("id", message.id)
-        .eq("owner_email", user.owner_email);
+        .eq("owner_email", user.owner_email)
+        .eq("updated_at", approvedUpdatedAt).select("id").maybeSingle();
+      if (validationResult.error || !validationResult.data) stopReason = OUTREACH_VERSION_CONFLICT;
       continue;
     }
 
@@ -19383,19 +19397,24 @@ async function sendOutreachMessages(
         sender_address: senderEmail,
         sender_connection_type: gmailConnectionType,
         send_result: {
+          ...approval,
           connection_id: gmailConnectionId,
           sender: senderEmail
         }
-      });
+      }, approvedUpdatedAt);
     } catch (error) {
+      stopReason = OUTREACH_VERSION_CONFLICT;
       failures.push({ id: message.id, recipient_email: message.recipient_email, reason: safeOperationalError(error) });
       continue;
     }
     if (!claim) {
-      skipped.push({ id: message.id, reason: "Message was already claimed or completed by another request." });
+      stopReason = OUTREACH_VERSION_CONFLICT;
+      skipped.push({ id: message.id, reason: stopReason });
       continue;
     }
 
+    // Send exactly the snapshot returned by the atomic conditional claim.
+    message = claim.row;
     let providerAccepted = false;
     try {
       // A slow claim must not send after this worker's bounded lease window.
@@ -19455,6 +19474,7 @@ async function sendOutreachMessages(
         delivery_error: null,
         delivered_by: GMAIL_ALLOWED_SENDER,
         send_result: outreachSendResult("completed", {
+          ...approval,
           attempt_id: claim.attemptId,
           channel: "email",
           provider: "gmail",
@@ -19482,6 +19502,7 @@ async function sendOutreachMessages(
           body_preview: contactPreview(message.text_body || message.html_body),
           occurred_at: now,
           metadata: {
+            ...approval,
             sent_from: "gmail_api",
             provider: "gmail",
             gmail_connection_id: gmailConnectionId,
@@ -19547,6 +19568,7 @@ async function sendOutreachMessages(
           connectionId: gmailConnectionId,
           sender: senderEmail,
           extraMetadata: {
+            ...approval,
             gmail_connection_id: gmailConnectionId,
             sender_connection_type: gmailConnectionType,
             delivery_unknown: uncertain,
@@ -25422,7 +25444,7 @@ async function queueRatebookDistribution(
       updated_at: now
     }, user);
   });
-  const messagesResult = await supabase.from("outreach_messages").upsert(messageRows).select("id,ratebook_share_id,recipient_email,status");
+  const messagesResult = await supabase.from("outreach_messages").upsert(messageRows).select("id,ratebook_share_id,recipient_email,status,updated_at");
   if (messagesResult.error) throw messagesResult.error;
   const campaignUpdate = await supabase.from("outreach_campaigns")
     .update({ status: "generated", updated_at: now })
@@ -25440,6 +25462,7 @@ async function queueRatebookDistribution(
     ...shared,
     campaign,
     message_ids: (messagesResult.data || []).map((row: Record<string, unknown>) => row.id),
+    expected_versions: (messagesResult.data || []).map((row: Record<string, unknown>) => ({ id: row.id, updated_at: row.updated_at })),
     queued: messageRows.length,
     skipped_missing_email: magicLinks.length - deliverableLinks.length
   };

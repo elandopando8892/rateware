@@ -1,3 +1,4 @@
+import { freezeOutreachVersions } from "./outreach-approval.js";
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { updatePlatform55Shell } from "./platform55-shell.js";
 import {
@@ -10923,13 +10924,16 @@ async function sendAwardNoticeDrafts(requestedIds = null) {
     setStatus(rfxAwardStatus, "Select one or more ready email notices before sending.", "error");
     return;
   }
+  let expectedVersions;
+  try { expectedVersions = freezeOutreachVersions(ids, awardNoticeDraftRows()); }
+  catch (error) { setStatus(rfxAwardStatus, humanizeError(error), "error"); return; }
   if (!window.confirm(`Send ${ids.length} individual award notice email(s)?`)) return;
   const eventId = selectedEventId;
   awardMutationRunning = true;
   if (rfxSendAwardNoticesButton) rfxSendAwardNoticesButton.disabled = true;
   setStatus(rfxAwardStatus, `Sending ${formatNumber(ids.length)} award notice email(s)...`);
   try {
-    const result = await sendOutreachMessages(ids, { senderEmail: APPROVED_GMAIL_SENDER });
+    const result = await sendOutreachMessages(ids, { senderEmail: APPROVED_GMAIL_SENDER, expectedVersions });
     ids.forEach((id) => awardNoticeSelectedIds.delete(id));
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
@@ -10948,21 +10952,23 @@ async function sendAwardNoticeDrafts(requestedIds = null) {
   }
 }
 
-async function sendDraftEmailIds(ids = [], statusElement = rfxOutreachStatus) {
+async function sendDraftEmailIds(ids = [], statusElement = rfxOutreachStatus, expectedVersions = []) {
   const batches = chunkRows(ids, OUTREACH_SEND_BATCH_SIZE);
-  const totals = { sent: 0, failed: 0, skipped: 0, failures: [], skipped_rows: [] };
+  const totals = { sent: 0, failed: 0, skipped: 0, delivery_unknown: 0, failures: [], skipped_rows: [] };
   for (let index = 0; index < batches.length; index += 1) {
     const batch = batches[index];
     setStatus(
       statusElement,
       `Sending batch ${formatNumber(index + 1)} of ${formatNumber(batches.length)} (${formatNumber(batch.length)} email${batch.length === 1 ? "" : "s"}) from ${APPROVED_GMAIL_SENDER}...`
     );
-    const result = await sendOutreachMessages(batch, { senderEmail: APPROVED_GMAIL_SENDER });
+    const result = await sendOutreachMessages(batch, { senderEmail: APPROVED_GMAIL_SENDER, expectedVersions: expectedVersions.filter(row => batch.includes(row.id)) });
     totals.sent += Number(result.sent || 0);
     totals.failed += Number(result.failed || 0);
     totals.skipped += Number(result.skipped || 0);
+    totals.delivery_unknown += Number(result.delivery_unknown || 0);
     if (Array.isArray(result.failures)) totals.failures.push(...result.failures);
     if (Array.isArray(result.skipped_rows)) totals.skipped_rows.push(...result.skipped_rows);
+    if (Number(result.sent) !== batch.length || result.failed || result.skipped || result.delivery_unknown || result.failures?.length || result.skipped_rows?.length) break;
   }
   return totals;
 }
@@ -10974,12 +10980,15 @@ async function sendSelectedDraftEmails() {
     setStatus(rfxOutreachStatus, "Select one or more email drafts before sending.", "error");
     return;
   }
+  let expectedVersions;
+  try { expectedVersions = freezeOutreachVersions(ids, ids.map(findDraftRow).filter(Boolean)); }
+  catch (error) { setStatus(rfxOutreachStatus, humanizeError(error), "error"); return; }
   if (!confirmDraftQueueAction("send", ids)) return;
   const eventId = selectedEventId;
   draftQueueMutationRunning = true;
   if (draftSendSelectedButton) draftSendSelectedButton.disabled = true;
   try {
-    const result = await sendDraftEmailIds(ids, rfxOutreachStatus);
+    const result = await sendDraftEmailIds(ids, rfxOutreachStatus, expectedVersions);
     clearDraftQueueSelection();
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
@@ -11016,12 +11025,15 @@ async function sendSingleDraftEmail(id) {
   }
   const eventId = selectedEventId;
   const carrier = row.vendors?.vendor_name || row.vendors?.domain || row.recipient_email || "this carrier";
+  let expectedVersions;
+  try { expectedVersions = freezeOutreachVersions([String(id)], [row]); }
+  catch (error) { setStatus(rfxOutreachStatus, humanizeError(error), "error"); return; }
   if (!window.confirm(`Send this invitation now to ${carrier} from ${APPROVED_GMAIL_SENDER}?`)) return;
   draftQueueMutationRunning = true;
   updateDraftSendControls(draftQueueRows);
   setStatus(rfxOutreachStatus, `Sending invitation to ${carrier}...`);
   try {
-    const result = await sendDraftEmailIds([String(id)], rfxOutreachStatus);
+    const result = await sendDraftEmailIds([String(id)], rfxOutreachStatus, expectedVersions);
     forgetDraftRow(id);
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();

@@ -1,3 +1,4 @@
+import { freezeOutreachVersions } from "./outreach-approval.js";
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
 import {
@@ -92,6 +93,7 @@ const state = {
   carrierSearch: "",
   magicLinks: [],
   distributionMessageIds: [],
+  distributionVersions: [],
   audit: null,
   quoteReviewPackageLaneId: "",
   quoteReview: null,
@@ -1014,6 +1016,7 @@ async function openShareDialog() {
   elements.carrierSearch.value = "";
   state.magicLinks = [];
   state.distributionMessageIds = [];
+  state.distributionVersions = [];
   renderMagicLinks();
   elements.sendDistribution.classList.add("hidden");
   elements.createEmailDrafts.checked = true;
@@ -1152,6 +1155,7 @@ async function sendRatebookShares() {
       : await shareRatebookWithCarriers(state.activeRatebookId, [...state.selectedCarrierIds]);
     state.magicLinks = result.magic_links || [];
     state.distributionMessageIds = result.message_ids || [];
+    state.distributionVersions = structuredClone(result.expected_versions || []);
     renderMagicLinks();
     if (state.distributionMessageIds.length) {
       elements.sendDistribution.classList.remove("hidden");
@@ -1171,16 +1175,21 @@ async function sendRatebookShares() {
 async function sendRatebookDistributionDrafts() {
   if (!state.activeRatebookId || !state.distributionMessageIds.length) return;
   if (ratebookDistributionRunning) return;
+  const ids = [...state.distributionMessageIds];
+  let expectedVersions;
+  try { expectedVersions = freezeOutreachVersions(ids, state.distributionVersions); }
+  catch (error) { setStatus(elements.shareStatus, humanizeError(error), "error"); return; }
   if (!window.confirm(`Send ${state.distributionMessageIds.length} Ratebook email draft(s) now using the connected Gmail sender?`)) return;
   ratebookDistributionRunning = true;
   const original = elements.sendDistribution.textContent;
   elements.sendDistribution.disabled = true;
   elements.sendDistribution.textContent = "Sending...";
   try {
-    const result = await sendRatebookDistribution(state.activeRatebookId, state.distributionMessageIds);
+    const result = await sendRatebookDistribution(state.activeRatebookId, ids, expectedVersions);
     const failed = Number(result.failed) || 0;
     setStatus(elements.shareStatus, `${number(result.sent)} Ratebook invitation(s) sent${failed ? `; ${number(failed)} failed.` : "."}`, failed ? "error" : "success");
     state.distributionMessageIds = [];
+  state.distributionVersions = [];
     elements.sendDistribution.classList.add("hidden");
     await selectRatebook(state.activeRatebookId, false);
   } catch (error) {

@@ -5,19 +5,21 @@ const chunk=(from,to)=>source.slice(source.indexOf(from),source.indexOf(to,sourc
 const logic=transformSync(chunk('async function claimOutreachMessageForSend(','async function writeOutreachSentHistory(')+chunk('async function sendOutreachMessages(','async function metaSendWhatsappTemplate('),{loader:'ts',format:'cjs'}).code;
 const clone=x=>structuredClone(x);
 function database(statuses=['drafted','drafted','drafted']){
- const state={gmail_mailbox_connections:[{id:'connection',owner_email:'owner',mailbox_email:'sender',status:'connected',updated_at:'2026-10-07T00:00:00Z',metadata:{unrelated:'preserved'}}],outreach_messages:statuses.map((status,i)=>({id:'m'+i,owner_email:'owner',status,channel:'email',recipient_email:'test@example.test',sender_email:'sender',campaign_id:null,sent_at:null,manual_sent_at:null,provider_message_id:null}))};
- return {state,from(table){let patch=null,filters=[];const q={select(){return q},update(v){patch=v;return q},eq(k,v){filters.push(r=>k==='metadata'?JSON.stringify(r[k])===v:r[k]===v);return q},is(k,v){filters.push(r=>(r[k]??null)===v);return q},in(k,v){filters.push(r=>v.includes(r[k]));return q},order(){return q},not(){return q},async execute(single){const rows=(state[table]||[]).filter(r=>filters.every(f=>f(r)));if(patch)for(const r of rows)Object.assign(r,clone(patch));return {data:clone(single?rows[0]||null:rows),error:null};},maybeSingle(){return q.execute(true)},then(a,b){return q.execute(false).then(a,b)}};return q;}};
+ const state={gmail_mailbox_connections:[{id:'connection',owner_email:'owner',mailbox_email:'sender',status:'connected',updated_at:'2026-10-07T00:00:00Z',metadata:{unrelated:'preserved'}}],outreach_messages:statuses.map((status,i)=>({id:'m'+i,owner_email:'owner',status,channel:'email',recipient_email:'test@example.test',sender_email:'sender',updated_at:'2026-10-17T10:00:00.123456+00:00',text_body:'approved-'+i,campaign_id:null,sent_at:null,manual_sent_at:null,provider_message_id:null}))};
+ const db={state,from(table){let patch=null,filters=[];const q={select(){return q},update(v){patch=v;return q},eq(k,v){filters.push(r=>k==='metadata'?JSON.stringify(r[k])===v:r[k]===v);return q},is(k,v){filters.push(r=>(r[k]??null)===v);return q},in(k,v){filters.push(r=>v.includes(r[k]));return q},order(){return q},not(){return q},async execute(single){if(patch && db.beforeUpdate)db.beforeUpdate(table,patch,state);const rows=(state[table]||[]).filter(r=>filters.every(f=>f(r)));if(patch)for(const r of rows)Object.assign(r,clone(patch));return {data:clone(single?rows[0]||null:rows),error:null};},maybeSingle(){return q.execute(true)},then(a,b){return q.execute(false).then(a,b)}};return q;}};return db;
 }
 async function harness(responses){
  const guards=await import('../supabase/functions/rateware-api/gmail-send-guard.mjs');
  const {gmailFailureEvidence}=await import('../supabase/functions/rateware-api/gmail-delivery-evidence.mjs');
- const db=database(),calls=[],waits=[],leases=[];
- const globals={...guards,gmailFailureEvidence,BULK_SEND_LIMIT:100,GMAIL_ALLOWED_SENDER:'sender',OUTREACH_SENDABLE_STATUSES:new Set(['drafted','queued','failed']),cleanText:v=>v==null?null:String(v).trim()||null,objectRecord:v=>v||{},normalizeBulkIds:v=>v,requireBulkConfirmation:()=>{},isQuoteQueueMessage:()=>false,suppressedEmailSet:async()=>new Set(),gmailAccessToken:async()=>'',gmailConnectionIdentity:async()=>({id:'connection'}),gmailRawMessage:m=>m.id,crypto,
+ const db=database(),calls=[],waits=[],leases=[],credentials=[],snapshots=[];
+ const versions=db.state.outreach_messages.map(({id,updated_at})=>({id,updated_at}));
+ const versionsGuard=await import('../supabase/functions/rateware-api/outreach-send-version.mjs');
+ const globals={...guards,...versionsGuard,gmailFailureEvidence,BULK_SEND_LIMIT:100,GMAIL_ALLOWED_SENDER:'sender',OUTREACH_SENDABLE_STATUSES:new Set(['drafted','queued','failed']),cleanText:v=>v==null?null:String(v).trim()||null,objectRecord:v=>v||{},normalizeBulkIds:v=>v,requireBulkConfirmation:()=>{},isQuoteQueueMessage:()=>false,suppressedEmailSet:async()=>new Set(),gmailAccessToken:async()=>{credentials.push(1);return ''},gmailConnectionIdentity:async()=>({id:'connection'}),gmailRawMessage:m=>{snapshots.push(clone(m));return m.id},crypto,
   acquireSendLease:async(...args)=>{const l=await guards.acquireSendLease(...args);leases.push(l);return l;},safeOperationalError:e=>e.message||String(e),outreachSendResult:(stage,v)=>({stage,...v}),withOwner:r=>r,writeOutreachSentHistory:async()=>{},writeOutreachDeliveryIssueHistory:async()=>{},messageInvitationIds:()=>[],writeAuditLog:async()=>{},tryWriteAuditLog:async()=>{},
   setTimeout:(fn,ms)=>{waits.push(ms);fn();},fetch:async(url,options)=>{calls.push(JSON.parse(options.body).raw);const response=responses.shift()||{status:200,data:{id:'receipt-'+calls.length}};if(response.throw)throw new Error('Transport lost');return {ok:response.status===200,status:response.status,headers:new Headers(response.headers||{}),json:async()=>response.data};}
  };
  const send=new Function(...Object.keys(globals),logic+'; return sendOutreachMessages;')(...Object.values(globals));
- return {db,calls,waits,leases,send:()=>send(db,{owner_email:'owner',owner_user_id:'u'},{ids:['m0','m1','m2'],confirmed:true})};
+ return {db,calls,waits,leases,credentials,snapshots,versions,send:(overrides={})=>send(db,{owner_email:'owner',owner_user_id:'u'},{ids:['m0','m1','m2'],confirmed:true,expected_versions:versions,...overrides})};
 }
 test('quota classification: 403 quota / 429 pause, ordinary 403 does not; Retry-After respected',async()=>{
  const {quotaPause}=await import('../supabase/functions/rateware-api/gmail-send-guard.mjs');const now=1000000;
@@ -42,7 +44,7 @@ test('real send handler stops at quota; remaining messages unchanged and cooldow
  assert.equal(h.db.state.outreach_messages[0].send_result.http_status,429);
  assert.equal(h.db.state.outreach_messages[0].delivery_error,'Quota exceeded');
  assert.ok(h.db.state.gmail_mailbox_connections[0].metadata.outreach_send_guard.cooldown_until);
- await assert.rejects(h.send(),/quota pause/);assert.equal(h.calls.length,1);
+ await assert.rejects(h.send({expected_versions:h.db.state.outreach_messages.map(({id,updated_at})=>({id,updated_at}))}),/quota pause/);assert.equal(h.calls.length,1);
 });
 test('real send handler stops at uncertain outcome; no automatic resend',async()=>{
  const h=await harness([{throw:true}]);const r=await h.send();
@@ -51,12 +53,53 @@ test('real send handler stops at uncertain outcome; no automatic resend',async()
 });
 test('real send handler spaces successful attempts and refuses replayed accepted rows',async()=>{
  const h=await harness([]);const r=await h.send();assert.equal(r.sent,3);assert.equal(h.calls.length,3);assert.equal(h.waits.length,2);
- assert.ok(h.waits.every(ms=>ms>0 && ms<=1500));const replay=await h.send();assert.equal(replay.sent,0);assert.equal(h.calls.length,3);
+ assert.ok(h.waits.every(ms=>ms>0 && ms<=1500));await assert.rejects(h.send(),/OUTREACH_VERSION_CONFLICT/);assert.equal(h.calls.length,3);
 });
 test('a manual queued status cannot resend a row with provider receipt',async()=>{
  const h=await harness([]);h.db.state.outreach_messages[0].status='queued';h.db.state.outreach_messages[0].provider_message_id='already-accepted';
- const r=await h.send();assert.equal(r.sent,2);assert.equal(r.skipped,1);assert.ok(!h.calls.includes('m0'));
+ const r=await h.send();assert.equal(r.sent,0);assert.equal(r.skipped,3);assert.ok(!h.calls.includes('m0'));
 });
 test('successful HTTP without receipt remains uncertain and stops the batch',async()=>{
  const h=await harness([{status:200,data:{}}]);const r=await h.send();assert.equal(r.delivery_unknown,1);assert.equal(r.skipped,2);assert.equal(h.calls.length,1);
+});
+
+test('stale reviewed version is rejected before credential or provider access',async()=>{
+ const h=await harness([]);h.db.state.outreach_messages[0].updated_at='2026-10-17T10:00:00.123457+00:00';
+ await assert.rejects(h.send(),/OUTREACH_VERSION_CONFLICT/);assert.equal(h.credentials.length,0);assert.equal(h.calls.length,0);
+ assert.equal(h.db.state.outreach_messages[0].status,'drafted');
+});
+test('missing or ambiguous approvals fail closed before credentials',async()=>{
+ for(const make of [()=>undefined,v=>v.slice(1),v=>[...v,v[0]],v=>[...v,{id:'foreign',updated_at:v[0].updated_at}],v=>v.map((r,i)=>i? r:{...r,updated_at:'not-a-version'})]){
+  const h=await harness([]);await assert.rejects(h.send({expected_versions:make(h.versions)}),/OUTREACH_APPROVAL_REQUIRED/);
+  assert.equal(h.credentials.length,0);assert.equal(h.calls.length,0);
+ }
+});
+
+test('edit between read and conditional claim stops the entire batch with zero sends',async()=>{
+ const h=await harness([]);h.db.beforeUpdate=(table,patch,state)=>{
+  if(table==='outreach_messages' && patch.status==='sending'){
+   state.outreach_messages[0].text_body='changed';state.outreach_messages[0].updated_at='2026-10-17T10:00:00.123457+00:00';h.db.beforeUpdate=null;
+  }
+ };
+ const r=await h.send();assert.equal(r.sent,0);assert.equal(r.skipped,3);assert.match(r.skipped_rows[0].reason,/OUTREACH_VERSION_CONFLICT/);
+ assert.equal(h.calls.length,0);assert.equal(h.db.state.outreach_messages[0].text_body,'changed');
+ assert.ok(h.db.state.outreach_messages.every(m=>m.status==='drafted'));
+});
+test('provider uses returned claim snapshot, with approval bound through success and failure',async()=>{
+ for(const responses of [[],[{status:403,data:{error:{message:'denied'}}}]]){
+  const h=await harness(responses);await h.send();const snapshot=h.snapshots[0];
+  assert.equal(snapshot.status,'sending');assert.equal(snapshot.text_body,'approved-0');
+  assert.equal(snapshot.send_result.approved_updated_at,h.versions[0].updated_at);
+  assert.equal(snapshot.send_result.approval_contract,'outreach-version-v1');
+  assert.equal(h.db.state.outreach_messages[0].send_result.approved_updated_at,h.versions[0].updated_at);
+ }
+});
+test('unknown/foreign workspace ID cannot cause a partial send',async()=>{
+ const h=await harness([]);h.db.state.outreach_messages[0].owner_email='other-owner';
+ await assert.rejects(h.send(),/OUTREACH_VERSION_CONFLICT/);assert.equal(h.calls.length,0);assert.equal(h.credentials.length,0);
+});
+test('timestamp matching preserves microseconds and equivalent timezone notation',async()=>{
+ const g=await import('../supabase/functions/rateware-api/outreach-send-version.mjs');
+ assert.equal(g.outreachVersionKey('2026-10-17T10:00:00.123456+00:00'),g.outreachVersionKey('2026-10-17T04:00:00.123456-06:00'));
+ assert.notEqual(g.outreachVersionKey('2026-10-17T10:00:00.123456Z'),g.outreachVersionKey('2026-10-17T10:00:00.123457Z'));
 });

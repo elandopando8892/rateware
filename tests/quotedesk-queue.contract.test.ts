@@ -171,7 +171,8 @@ Deno.test("Quote queue: two recoveries of a failed receipt with a stale claim re
 for (const action of ["send_outreach_messages", "send_whatsapp_outreach_messages", "mark_outreach_messages", "delete_outreach_messages"]) {
   Deno.test(`Quote queue: generic ${action} cannot bypass snapshot/receipt`, () => run(async f => {
     const m = await f.prepare();
-    const r = await f.generic({ action, ids: [m.id], status: "sent", confirmed: true, confirmation_action: action });
+    const r = await f.generic({ action, expected_versions: [{ id: m.id, updated_at: "2026-10-17T10:00:00Z" }], ids: [m.id], status: "sent", confirmed: true, confirmation_action: action });
+    if (action === "send_outreach_messages") assertStringIncludes(r.body.error, "QuoteDesk");
     assert(r.status >= 400); assertEquals(f.provider.length, 0); assertEquals(f.store.tables.outreach_messages[0].status, "drafted");
   }));
 }

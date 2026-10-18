@@ -158,6 +158,7 @@ export async function markOutreachMessages(ids = [], status, options = {}) {
 export async function sendOutreachMessages(ids = [], options = {}) {
   return await callRatewareApi("send_outreach_messages", {
     ids,
+    expected_versions: options.expectedVersions || [],
     provider: "gmail",
     channel: "email",
     sender_email: options.senderEmail || "",

@@ -65,10 +65,11 @@ export async function queueRatebookDistribution(ratebookId, vendorIds) {
   });
 }
 
-export async function sendRatebookDistribution(ratebookId, messageIds) {
+export async function sendRatebookDistribution(ratebookId, messageIds, expectedVersions = []) {
   return callRatewareApi("send_ratebook_distribution", {
     ratebook_id: ratebookId,
     ids: messageIds,
+    expected_versions: expectedVersions,
     confirmed: true,
     confirmation_action: "send_outreach_messages",
   });
