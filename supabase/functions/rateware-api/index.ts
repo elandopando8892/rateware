@@ -10563,8 +10563,9 @@ async function requireOwnedRfxEvent(supabase: RatewareSupabaseClient, user: { ow
     .select("*")
     .eq("id", id)
     .eq("owner_email", user.owner_email)
-    .single();
+    .maybeSingle();
   if (result.error) throw result.error;
+  if (!result.data) throw Object.assign(new Error("RFx event not found."), { code: "404" });
   return result.data;
 }
 
