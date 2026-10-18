@@ -1,3 +1,5 @@
+import { createHandoffPlanClient } from "./handoff-plan.ts";
+import { requireHandoffParity, handoffCommercialPatch, bidSnapshot } from "./handoff-contract.mjs";
 import { OUTREACH_APPROVAL_CONTRACT, OUTREACH_VERSION_CONFLICT, expectedOutreachVersions, requireOutreachVersion } from "./outreach-send-version.mjs";
 import { issueRfxRfiLink } from "./rfx-rfi-link.mjs";
 import { verifyOutreachGmailMessage } from "./gmail-message-verification.mjs";
@@ -4967,7 +4969,7 @@ function apiErrorStatus(info: ReturnType<typeof apiErrorInfo>) {
   if (code === "401" || explicitAuthFailure) return 401;
   if (code === "403" || message.includes("forbidden") || message.includes("not allowed")) return 403;
   if (code === "404" || message.includes("not found")) return 404;
-  if (code === "409") return 409;
+  if (code === "409" || code === "rfx_handoff_conflict") return 409;
   return 500;
 }
 
@@ -11040,6 +11042,41 @@ async function closeoutAwardedRfxToRateware(
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
+  // Existing dispatcher resolves identity and fresh admin permission before this call.
+  const event = await requireOwnedRfxEvent(supabase, user, input.event_id || input.rfx_event_id || input.id);
+  const suppliedOperation = cleanText(input.operation_id);
+  const operation = suppliedOperation && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(suppliedOperation) ? suppliedOperation.toLowerCase() : crypto.randomUUID();
+  // All supported business input is canonicalized; aliases do not change intent.
+  // Approval to Ratebook is intentionally not a closeout option.
+  const request = { event_id: event.id, target_status: "pending_review" };
+  const scope = { p_owner: user.owner_email, p_event: event.id };
+  const unwrap = (result: { data: any; error: any }) => {
+    if (result.error) {
+      if (["40001", "40P01", "55P03"].includes(result.error.code) || String(result.error.message).includes("RFX_HANDOFF_CONFLICT")) {
+        throw Object.assign(new Error("La entrega cambió durante la preparación. Actualiza y revisa antes de intentar otra vez."), { code: "RFX_HANDOFF_CONFLICT", stage: "rfx_handoff_atomic" });
+      }
+      throw result.error;
+    }
+    return result.data;
+  };
+  const receipt = unwrap(await supabase.rpc("rfx_handoff_lookup", { ...scope, p_operation: operation, p_request: request }));
+  if (receipt) return receipt;
+  const fingerprint = unwrap(await supabase.rpc("rfx_handoff_snapshot", scope));
+  const planner = createHandoffPlanClient(supabase);
+  const result = await prepareRfxHandoffPlan(planner.client as unknown as RatewareSupabaseClient, user, input);
+  // This is the only business write: PostgreSQL validates the locked snapshot and
+  // commits upload/job/staging/links/event/receipt together. Never fall back to individual writes.
+  return unwrap(await supabase.rpc("rfx_handoff_commit", {
+    ...scope, p_operation: operation, p_request: request,
+    p_expected: fingerprint, p_plan: planner.finish(result)
+  }));
+}
+
+async function prepareRfxHandoffPlan(
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
   const event = await requireOwnedRfxEvent(supabase, user, input.event_id || input.rfx_event_id || input.id);
   const decisionSnapshot = await requireCompleteRfxAwardDecisions(supabase, user, event.id, { requireBids: true });
   // Read and validate the complete awarded set before ANY business mutation.
@@ -11053,7 +11090,24 @@ async function closeoutAwardedRfxToRateware(
     fetchRfxSegmentConfirmations(supabase, cleanText(event.id) || "")
   ]);
   requireEligibleRfxCloseout(awardRows, confirmations, RFX_PACKAGE_RUBRICS.map(rubric => rubric.key));
-  const finalizedOutcomes = await finalizeRfxBidOutcomes(supabase, user, event.id, decisionSnapshot.invitations);
+  // Validate every linked bid revision before finalizing ANY outcomes or linking rows.
+  // A dangling/foreign historical reference is a conflict, not permission to replace history.
+  const validatedStaging = new Map<string, Record<string, unknown>>();
+  for (const row of awardRows.filter((row) => cleanText(row.invitation_status)?.toLowerCase() !== "archived" && cleanNumber(row.bid_rate) !== null)) {
+    bidSnapshot(row);
+    handoffCommercialPatch(row);
+    const stagingId = cleanText(row.rate_staging_id) || cleanText(row.bid_rate_staging_id);
+    let staging: Record<string, unknown> | null = null;
+    if (stagingId) {
+      const result = await supabase.from("rate_staging").select("*")
+        .eq("id", stagingId).eq("owner_email", user.owner_email).maybeSingle();
+      if (result.error) throw result.error;
+      staging = result.data;
+    }
+    requireHandoffParity(row, event, staging, user.owner_email);
+    if (stagingId && staging) validatedStaging.set(stagingId, staging);
+  }
+  const finalizedOutcomes = await finalizeRfxBidOutcomes(supabase, user, event.id, awardRows.filter((row) => cleanText(row.invitation_status)?.toLowerCase() !== "archived"));
   const historicalBidStagingIds = decisionSnapshot.invitations
     .filter((row) => cleanNumber(row.bid_rate) !== null)
     .map((row) => cleanText(row.bid_rate_staging_id))
@@ -11082,17 +11136,7 @@ async function closeoutAwardedRfxToRateware(
       fallbackAwards.push(award);
       continue;
     }
-    const current = await supabase
-      .from("rate_staging")
-      .select("id,row_id,status")
-      .eq("id", bidStagingId)
-      .eq("owner_email", user.owner_email)
-      .maybeSingle();
-    if (current.error) throw current.error;
-    if (!current.data) {
-      fallbackAwards.push(award);
-      continue;
-    }
+    const current = { data: validatedStaging.get(bidStagingId)! };
     const currentStatus = cleanText(current.data.status)?.toLowerCase();
     const nextStatus = currentStatus === "approved" ? "approved" : targetStatus;
     if (nextStatus === "approved") preservedApproved += 1;
@@ -11222,6 +11266,8 @@ async function closeoutAwardedRfxToRateware(
     const patch = normalizeStagingPatch(mapped, {});
     patch.vendor_id = award.vendor_id;
     Object.assign(patch, normalizeRowWithCurrentCatalog(patch, catalog, locationIndex, mileage));
+    // Scoped overlay: do not broaden the general staging edit normalizer.
+    Object.assign(patch, handoffCommercialPatch(award));
     const insert = await supabase
       .from("rate_staging")
       .insert({
@@ -11243,6 +11289,8 @@ async function closeoutAwardedRfxToRateware(
           rfx_event_id: event.id,
           rfx_lane_id: award.rfx_lane_id,
           rfx_lane_vendor_id: award.id,
+          vendor_id: award.vendor_id,
+          responded_at: bidSnapshot(award).responded_at,
           award_role: award.award_role,
           award_reason: award.award_reason,
           awarded_at: award.awarded_at
@@ -11252,13 +11300,7 @@ async function closeoutAwardedRfxToRateware(
           rfx_event: { id: event.id, rfx_id: event.rfx_id, name: event.name },
           lane: award.rfx_lanes,
           bid: {
-            id: award.id,
-            vendor_id: award.vendor_id,
-            bid_rate: award.bid_rate,
-            currency: award.currency,
-            weekly_capacity: award.weekly_capacity,
-            transit_days: award.transit_days,
-            notes: award.notes,
+            ...bidSnapshot(award),
             award_reason: award.award_reason,
             award_notes: award.award_notes
           }
@@ -29425,7 +29467,7 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "closeout_awarded_rfx_to_rateware") {
-      const result = await closeoutAwardedRfxToRateware(supabase, user, body);
+      const result = await closeoutAwardedRfxToRateware(supabase, user, { ...body, operation_id: operationId });
       await writeAuditLog(
         supabase,
         user,
