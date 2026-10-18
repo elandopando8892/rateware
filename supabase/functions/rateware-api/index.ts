@@ -32883,14 +32883,22 @@ export function createRatewareApiHandler(
       if (!rateId) return jsonResponse({ error: "Rate row id is required." }, 400);
       let query = supabase
         .from("rate_staging")
-        .select(RATE_ROW_RESPONSE_WITH_LEGS_SELECT)
+        .select(`${RATE_ROW_RESPONSE_WITH_LEGS_SELECT},transit_days:extracted_payload->bid->transit_days`)
         .eq("id", rateId)
         .eq("owner_email", user.owner_email);
       const status = cleanText(body.status);
       if (status) query = query.eq("status", status);
-      const result = await query.single();
+      const result = await query.maybeSingle();
       if (result.error) throw result.error;
-      return jsonResponse({ row: result.data });
+      if (!result.data) throw Object.assign(new Error("Rate row not found."), { code: "404" });
+      // Read only the saved bid duration; never return the full extraction payload.
+      const transitDays = result.data?.transit_days;
+      return jsonResponse({ row: {
+        ...result.data,
+        transit_days: typeof transitDays === "number" && Number.isFinite(transitDays) && transitDays >= 0
+          ? transitDays
+          : null
+      } });
     }
 
     if (body.action === "bulk_update_rateware") {

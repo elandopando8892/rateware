@@ -1876,6 +1876,13 @@ function renderRowDetail(row) {
       <div class="staged-review-panel">
         ${renderDrawerBrief(row)}
         ${renderRfxBidProvenance(row)}
+        <section aria-label="Offer conditions">
+          <h3>Offer conditions</h3>
+          <dl>
+            ${detailLine("Valid through", row.valid_through || "Not provided")}
+            ${detailLine("Transit (days)", typeof row.transit_days === "number" && Number.isFinite(row.transit_days) && row.transit_days >= 0 ? String(row.transit_days) : "Not provided")}
+          </dl>
+        </section>
         ${renderFixChecklist(row)}
         ${renderSourceComparison(row)}
         <section>
