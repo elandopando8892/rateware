@@ -15,21 +15,21 @@ const stamp = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d
 // Capture time is not GPS time. The original offset is retained verbatim.
 export function validateObservation(input, binding, now = new Date(), { allowExpiredCapture = false } = {}) {
   const allowed = ['cycleId', 'cycleStartedAt', 'bindingId', 'assignmentVersion', 'unit', 'observedAt', 'tmsStatus', 'gps', 'evidenceRef', 'blockReason'];
-  if (!input || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) fail('Campos de observaciÃ³n no permitidos.');
+  if (!input || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) fail('Campos de observación no permitidos.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(input.cycleId || '') || !/^[a-zA-Z0-9_.-]{1,120}$/.test(input.evidenceRef || '')) fail('Falta un ciclo o recibo verificable.');
-  if (input.bindingId !== binding.id || input.assignmentVersion !== binding.assignment_version || input.unit !== binding.unit || !binding.active) throw new TrackingError(409, 'La asignaciÃ³n cambiÃ³ o no estÃ¡ habilitada.');
-  for (const key of ['cycleStartedAt', 'observedAt']) if (!stamp(input[key]) || Date.parse(input[key]) > +now) fail('La hora de observaciÃ³n o ciclo no es vÃ¡lida.');
+  if (input.bindingId !== binding.id || input.assignmentVersion !== binding.assignment_version || input.unit !== binding.unit || !binding.active) throw new TrackingError(409, 'La asignación cambió o no está habilitada.');
+  for (const key of ['cycleStartedAt', 'observedAt']) if (!stamp(input[key]) || Date.parse(input[key]) > +now) fail('La hora de observación o ciclo no es válida.');
   const observed = Date.parse(input.observedAt), started = Date.parse(input.cycleStartedAt);
-  if (observed < started || observed - started > MAX_AGE_MS || (!allowExpiredCapture && +now - observed > MAX_AGE_MS)) fail('La captura estÃ¡ vencida; solicita una lectura nueva.');
+  if (observed < started || observed - started > MAX_AGE_MS || (!allowExpiredCapture && +now - observed > MAX_AGE_MS)) fail('La captura está vencida; solicita una lectura nueva.');
   if (input.tmsStatus !== null && !states.includes(input.tmsStatus)) fail('Estado TMS no reconocido.');
   if (input.blockReason != null && !blockedReasons.includes(input.blockReason)) fail('Motivo de bloqueo no permitido.');
-  if (input.tmsStatus === null && !input.blockReason) fail('Falta verificaciÃ³n del estado TMS.');
+  if (input.tmsStatus === null && !input.blockReason) fail('Falta verificación del estado TMS.');
   let gps = null, quality = input.blockReason || 'verified';
   if (input.gps != null) {
     const g = input.gps;
-    if (Object.keys(g).some(k => !['timestamp', 'latitude', 'longitude', 'motion'].includes(k)) || !stamp(g.timestamp)) fail('Lectura GPS no vÃ¡lida.');
-    if (![g.latitude, g.longitude].every(Number.isFinite) || Math.abs(g.latitude) > 90 || Math.abs(g.longitude) > 180 || !['moving', 'stopped', 'unknown'].includes(g.motion)) fail('Coordenadas o movimiento no vÃ¡lidos.');
-    if (Date.parse(g.timestamp) > observed) fail('La lectura GPS estÃ¡ en el futuro.');
+    if (Object.keys(g).some(k => !['timestamp', 'latitude', 'longitude', 'motion'].includes(k)) || !stamp(g.timestamp)) fail('Lectura GPS no válida.');
+    if (![g.latitude, g.longitude].every(Number.isFinite) || Math.abs(g.latitude) > 90 || Math.abs(g.longitude) > 180 || !['moving', 'stopped', 'unknown'].includes(g.motion)) fail('Coordenadas o movimiento no válidos.');
+    if (Date.parse(g.timestamp) > observed) fail('La lectura GPS está en el futuro.');
     gps = { timestamp: g.timestamp, latitude: g.latitude, longitude: g.longitude, motion: g.motion };
     if (observed - Date.parse(g.timestamp) > MAX_AGE_MS) quality = 'gps_stale';
   } else if (!terminalStates.has(input.tmsStatus)) quality = input.blockReason || 'gps_unavailable';
@@ -56,9 +56,9 @@ export function customerLoadAction(binding, now = new Date()) {
 }
 const localTime = value => new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'short', timeStyle: 'medium', hour12: false }).format(new Date(value));
 const reasons = {
-  session_unavailable: 'No se pudo verificar la sesiÃ³n del TMS.', gps_unavailable: 'Sin lectura GPS verificable.',
-  assignment_changed: 'La asignaciÃ³n requiere revisiÃ³n.', coordinates_unverified: 'Coordenadas pendientes de verificaciÃ³n.',
-  gps_stale: 'Lectura GPS vencida.', observation_stale: 'Sin comprobaciÃ³n vigente del TMS.',
+  session_unavailable: 'No se pudo verificar la sesión del TMS.', gps_unavailable: 'Sin lectura GPS verificable.',
+  assignment_changed: 'La asignación requiere revisión.', coordinates_unverified: 'Coordenadas pendientes de verificación.',
+  gps_stale: 'Lectura GPS vencida.', observation_stale: 'Sin comprobación vigente del TMS.',
 };
 export function renderTrackingReport(binding, observation, now = new Date()) {
   const action = customerLoadAction(binding, now);
@@ -67,17 +67,17 @@ export function renderTrackingReport(binding, observation, now = new Date()) {
   if (old) quality = 'observation_stale';
   else if (observation.gps && +now - Date.parse(observation.gps.timestamp) > MAX_AGE_MS) quality = 'gps_stale';
   const excluded = terminalStates.has(observation?.tmsStatus);
-  const lines = [`ActualizaciÃ³n de embarque ${binding.segment_label} Â· ${binding.unit}`];
-  lines.push(`Estado TMS${old ? ' (Ãºltimo registrado)' : ''}: ${observation?.tmsStatus || 'sin verificar'}.`);
+  const lines = [`Actualización de embarque ${binding.segment_label} · ${binding.unit}`];
+  lines.push(`Estado TMS${old ? ' (último registrado)' : ''}: ${observation?.tmsStatus || 'sin verificar'}.`);
   if (observation?.observedAt) lines.push(`Comprobado: ${localTime(observation.observedAt)} CDMX.`);
   if (observation?.gps) {
-    lines.push(`Ãšltima lectura GPS: ${localTime(observation.gps.timestamp)} CDMX.`);
+    lines.push(`Última lectura GPS: ${localTime(observation.gps.timestamp)} CDMX.`);
     if (quality === 'verified') {
       lines.push(`GPS: ${{ moving: 'en movimiento', stopped: 'detenido', unknown: 'movimiento no determinado' }[observation.gps.motion]}.`);
       lines.push(`Coordenadas: ${observation.gps.latitude}, ${observation.gps.longitude}.`);
     }
   }
-  if (quality !== 'verified') lines.push(reasons[quality] || 'Lectura pendiente de validaciÃ³n.');
+  if (quality !== 'verified') lines.push(reasons[quality] || 'Lectura pendiente de validación.');
   if (observation?.tmsStatus === 'At destination') lines.push('Llegada registrada por TMS; no confirma descarga ni entrega completada.');
   const blockers = ['group_transport_pending', 'cost_authorization_pending'];
   if (!action) blockers.push('customer_load_link_unverified');
