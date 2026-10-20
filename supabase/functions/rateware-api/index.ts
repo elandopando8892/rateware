@@ -1,3 +1,5 @@
+import { createWhatsappApprovalHandlers } from "./whatsapp-approved-outreach.ts";
+import { listWhatsappQueueEvidence } from "./whatsapp-queue-evidence.ts";
 import { createHandoffPlanClient } from "./handoff-plan.ts";
 import { requireHandoffParity, handoffCommercialPatch, bidSnapshot } from "./handoff-contract.mjs";
 import { OUTREACH_APPROVAL_CONTRACT, OUTREACH_VERSION_CONFLICT, expectedOutreachVersions, requireOutreachVersion } from "./outreach-send-version.mjs";
@@ -4476,7 +4478,7 @@ function relationRecord(value: unknown): Record<string, unknown> {
 }
 
 const OUTREACH_MESSAGE_SELECT = "*, vendors(vendor_name,domain,primary_email,whatsapp_phone,whatsapp_group_name,whatsapp_group_url,whatsapp_group_status,whatsapp_do_not_contact), vendor_whatsapp_groups(group_name,group_url,verification_status,do_not_contact), outreach_campaigns(name,notes,whatsapp_target_mode,group_delivery_policy), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,invitation_token_encrypted,award_role,bid_rate,currency,responded_at)";
-const OUTREACH_MESSAGE_COMPACT_SELECT = "id,created_at,updated_at,campaign_id,template_id,rfx_event_id,rfx_lane_id,rfx_lane_vendor_id,vendor_id,channel,recipient_email,recipient_phone,subject,gmail_compose_url,whatsapp_url,status,sent_at,last_contacted_at,metadata,sender_email,sender_label,sender_connection_status,provider_message_id,delivery_error,delivered_by,bounce_detected_at,bounce_status,whatsapp_target_mode,whatsapp_connection_id,normalized_recipient_phone,vendor_whatsapp_group_id,provider,meta_whatsapp_group_id,whatsapp_template_name,whatsapp_template_language,delivery_status,delivered_at,read_at,failed_at,manual_sent_at,manual_sent_by,ratebook_share_id,send_attempt_id,send_started_at,send_completed_at,gmail_connection_id,sender_address,sender_connection_type,provider_response_status,contact_key,outcome_reason,next_action,next_action_at,suppressed_at,suppression_reason,organization_id, vendors(vendor_name,domain,primary_email,whatsapp_phone,whatsapp_group_name,whatsapp_group_url,whatsapp_group_status,whatsapp_do_not_contact), vendor_whatsapp_groups(group_name,group_url,verification_status,do_not_contact), outreach_campaigns(name,whatsapp_target_mode,group_delivery_policy), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,award_role,bid_rate,currency,responded_at)";
+const OUTREACH_MESSAGE_COMPACT_SELECT: string = "whatsapp_callback:send_result->webhook,whatsapp_send_outcome:send_result->>outcome,whatsapp_send_stage:send_result->>stage,id,created_at,updated_at,campaign_id,template_id,rfx_event_id,rfx_lane_id,rfx_lane_vendor_id,vendor_id,channel,recipient_email,recipient_phone,subject,gmail_compose_url,whatsapp_url,status,sent_at,last_contacted_at,metadata,sender_email,sender_label,sender_connection_status,provider_message_id,delivery_error,delivered_by,bounce_detected_at,bounce_status,whatsapp_target_mode,whatsapp_connection_id,normalized_recipient_phone,vendor_whatsapp_group_id,provider,meta_whatsapp_group_id,whatsapp_template_name,whatsapp_template_language,delivery_status,delivered_at,read_at,failed_at,manual_sent_at,manual_sent_by,ratebook_share_id,send_attempt_id,send_started_at,send_completed_at,gmail_connection_id,sender_address,sender_connection_type,provider_response_status,contact_key,outcome_reason,next_action,next_action_at,suppressed_at,suppression_reason,organization_id, vendors(vendor_name,domain,primary_email,whatsapp_phone,whatsapp_group_name,whatsapp_group_url,whatsapp_group_status,whatsapp_do_not_contact), vendor_whatsapp_groups(group_name,group_url,verification_status,do_not_contact), outreach_campaigns(name,whatsapp_target_mode,group_delivery_policy), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,award_role,bid_rate,currency,responded_at)";
 const OUTREACH_MESSAGE_EVENT_SELECT = "id,created_at,updated_at,campaign_id,template_id,rfx_event_id,rfx_lane_id,rfx_lane_vendor_id,vendor_id,channel,recipient_email,recipient_phone,subject,status,sent_at,last_contacted_at,metadata,sender_email,provider_message_id,delivery_error,bounce_detected_at,bounce_status,delivery_status,delivered_at,read_at,failed_at,manual_sent_at,provider_response_status,contact_key,outcome_reason,next_action,next_action_at,suppressed_at,suppression_reason";
 const OUTREACH_TRACKING_STATES = ["drafted", "queued", "sending", "sent", "delivered", "read", "manual_sent", "delivery_unknown", "failed", "replied", "quoted", "bounced", "suppressed", "archived"] as const;
 type OutreachTrackingState = typeof OUTREACH_TRACKING_STATES[number];
@@ -19781,285 +19783,23 @@ async function updateWhatsappMessageFailure(
     .eq("owner_email", user.owner_email);
 }
 
+const whatsappApprovalHandlers = createWhatsappApprovalHandlers({
+  env: { provider: WHATSAPP_PROVIDER, mode: WHATSAPP_CONNECTION_MODE, accessToken: WHATSAPP_ACCESS_TOKEN,
+    appSecret: WHATSAPP_APP_SECRET, phoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
+    wabaId: WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID, graphApiVersion: WHATSAPP_GRAPH_API_VERSION },
+  internalIdentity: isInternalWhatsappWorkspaceIdentity, decryptSecret: decryptWhatsappSecret,
+  graph: whatsappGraphFetch, expectedVersions: expectedOutreachVersions, requireVersion: requireOutreachVersion,
+  claim: claimOutreachMessageForSend, complete: updateClaimedOutreachMessage, fail: markClaimedOutreachFailure,
+  history: writeOutreachSentHistory, isQuote: isQuoteQueueMessage, operationalError: safeOperationalError,
+});
+
 async function sendWhatsappOutreachMessages(
-  supabase: RatewareSupabaseClient,
-  user: RatewareUser,
-  input: Record<string, unknown>
+  supabase: RatewareSupabaseClient, user: RatewareUser, input: Record<string, unknown>, actor: string
 ) {
   const ids = normalizeBulkIds(input.ids, { label: "WhatsApp message ids", limit: BULK_SEND_LIMIT });
   if (!ids.length) return { sent: 0, failed: 0, rows: [], failures: [] };
-  requireBulkConfirmation(input, {
-    action: "send_whatsapp_outreach_messages",
-    label: "WhatsApp bulk send",
-    count: ids.length
-  });
-  const messagesResult = await supabase
-    .from("outreach_messages")
-    .select("*, vendors(id,vendor_name,domain,whatsapp_do_not_contact,whatsapp_permission_basis)")
-    .eq("owner_email", user.owner_email)
-    .in("id", ids)
-    .order("created_at", { ascending: true });
-  if (messagesResult.error) throw messagesResult.error;
-  if ((messagesResult.data || []).some(isQuoteQueueMessage)) throw Object.assign(new Error("QuoteDesk messages must be approved through the quote delivery queue."), { code: "409" });
-  const rowsById = new Map<string, Record<string, unknown>>();
-  for (const message of messagesResult.data || []) {
-    const id = cleanText(message.id);
-    if (id) rowsById.set(id, message);
-  }
-  const messages: Record<string, unknown>[] = [];
-  const failures: Record<string, unknown>[] = [];
-  const skipped: Record<string, unknown>[] = [];
-  for (const id of ids) {
-    const message = rowsById.get(id);
-    if (!message) {
-      failures.push({ id, reason: "Message was not found in your workspace." });
-      continue;
-    }
-    if (cleanText(message.channel) !== "whatsapp") {
-      failures.push({ id, reason: `Message channel is ${cleanText(message.channel) || "unknown"}; expected WhatsApp.` });
-      continue;
-    }
-    messages.push(message);
-  }
-  if (!messages.length) {
-    return { sent: 0, failed: failures.length, skipped: 0, rows: [], skipped_rows: [], failures };
-  }
-
-  const connection = await validatedWhatsappConnection(supabase, user);
-
-  const now = new Date().toISOString();
-  const rows: Record<string, unknown>[] = [];
-  let deliveryUnknown = 0;
-  const notifierByTemplate = new Map<string, Record<string, unknown>>();
-  for (const message of messages) {
-    const vendor = typeof message.vendors === "object" && message.vendors ? message.vendors as Record<string, unknown> : {};
-    const status = cleanText(message.status)?.toLowerCase();
-    if (!["drafted", "queued", "failed"].includes(status || "")) {
-      failures.push({ id: message.id, reason: `Message is ${status}.` });
-      continue;
-    }
-    if (cleanBoolean(vendor.whatsapp_do_not_contact)) {
-      const reason = "Vendor is marked do-not-contact for WhatsApp.";
-      failures.push({ id: message.id, reason });
-      await updateWhatsappMessageFailure(supabase, user, message, reason, now, connection);
-      continue;
-    }
-    let resolvedMessage = message;
-    try {
-      const outreachTemplateId = cleanText(message.template_id);
-      if (outreachTemplateId) {
-        let notifier = notifierByTemplate.get(outreachTemplateId);
-        if (!notifier) {
-          const result = await publishOutreachTemplateToWhatsapp(supabase, user, { template_id: outreachTemplateId });
-          notifier = result.row as Record<string, unknown>;
-          notifierByTemplate.set(outreachTemplateId, notifier);
-        }
-        resolvedMessage = {
-          ...message,
-          whatsapp_template_name: cleanText(notifier.meta_template_name),
-          whatsapp_template_language: cleanText(notifier.meta_template_language),
-          metadata: {
-            ...objectRecord(message.metadata),
-            whatsapp_template_mapped: true,
-            whatsapp_template_status: whatsappMetaStatus(notifier.meta_template_status),
-            whatsapp_template_error: cleanText(notifier.last_error),
-            whatsapp_template_auto_checked_at: now
-          }
-        };
-      } else if (cleanText(objectRecord(message.metadata).whatsapp_template_source) === "bid_room_follow_up") {
-        const followUp = await ensureBidRoomWhatsappFollowUpTemplate(supabase, user, {
-          language: cleanText(message.whatsapp_template_language) || "en",
-          vendor_name: cleanText(vendor.vendor_name || vendor.domain) || "Carrier",
-          event_name: cleanText(objectRecord(message.metadata).event_name) || "RFx opportunity",
-          question: cleanText(message.whatsapp_text || message.text_body),
-          bid_link: cleanText(objectRecord(message.metadata).bid_link)
-        });
-        resolvedMessage = {
-          ...message,
-          whatsapp_connection_id: followUp.connection.row.id,
-          whatsapp_template_name: followUp.name,
-          whatsapp_template_language: followUp.language,
-          metadata: {
-            ...objectRecord(message.metadata),
-            whatsapp_template_status: followUp.status,
-            whatsapp_template_parameters: followUp.parameters,
-            whatsapp_template_auto_checked_at: now
-          }
-        };
-      }
-    } catch (error) {
-      const reason = safeOperationalError(error);
-      failures.push({ id: message.id, reason });
-      await updateWhatsappMessageFailure(supabase, user, resolvedMessage, reason, now, connection);
-      continue;
-    }
-
-    let claim: Awaited<ReturnType<typeof claimOutreachMessageForSend>> = null;
-    try {
-      claim = await claimOutreachMessageForSend(supabase, user, resolvedMessage, {
-        channel: "whatsapp",
-        provider: "meta",
-        whatsapp_connection_id: connection.row.id,
-        sender_address: cleanText(connection.row.display_phone_number) || null,
-        sender_connection_type: cleanText(connection.row.connection_mode) || "unresolved",
-        send_result: {
-          connection_id: connection.row.id,
-          sender: cleanText(connection.row.display_phone_number) || null
-        }
-      });
-    } catch (error) {
-      failures.push({ id: message.id, reason: safeOperationalError(error) });
-      continue;
-    }
-    if (!claim) {
-      skipped.push({ id: message.id, reason: "Message was already claimed or completed by another request." });
-      continue;
-    }
-
-    let providerAccepted = false;
-    try {
-      const data = await metaSendWhatsappTemplate(resolvedMessage, connection);
-      providerAccepted = true;
-      const providerMessageId = cleanText(data?.messages?.[0]?.id);
-      const senderDisplayPhone = cleanText(connection.row.display_phone_number);
-      const updateResult = await updateClaimedOutreachMessage(supabase, user, message.id, claim.attemptId, {
-        status: "sent",
-        delivery_status: "sent",
-        sent_at: now,
-        send_completed_at: now,
-        last_contacted_at: now,
-        provider: "meta",
-        whatsapp_connection_id: connection.row.id,
-        sender_address: senderDisplayPhone || null,
-        sender_connection_type: cleanText(connection.row.connection_mode) || "unresolved",
-        whatsapp_template_name: cleanText(resolvedMessage.whatsapp_template_name),
-        whatsapp_template_language: cleanText(resolvedMessage.whatsapp_template_language),
-        provider_message_id: providerMessageId,
-        provider_response_status: "accepted",
-        delivery_error: null,
-        send_result: outreachSendResult("completed", {
-          attempt_id: claim.attemptId,
-          channel: "whatsapp",
-          provider: "meta",
-          outcome: "accepted",
-          connection_id: connection.row.id,
-          sender: senderDisplayPhone || null,
-          provider_message_id: providerMessageId,
-          template_name: cleanText(resolvedMessage.whatsapp_template_name),
-          template_language: cleanText(resolvedMessage.whatsapp_template_language)
-        }),
-        metadata: {
-          ...objectRecord(resolvedMessage.metadata),
-          whatsapp_connection_id: connection.row.id,
-          whatsapp_connection_mode: cleanText(connection.row.connection_mode),
-          sender_display_phone: senderDisplayPhone
-        }
-      });
-      if (!updateResult) throw new Error("Meta accepted the message, but its delivery claim could not be finalized.");
-      rows.push(updateResult);
-
-      try {
-        await writeOutreachSentHistory(supabase, withOwner({
-          whatsapp_connection_id: connection.row.id,
-          outreach_message_id: message.id,
-          campaign_id: message.campaign_id,
-          vendor_id: message.vendor_id,
-          rfx_event_id: message.rfx_event_id,
-          channel: "whatsapp",
-          direction: "outbound",
-          status: "sent",
-          subject: message.subject,
-          body_preview: contactPreview(message.whatsapp_body || message.whatsapp_text || message.text_body),
-          occurred_at: now,
-          metadata: {
-            provider: "meta",
-            whatsapp_connection_id: connection.row.id,
-            whatsapp_connection_mode: cleanText(connection.row.connection_mode),
-            sender_connection_type: cleanText(connection.row.connection_mode),
-            sender_display_phone: senderDisplayPhone,
-            phone_number_id: maskedSecret(connection.phoneNumberId),
-            provider_message_id: providerMessageId,
-            template_name: resolvedMessage.whatsapp_template_name,
-            template_language: resolvedMessage.whatsapp_template_language
-          }
-        }, user));
-      } catch (error) {
-        try {
-          await writeAuditLog(supabase, user, "whatsapp.post_send_sync_failed", "outreach_messages", String(message.id), "Meta accepted outreach, but contact history synchronization failed", {
-            provider_message_id: providerMessageId,
-            error: safeOperationalError(error)
-          });
-        } catch (_) {
-          // Provider acceptance is authoritative; diagnostics cannot make the message retryable.
-        }
-      }
-    } catch (error) {
-      const reason = safeOperationalError(error);
-      const uncertain = providerAccepted || Boolean((error as Error & { deliveryUncertain?: boolean })?.deliveryUncertain);
-      if (uncertain) deliveryUnknown += 1;
-      failures.push({ id: message.id, reason, delivery_unknown: uncertain });
-      try {
-        await markClaimedOutreachFailure(supabase, user, resolvedMessage, claim.attemptId, reason, uncertain, {
-          provider: "meta",
-          whatsapp_connection_id: connection.row.id,
-          sender_address: cleanText(connection.row.display_phone_number) || null,
-          sender_connection_type: cleanText(connection.row.connection_mode) || "unresolved",
-          whatsapp_template_name: cleanText(resolvedMessage.whatsapp_template_name) || null,
-          whatsapp_template_language: cleanText(resolvedMessage.whatsapp_template_language) || null,
-          metadata: {
-            ...objectRecord(resolvedMessage.metadata),
-            whatsapp_connection_id: connection.row.id,
-            whatsapp_connection_mode: cleanText(connection.row.connection_mode),
-            whatsapp_last_error: reason,
-            whatsapp_last_error_at: now
-          },
-          send_result: {
-            channel: "whatsapp",
-            provider: "meta",
-            connection_id: connection.row.id,
-            sender: cleanText(connection.row.display_phone_number) || null,
-            template_name: cleanText(resolvedMessage.whatsapp_template_name),
-            template_language: cleanText(resolvedMessage.whatsapp_template_language)
-          }
-        });
-        await writeOutreachDeliveryIssueHistory(supabase, user, resolvedMessage, {
-          channel: "whatsapp",
-          status: uncertain ? "delivery_unknown" : "failed",
-          reason,
-          provider: "meta",
-          connectionId: connection.row.id,
-          sender: cleanText(connection.row.display_phone_number) || null,
-          extraMetadata: {
-            whatsapp_connection_id: connection.row.id,
-            sender_connection_type: cleanText(connection.row.connection_mode),
-            whatsapp_template_name: cleanText(resolvedMessage.whatsapp_template_name),
-            whatsapp_template_language: cleanText(resolvedMessage.whatsapp_template_language),
-            delivery_unknown: uncertain
-          }
-        });
-      } catch (_) {
-        // The send claim remains locked if persistence is unavailable, preventing an unsafe retry.
-      }
-    }
-  }
-  await tryWriteAuditLog(
-    supabase,
-    user,
-    "outreach.whatsapp.bulk_send",
-    "outreach_messages",
-    connection.row.id,
-    `Processed ${ids.length} WhatsApp outreach message(s)`,
-    {
-      requested: ids.length,
-      sent: rows.length,
-      failed: failures.length,
-      skipped: skipped.length,
-      delivery_unknown: deliveryUnknown,
-      whatsapp_connection_id: connection.row.id,
-      sender_address: cleanText(connection.row.display_phone_number) || null
-    }
-  );
-  return { sent: rows.length, failed: failures.length, skipped: skipped.length, delivery_unknown: deliveryUnknown, rows, failures, skipped_rows: skipped };
+  requireBulkConfirmation(input, { action: "send_whatsapp_outreach_messages", label: "WhatsApp bulk send", count: ids.length });
+  return await whatsappApprovalHandlers.send(supabase, user, input, ids, actor);
 }
 
 async function ensureBidRoomCarrierFollowUpCampaign(
@@ -31241,9 +30981,14 @@ export function createRatewareApiHandler(
       const result = await query.maybeSingle();
       if (result.error) throw result.error;
       if (!result.data) return jsonResponse({ row: null });
-      const rows = await hydrateOutreachInvitationTokens(supabase, [result.data as Record<string, unknown>]);
+      // WhatsApp review uses the persisted draft parameters, without migrating
+      // legacy invitation tokens or refreshing/provider-publishing a template.
+      const rows = result.data.channel === "whatsapp" ? [result.data as Record<string, unknown>]
+        : await hydrateOutreachInvitationTokens(supabase, [result.data as Record<string, unknown>]);
       const diagnostic = rows[0] ? await readLatestOutreachIssue(supabase, user.owner_email, rows[0]) : {};
-      return jsonResponse({ row: rows[0] ? { ...enrichOutreachMessage(rows[0]), ...diagnostic } : null });
+      const whatsapp = rows[0]?.channel === "whatsapp"
+        ? await whatsappApprovalHandlers.review(supabase, user, rows[0], cleanText(claims.sub) || "") : {};
+      return jsonResponse({ row: rows[0] ? { ...enrichOutreachMessage(rows[0]), ...diagnostic, ...whatsapp } : null });
     }
 
     if (body.action === "send_outreach_messages") {
@@ -31262,7 +31007,7 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "send_whatsapp_outreach_messages") {
-      const result = await sendWhatsappOutreachMessages(supabase, user, body);
+      const result = await sendWhatsappOutreachMessages(supabase, user, body, cleanText(claims.sub) || "");
       return jsonResponse(result);
     }
 
@@ -31544,6 +31289,10 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "list_contact_history") {
+      if (body.whatsapp_view !== undefined) {
+        const result = await listWhatsappQueueEvidence(supabase, user, body);
+        return jsonResponse(result.data, result.status);
+      }
       const offset = Math.max(Number(body.offset || 0), 0);
       const requestedLimit = Number(body.limit);
       const limit = Number.isFinite(requestedLimit) && requestedLimit > 0

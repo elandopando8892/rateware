@@ -1,4 +1,6 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { trackingEventReceipts, TRACKING_SENDER } from './tracking-sender.mjs';
+import { normalizeMetaPhone, parseCallback, callbackReceiptId, selectInboundAssociation, callbackProjection } from "./callback-policy.mjs";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.111.0";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -21,23 +23,8 @@ function cleanText(value: unknown) {
   return String(value).trim();
 }
 
-function normalizeWhatsappPhone(value: unknown) {
-  const digits = cleanText(value).replace(/[^\d]/g, "");
-  if (!digits) return "";
-  if (digits.length === 10) return `1${digits}`;
-  return digits;
-}
-
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function deliveryResult(stage: string, details: Record<string, unknown> = {}) {
-  return {
-    stage,
-    recorded_at: new Date().toISOString(),
-    ...details
-  };
 }
 
 function arrayValue(value: unknown): Record<string, unknown>[] {
@@ -120,7 +107,7 @@ async function findWebhookConnection(
   const metadata = objectRecord(value.metadata);
   const phoneNumberId = cleanText(metadata.phone_number_id);
   const wabaId = cleanText(entry.id);
-  const select = "id,owner_user_id,owner_email,organization_id,connection_mode,status,meta_phone_number_id,phone_number_id,meta_waba_id,waba_id,display_phone_number,app_secret_encrypted,updated_at";
+  const select = "id,owner_user_id,owner_email,organization_id,connection_mode,status,meta_phone_number_id,phone_number_id,meta_waba_id,waba_id,display_phone_number,app_secret_encrypted,updated_at,metadata";
   const candidates = new Map<string, Record<string, unknown>>();
   const addMatches = async (column: string, valueToMatch: string) => {
     if (!valueToMatch) return;
@@ -190,262 +177,163 @@ async function signatureValid(request: Request, body: string, appSecret: string)
   return constantTimeEquals(hex(digest), signature);
 }
 
-async function outreachMessageByProviderId(
-  supabase: WhatsappWebhookSupabaseClient,
-  providerMessageId: string,
-  connection: Record<string, unknown>
-) {
-  const connectionId = cleanText(connection.id);
-  const exact = await supabase
-    .from("outreach_messages")
-    .select("*")
-    .eq("provider_message_id", providerMessageId)
-    .eq("whatsapp_connection_id", connectionId)
-    .limit(2);
-  if (exact.error) throw exact.error;
-  if ((exact.data || []).length > 1) throw new Error("Ambiguous WhatsApp delivery status target.");
-  if (exact.data?.[0]) return exact.data[0];
-
-  // Backfill compatibility is owner-scoped. It must never attach an old
-  // connection-less message owned by a different workspace.
-  let legacyQuery = supabase
-    .from("outreach_messages")
-    .select("*")
-    .eq("provider_message_id", providerMessageId)
-    .is("whatsapp_connection_id", null);
-  const ownerUserId = cleanText(connection.owner_user_id);
-  const ownerEmail = cleanText(connection.owner_email);
-  if (ownerUserId) legacyQuery = legacyQuery.eq("owner_user_id", ownerUserId);
-  else if (ownerEmail) legacyQuery = legacyQuery.eq("owner_email", ownerEmail);
-  else return null;
-  const legacy = await legacyQuery.limit(2);
-  if (legacy.error) throw legacy.error;
-  if ((legacy.data || []).length > 1) throw new Error("Ambiguous legacy WhatsApp delivery status target.");
-  return legacy.data?.[0] || null;
+// Scope every lookup, including rows which already carry a connection id.
+function owned(query: any, connection: Record<string, unknown>) {
+  const email = cleanText(connection.owner_email);
+  const user = cleanText(connection.owner_user_id);
+  if (!email) throw new Error("CALLBACK_OWNER_UNRESOLVED");
+  query = query.eq("owner_email", email);
+  if (user) query = query.eq("owner_user_id", user);
+  return query;
 }
 
-// Meta reports the sender as bare international digits, and a Mexican mobile
-// may still carry the old "1" after 52, while outreach stores the number it
-// sent to as "+52...". Match every spelling of the same phone.
-function inboundPhoneCandidates(fromPhone: string) {
-  const spellings = new Set([fromPhone]);
-  if (/^521\d{10}$/.test(fromPhone)) spellings.add(`52${fromPhone.slice(3)}`);
-  if (/^52\d{10}$/.test(fromPhone)) spellings.add(`521${fromPhone.slice(2)}`);
-  return [...spellings].flatMap((digits) => [`+${digits}`, digits]);
+function phoneSpellings(phone: string) {
+  const digits = normalizeMetaPhone(phone);
+  if (!digits) return [];
+  const phones = [digits];
+  if (/^52\d{10}$/.test(digits)) phones.push(`521${digits.slice(2)}`);
+  return phones.flatMap(value => [value, `+${value}`]);
 }
 
-async function latestOutboundForInbound(
-  supabase: WhatsappWebhookSupabaseClient,
-  fromPhone: string,
-  connection: Record<string, unknown>
-) {
-  const connectionId = cleanText(connection.id);
-  const phones = inboundPhoneCandidates(fromPhone);
-  const exact = await supabase
-    .from("outreach_messages")
-    .select("*")
-    .eq("channel", "whatsapp")
-    .in("normalized_recipient_phone", phones)
-    .eq("whatsapp_connection_id", connectionId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (exact.error) throw exact.error;
-  if (exact.data) return exact.data;
-
-  let legacyQuery = supabase
-    .from("outreach_messages")
-    .select("*")
-    .eq("channel", "whatsapp")
-    .in("normalized_recipient_phone", phones)
-    .is("whatsapp_connection_id", null);
-  const ownerUserId = cleanText(connection.owner_user_id);
-  const ownerEmail = cleanText(connection.owner_email);
-  if (ownerUserId) legacyQuery = legacyQuery.eq("owner_user_id", ownerUserId);
-  else if (ownerEmail) legacyQuery = legacyQuery.eq("owner_email", ownerEmail);
-  else return null;
-  const legacy = await legacyQuery
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (legacy.error) throw legacy.error;
-  return legacy.data || null;
-}
-
-function statusPatch(statusRow: Record<string, unknown>, now: string) {
-  const providerStatus = cleanText(statusRow.status).toLowerCase();
-  const providerMessageId = cleanText(statusRow.id);
-  const errors = arrayValue(statusRow.errors);
-  const errorText = errors
-    .map((error) => cleanText(error.message || error.title || error.code))
-    .filter(Boolean)
-    .join(" | ");
-  const patch: Record<string, unknown> = {
-    provider: "meta",
-    delivery_status: providerStatus || null,
-    updated_at: now
-  };
-  if (providerStatus === "sent") {
-    patch.status = "sent";
-    patch.sent_at = now;
-    patch.last_contacted_at = now;
-    patch.delivery_error = null;
-  } else if (providerStatus === "delivered") {
-    patch.status = "delivered";
-    patch.delivered_at = now;
-    patch.delivery_error = null;
-  } else if (providerStatus === "read") {
-    patch.status = "read";
-    patch.read_at = now;
-    patch.delivery_error = null;
-  } else if (providerStatus === "failed") {
-    patch.status = "failed";
-    patch.failed_at = now;
-    patch.delivery_error = errorText || "Meta WhatsApp delivery failed.";
+async function scopedMessages(supabase: WhatsappWebhookSupabaseClient, connection: Record<string, unknown>, event: any) {
+  const rows = [];
+  // Both exact and owner-scoped legacy rows participate in ambiguity detection.
+  for (const legacy of [false, true]) {
+    let query = owned(supabase.from("outreach_messages").select("*").eq("channel", "whatsapp"), connection);
+    query = legacy ? query.is("whatsapp_connection_id", null) : query.eq("whatsapp_connection_id", connection.id);
+    if (event.kind === "status") query = query.eq("provider_message_id", event.provider_message_id);
+    else {
+      query = query.in("normalized_recipient_phone", phoneSpellings(event.from_phone));
+      if (event.context_id) query = query.eq("provider_message_id", event.context_id);
+    }
+    const result = await query.limit(201);
+    if (result.error) throw result.error;
+    // A truncated result must never look like a unique conversation.
+    if ((result.data || []).length >= 201) throw new Error("CALLBACK_CANDIDATE_LIMIT");
+    rows.push(...(result.data || []));
   }
-  return { providerMessageId, providerStatus, patch, errorText };
+  return rows;
 }
 
-async function recordStatusUpdate(
-  supabase: WhatsappWebhookSupabaseClient,
-  statusRow: Record<string, unknown>,
-  connection: Record<string, unknown>,
-  webhookIdentity: { phoneNumberId: string; wabaId: string }
-) {
-  const now = new Date().toISOString();
-  const { providerMessageId, providerStatus, patch, errorText } = statusPatch(statusRow, now);
-  if (!providerMessageId || !providerStatus) return false;
-  const connectionId = cleanText(connection.id);
-  const senderAddress = cleanText(connection.display_phone_number) || null;
-  patch.whatsapp_connection_id = connectionId;
-  patch.sender_address = senderAddress;
-  patch.sender_connection_type = cleanText(connection.connection_mode) || "unresolved";
-  patch.provider_response_status = providerStatus;
-  patch.send_result = deliveryResult("webhook_status", {
-    channel: "whatsapp",
-    provider: "meta",
-    outcome: providerStatus,
-    connection_id: connectionId,
-    sender: senderAddress,
-    provider_message_id: providerMessageId,
-    webhook_phone_number_id: webhookIdentity.phoneNumberId,
-    webhook_waba_id: webhookIdentity.wabaId,
-    ...(errorText ? { error: errorText } : {})
-  });
-  const target = await outreachMessageByProviderId(supabase, providerMessageId, connection);
-  if (!target) return false;
-  const update = await supabase
-    .from("outreach_messages")
-    .update(patch)
-    .eq("id", target.id)
-    .select("*")
-    .single();
-  if (update.error) throw update.error;
-  const message = update.data;
-  if (!message) return false;
-  const history = await supabase.from("contact_history").insert({
-    owner_user_id: message.owner_user_id,
-    owner_email: message.owner_email,
-    whatsapp_connection_id: connectionId,
-    outreach_message_id: message.id,
-    campaign_id: message.campaign_id,
-    vendor_id: message.vendor_id,
-    rfx_event_id: message.rfx_event_id,
-    channel: "whatsapp",
-    direction: "outbound",
-    status: providerStatus,
-    subject: message.subject,
-    body_preview: errorText || providerStatus,
-    occurred_at: now,
-    metadata: {
-      provider: "meta",
-      whatsapp_connection_id: connectionId,
-      sender_address: senderAddress,
-      sender_connection_type: cleanText(connection.connection_mode) || "unresolved",
-      sender_display_phone: connection.display_phone_number || null,
-      webhook_phone_number_id: webhookIdentity.phoneNumberId,
-      webhook_waba_id: webhookIdentity.wabaId,
-      provider_message_id: providerMessageId,
-      result: objectRecord(patch.send_result)
+function binding(message: any) {
+  return message ? Object.fromEntries(["id","owner_email","owner_user_id","provider_message_id","normalized_recipient_phone","whatsapp_connection_id","rfx_event_id","vendor_id","campaign_id"].map(key => [key,message[key] ?? null])) : null;
+}
+
+async function readReceipt(supabase: WhatsappWebhookSupabaseClient, connection: Record<string, unknown>, id: string) {
+  const result = await owned(supabase.from("contact_history").select("*").eq("id",id).eq("whatsapp_connection_id",connection.id),connection).maybeSingle();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+async function saveCallbackReceipt(supabase: WhatsappWebhookSupabaseClient, connection: Record<string, unknown>, event: any, webhookIdentity: {phoneNumberId:string;wabaId:string}) {
+  const id = await callbackReceiptId(connection,event);
+  const previous = await readReceipt(supabase,connection,id);
+  if (previous) return previous;
+  const candidates = await scopedMessages(supabase,connection,event);
+  const association = event.kind === "inbound" ? selectInboundAssociation(candidates,event) : (() => {
+    const matched = candidates.filter(row => !event.from_phone || normalizeMetaPhone(row.normalized_recipient_phone) === event.from_phone);
+    return matched.length === 1 ? {message:matched[0],reason:"provider_id"} : {message:null,reason:"status_target_unresolved"};
+  })();
+  const message = association.message;
+  const receivedAt = new Date().toISOString();
+  const row = {
+    id,owner_email:connection.owner_email,owner_user_id:connection.owner_user_id || null,whatsapp_connection_id:connection.id,
+    outreach_message_id:message?.id || null,campaign_id:message?.campaign_id || null,vendor_id:message?.vendor_id || null,rfx_event_id:message?.rfx_event_id || null,
+    channel:"whatsapp",direction:event.kind === "inbound" ? "inbound" : "outbound",status:event.status,
+    subject:message?.subject || null,body_preview:event.body,occurred_at:event.occurred_at,
+    metadata:{provider:"meta",whatsapp_connection_id:connection.id,provider_message_id:event.provider_message_id,
+      sender_address:connection.display_phone_number || null,sender_display_phone:connection.display_phone_number || null,
+      sender_connection_type:connection.connection_mode || "unresolved",webhook_phone_number_id:webhookIdentity.phoneNumberId,webhook_waba_id:webhookIdentity.wabaId,
+      from_phone:event.from_phone || null,received_at:receivedAt,callback:event,
+      association:{state:message ? "linked" : "pending",reason:association.reason},target_binding:binding(message)}
+  };
+  // Reuse the existing UUID PK. The winner freezes both content and association.
+  const insert = await supabase.from("contact_history").upsert(row,{onConflict:"id",ignoreDuplicates:true});
+  if (insert.error) throw insert.error;
+  const persisted = await readReceipt(supabase,connection,id);
+  if (!persisted) throw new Error("CALLBACK_RECEIPT_NOT_CONFIRMED");
+  return persisted;
+}
+
+async function reconcilePendingStatus(supabase: WhatsappWebhookSupabaseClient, connection: Record<string, unknown>, receipt: any) {
+  const metadata = objectRecord(receipt.metadata);
+  const association = objectRecord(metadata.association);
+  if (receipt.outreach_message_id || receipt.direction !== "outbound" || association.state !== "pending" || association.reason !== "status_target_unresolved") return receipt;
+  const event = objectRecord(metadata.callback);
+  if (await callbackReceiptId(connection,event) !== receipt.id) throw new Error("CALLBACK_RECEIPT_MISMATCH");
+  const candidates = (await scopedMessages(supabase,connection,event)).filter(row => !event.from_phone || normalizeMetaPhone(row.normalized_recipient_phone) === event.from_phone);
+  if (candidates.length !== 1) return receipt;
+  const message = candidates[0];
+  const patch = {outreach_message_id:message.id,campaign_id:message.campaign_id || null,vendor_id:message.vendor_id || null,rfx_event_id:message.rfx_event_id || null,subject:message.subject || null,
+    metadata:{...metadata,target_binding:binding(message),association:{state:"linked",reason:"provider_id_reconciled",initial_reason:association.reason,resolved_at:new Date().toISOString()}}};
+  const result = await owned(supabase.from("contact_history").update(patch).eq("id",receipt.id).eq("whatsapp_connection_id",connection.id)
+    .is("outreach_message_id",null).eq("metadata->association->>state","pending").eq("metadata->association->>reason","status_target_unresolved"),connection);
+  if (result.error) throw result.error;
+  const winner = await readReceipt(supabase,connection,receipt.id);
+  if (!winner) throw new Error("CALLBACK_RECEIPT_NOT_CONFIRMED");
+  return winner;
+}
+
+async function hasOpenAttempt(supabase: WhatsappWebhookSupabaseClient, connection: Record<string, unknown>, event: Record<string, unknown>) {
+  for (const legacy of [false,true]) {
+    let query = owned(supabase.from("outreach_messages").select("id").eq("channel","whatsapp").eq("status","sending"),connection);
+    query = legacy ? query.is("whatsapp_connection_id",null) : query.eq("whatsapp_connection_id",connection.id);
+    if (event.from_phone) query = query.in("normalized_recipient_phone",phoneSpellings(String(event.from_phone)));
+    const result = await query.limit(1);
+    if (result.error) throw result.error;
+    if (result.data?.length) return true;
+  }
+  return false;
+}
+
+function exact(query: any, key: string, value: unknown) {
+  return value === null || value === undefined ? query.is(key,null) : query.eq(key,value);
+}
+
+async function projectCallbackReceipt(supabase: WhatsappWebhookSupabaseClient, connection: Record<string, unknown>, receipt: any) {
+  if (!receipt.outreach_message_id) return; // Visible pending evidence, no guessed RFx.
+  const targetBinding = objectRecord(objectRecord(receipt.metadata).target_binding);
+  const event = objectRecord(objectRecord(receipt.metadata).callback);
+  if (await callbackReceiptId(connection,event) !== receipt.id) throw new Error("CALLBACK_RECEIPT_MISMATCH");
+  for (let retry=0;retry<4;retry++) {
+    const result = await owned(supabase.from("outreach_messages").select("*").eq("id",receipt.outreach_message_id),connection).maybeSingle();
+    if (result.error) throw result.error;
+    const current = result.data;
+    if (!current || current.channel !== "whatsapp") throw new Error("CALLBACK_TARGET_CHANGED");
+    for (const key of Object.keys(targetBinding)) {
+      // The first successful projection may bind a legacy row to this connection.
+      if (key === "whatsapp_connection_id" && targetBinding[key] === null && current[key] === connection.id) continue;
+      if ((current[key] ?? null) !== targetBinding[key]) throw new Error("CALLBACK_TARGET_CHANGED");
     }
-  });
-  if (history.error) throw history.error;
+    // Only the sender finalizes its claim/approval receipt. A provider callback
+    // may arrive before that write; keep its evidence and ask for redelivery.
+    if (current.status === "sending" || (current.send_attempt_id && !current.send_completed_at)) throw new Error("CALLBACK_SEND_ATTEMPT_OPEN");
+    const patch = callbackProjection(current,receipt,new Date().toISOString());
+    if (!patch) return;
+    Object.assign(patch,{whatsapp_connection_id:connection.id,sender_address:connection.display_phone_number || current.sender_address || null,sender_connection_type:connection.connection_mode || current.sender_connection_type || "unresolved"});
+    let update = owned(supabase.from("outreach_messages").update(patch).eq("id",current.id).eq("channel","whatsapp"),connection);
+    for (const key of ["updated_at","status","delivery_status",...Object.keys(targetBinding).filter(key => key !== "id")]) update = exact(update,key,current[key]);
+    const saved = await update.select("id").maybeSingle();
+    if (saved.error) throw saved.error;
+    if (saved.data) return;
+  }
+  // Re-delivery resumes from the immutable receipt; never dispatches outbound.
+  throw new Error("CALLBACK_PROJECTION_CONFLICT");
+}
+
+async function recordCallback(supabase: WhatsappWebhookSupabaseClient, event: any, connection: Record<string, unknown>, webhookIdentity: {phoneNumberId:string;wabaId:string}) {
+  let receipt = await saveCallbackReceipt(supabase,connection,event,webhookIdentity);
+  receipt = await reconcilePendingStatus(supabase,connection,receipt);
+  if (!receipt.outreach_message_id && receipt.direction === "outbound") {
+    const persistedEvent = objectRecord(objectRecord(receipt.metadata).callback);
+    if (await hasOpenAttempt(supabase,connection,persistedEvent)) throw new Error("CALLBACK_SEND_ATTEMPT_OPEN");
+    // Recheck after the open-attempt read, to cover completion between lookups.
+    receipt = await reconcilePendingStatus(supabase,connection,receipt);
+  }
+  await projectCallbackReceipt(supabase,connection,receipt);
   return true;
 }
 
-function inboundText(message: Record<string, unknown>) {
-  const text = objectRecord(message.text);
-  if (text.body) return cleanText(text.body);
-  const button = objectRecord(message.button);
-  if (button.text) return cleanText(button.text);
-  const interactive = objectRecord(message.interactive);
-  const buttonReply = objectRecord(interactive.button_reply);
-  const listReply = objectRecord(interactive.list_reply);
-  return cleanText(buttonReply.title || listReply.title || message.type || "Inbound WhatsApp message");
-}
-
-async function recordInboundMessage(
-  supabase: WhatsappWebhookSupabaseClient,
-  inbound: Record<string, unknown>,
-  connection: Record<string, unknown>,
-  webhookIdentity: { phoneNumberId: string; wabaId: string }
-) {
-  const now = new Date().toISOString();
-  const fromPhone = normalizeWhatsappPhone(inbound.from);
-  if (!fromPhone) return false;
-  const message = await latestOutboundForInbound(supabase, fromPhone, connection);
-  if (!message) return false;
-  const body = inboundText(inbound);
-  const history = await supabase.from("contact_history").insert({
-    owner_user_id: message.owner_user_id,
-    owner_email: message.owner_email,
-    whatsapp_connection_id: connection.id,
-    outreach_message_id: message.id,
-    campaign_id: message.campaign_id,
-    vendor_id: message.vendor_id,
-    rfx_event_id: message.rfx_event_id,
-    channel: "whatsapp",
-    direction: "inbound",
-    status: "replied",
-    subject: message.subject,
-    body_preview: body,
-    occurred_at: now,
-    metadata: {
-      provider: "meta",
-      whatsapp_connection_id: connection.id,
-      sender_display_phone: connection.display_phone_number || null,
-      webhook_phone_number_id: webhookIdentity.phoneNumberId,
-      webhook_waba_id: webhookIdentity.wabaId,
-      provider_message_id: cleanText(inbound.id),
-      from_phone: fromPhone,
-      inbound_payload: inbound
-    }
-  });
-  if (history.error) throw history.error;
-  await supabase
-    .from("outreach_messages")
-    .update({
-      status: "replied",
-      delivery_status: "replied",
-      whatsapp_connection_id: connection.id,
-      sender_address: cleanText(connection.display_phone_number || message.sender_address) || null,
-      sender_connection_type: cleanText(connection.connection_mode || message.sender_connection_type) || "unresolved",
-      provider_response_status: "replied",
-      send_result: deliveryResult("inbound_reply", {
-        channel: "whatsapp",
-        provider: "meta",
-        outcome: "replied",
-        connection_id: connection.id,
-        sender: cleanText(connection.display_phone_number || message.sender_address) || null,
-        provider_message_id: cleanText(inbound.id),
-        webhook_phone_number_id: webhookIdentity.phoneNumberId,
-        webhook_waba_id: webhookIdentity.wabaId
-      }),
-      updated_at: now
-    })
-    .eq("id", message.id);
-  return true;
-}
 
 Deno.serve(async (request) => {
   const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
@@ -510,18 +398,38 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: "Invalid Meta webhook signature." }, 403);
     }
 
+    const callbacks = [];
     let processed = 0;
     for (const { value, connection, phoneNumberId, wabaId } of resolvedChanges) {
-      const webhookIdentity = { phoneNumberId, wabaId };
-      for (const status of arrayValue(value.statuses)) {
-        if (await recordStatusUpdate(supabase, status, connection, webhookIdentity)) processed += 1;
+      const webhookIdentity = {phoneNumberId,wabaId};
+      // Explicit receive-only tracking route. Never enter vendor/autoreply handlers.
+      if (phoneNumberId === TRACKING_SENDER.phoneId || wabaId === TRACKING_SENDER.wabaId) {
+        if (objectRecord(connection.metadata).purpose !== 'fleetrocket_tracking') return jsonResponse({error:'Tracking sender is not configured.'},403);
+        const receipts = await trackingEventReceipts(value,{phoneNumberId,wabaId});
+        for (const receipt of receipts) {
+          const {data,error} = await supabase.rpc('markos_tracking_sender_event',{p_connection_id:connection.id,p_event:receipt});
+          if(error) throw new Error('Tracking event persistence failed.');
+          if(data) processed += 1;
+        }
+        continue;
       }
-      for (const message of arrayValue(value.messages)) {
-        if (await recordInboundMessage(supabase, message, connection, webhookIdentity)) processed += 1;
+      if (!cleanText(connection.owner_email)) return jsonResponse({error:"WhatsApp webhook owner could not be resolved."},403);
+      for (const [key,kind] of [["statuses","status"],["messages","inbound"]]) {
+        const items = value[key];
+        if (items !== undefined && !Array.isArray(items)) throw new Error("INVALID_CALLBACK");
+        for (const row of (items as unknown[] || [])) {
+          const event = parseCallback(kind,row);
+          if (event) callbacks.push({event,connection,webhookIdentity:{phoneNumberId,wabaId}});
+        }
       }
+    }
+    for (const {event,connection,webhookIdentity} of callbacks) {
+      if (await recordCallback(supabase,event,connection,webhookIdentity)) processed++;
     }
     return jsonResponse({ ok: true, processed });
   } catch (error) {
-    return jsonResponse({ error: error instanceof Error ? error.message : "WhatsApp webhook failed." }, 400);
+    const malformed = error instanceof SyntaxError || (error instanceof Error && error.message === "INVALID_CALLBACK");
+    return jsonResponse({ error: malformed ? "Invalid WhatsApp callback." : "WhatsApp callback could not be persisted. Retry the same callback." }, malformed ? 400 : 503);
   }
 });
+
