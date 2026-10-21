@@ -32,6 +32,7 @@ import {
 import { errorState, loadingState, stateBlock, tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { updatePlatform55Shell } from "./platform55-shell.js";
+import { fetchFr8OnboardAptos, fr8OnboardBadgeData } from "./fr8onboard-service.js";
 
 const form = document.querySelector("#vendor-form");
 const vendorTabs = document.querySelectorAll("[data-vendor-tab]");
@@ -4607,6 +4608,23 @@ async function loadDrawerVendorRelationship(vendorId) {
   }
 }
 
+// Fr8Onboard is optional: if it is not configured or unavailable the drawer simply shows no badge.
+async function loadDrawerFr8OnboardBadge(vendorId) {
+  const contextVersion = vendorDrawerContextVersion;
+  try {
+    const { aptos = [] } = await fetchFr8OnboardAptos([vendorId]);
+    if (contextVersion !== vendorDrawerContextVersion || activeDrawerVendorId !== vendorId) return;
+    const badge = fr8OnboardBadgeData(aptos);
+    if (!badge) return;
+    document.querySelector("#drawer-badges")?.insertAdjacentHTML(
+      "beforeend",
+      `<span class="status-pill ${escapeHtml(badge.tone)}" title="${escapeHtml(badge.entity || "")}">${escapeHtml(badge.label)}</span>`
+    );
+  } catch {
+    // Fr8Onboard unavailable: keep the drawer as it was.
+  }
+}
+
 function openVendorDrawer(vendorId, options = {}) {
   const vendor = findVendorById(vendorId);
   if (!vendor) return;
@@ -4617,6 +4635,7 @@ function openVendorDrawer(vendorId, options = {}) {
   document.querySelector("#drawer-vendor-name").textContent = vendor.vendor_name || "Vendor";
   if (drawerLogoPreview) drawerLogoPreview.innerHTML = renderVendorAvatar(vendor, "drawer");
   document.querySelector("#drawer-badges").innerHTML = renderDrawerBadges(vendor);
+  loadDrawerFr8OnboardBadge(vendor.id);
   document.querySelector("#drawer-quick-actions").innerHTML = renderDrawerQuickActions(vendor);
   setDrawerValue("#drawer-source", renderVendorSource(vendor));
   setDrawerValue("#drawer-completeness", `${health.score}% ${health.label}`);
@@ -5873,6 +5892,7 @@ function refreshDrawerIdentity(vendor) {
   document.querySelector("#drawer-vendor-name").textContent = vendor.vendor_name || "Vendor";
   if (drawerLogoPreview) drawerLogoPreview.innerHTML = renderVendorAvatar(vendor, "drawer");
   document.querySelector("#drawer-badges").innerHTML = renderDrawerBadges(vendor);
+  loadDrawerFr8OnboardBadge(vendor.id);
   document.querySelector("#drawer-quick-actions").innerHTML = renderDrawerQuickActions(vendor);
 }
 

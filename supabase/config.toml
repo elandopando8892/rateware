@@ -421,6 +421,9 @@ verify_jwt = false
 [functions.rateware-api]
 verify_jwt = false
 
+[functions.fr8onboard-aptos]
+verify_jwt = false
+
 [functions.shipper-directory-api]
 verify_jwt = false
 
