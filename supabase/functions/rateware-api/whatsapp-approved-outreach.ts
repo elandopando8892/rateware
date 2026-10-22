@@ -22,6 +22,19 @@ const conflict = () => Object.assign(new Error('OUTREACH_VERSION_CONFLICT: revie
 const string = (v: unknown) => typeof v === 'string' ? v : '';
 const record = (v: unknown): Row => v && typeof v === 'object' && !Array.isArray(v) ? v as Row : {};
 const e164 = (v: unknown) => /^\+[1-9]\d{7,14}$/.test(string(v));
+// Legacy drafts retain the digits Meta receives and separately store explicit
+// international form. Accept only an exact pair: never infer or change a country.
+const exactRecipient = (raw: unknown, normalized: unknown) => e164(raw)
+  ? !normalized || normalized === raw
+  : /^[1-9]\d{7,14}$/.test(string(raw)) && e164(normalized) && normalized === `+${raw}`;
+// Meta's display_phone_number may contain presentation spaces/punctuation.
+// Keep the original string in the signed snapshot; compare only its phone value.
+function explicitSenderPhone(value: unknown): string {
+  const display = string(value).trim();
+  if (!/^\+[\d\s().-]+$/.test(display)) return '';
+  const canonical = display.replace(/[\s().-]/g, '');
+  return e164(canonical) ? canonical : '';
+}
 const sendable = (m: Row) => ['drafted', 'queued', 'failed'].includes(m.status) && !m.sent_at && !m.manual_sent_at
   && !m.provider_message_id && !m.suppressed_at && !m.bounce_status
   && record(m.send_result).outcome !== 'delivery_unknown'
@@ -48,7 +61,7 @@ export function createWhatsappApprovalHandlers(deps: Dependencies) {
   async function prepare(db: any, user: Row, m: Row, actor: string) {
     if (!actor || !user.owner_email || m.owner_email !== user.owner_email || m.channel !== 'whatsapp'
       || !m.rfx_event_id || !m.vendor_id || !m.template_id || m.meta_whatsapp_group_id || deps.isQuote(m)) throw required('Only an owned individual RFx invitation is supported.');
-    if (!e164(m.recipient_phone) || (m.normalized_recipient_phone && m.normalized_recipient_phone !== m.recipient_phone)) throw required('Recipient requires an explicit E.164 country code.');
+    if (!exactRecipient(m.recipient_phone, m.normalized_recipient_phone)) throw required('Recipient requires an explicit E.164 country code.');
     const vendor = await one(db.from('vendors').select('id,whatsapp_do_not_contact,whatsapp_permission_basis')
       .eq('owner_email', user.owner_email).eq('id', m.vendor_id), 'Contact permission is missing.');
     if (vendor.whatsapp_do_not_contact || !['consent', 'contractual', 'manual'].includes(vendor.whatsapp_permission_basis)) throw required('Contact permission is missing or excluded.');
@@ -60,7 +73,7 @@ export function createWhatsappApprovalHandlers(deps: Dependencies) {
       || (!internal && row.connection_mode !== 'tenant_connected')) throw required('Sender is not available to this workspace.');
     const phoneNumberId = string(row.meta_phone_number_id || row.phone_number_id);
     const wabaId = string(row.meta_waba_id || row.waba_id);
-    if (!phoneNumberId || !wabaId || !e164(row.display_phone_number)) throw required('Sender identity is incomplete.');
+    if (!phoneNumberId || !wabaId || !explicitSenderPhone(row.display_phone_number)) throw required('Sender identity is incomplete.');
     if (internal && (phoneNumberId !== deps.env.phoneNumberId || wabaId !== deps.env.wabaId
       || deps.env.provider !== 'meta' || deps.env.mode !== 'internal_managed')) throw required('Sender configuration changed.');
     const accessToken = internal ? deps.env.accessToken : await deps.decryptSecret(row.access_token_encrypted);
@@ -131,7 +144,7 @@ export function createWhatsappApprovalHandlers(deps: Dependencies) {
     const phone = await deps.graph(c, `${c.phoneNumberId}?fields=id,display_phone_number`);
     // Meta may format its phone with spaces. Comparison never infers a country.
     const providerPhone = '+' + string(phone.display_phone_number).replace(/\D/g, '');
-    if (phone.id !== c.phoneNumberId || providerPhone !== s.sender.address) throw conflict();
+    if (phone.id !== c.phoneNumberId || providerPhone !== explicitSenderPhone(s.sender.address)) throw conflict();
     const phones = await deps.graph(c, `${c.wabaId}/phone_numbers?fields=id&limit=100`);
     if (!Array.isArray(phones.data) || !phones.data.some((p: Row) => p.id === c.phoneNumberId)) throw conflict();
     const template = await deps.graph(c, `${s.template.id}?fields=id,name,language,status,category,components`);
