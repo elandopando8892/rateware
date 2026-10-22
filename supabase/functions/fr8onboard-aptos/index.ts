@@ -7,6 +7,8 @@ import { requireRatewareUser } from "../_shared/auth.ts";
 import { SUPABASE_ROOT_2021_CA } from "./supabase-root-2021-ca.ts";
 
 const FR8ONBOARD_LECTOR_URL = (Deno.env.get("FR8ONBOARD_LECTOR_URL") || "").trim();
+const SUPABASE_URL = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+const SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_IDS = 500;
 
@@ -25,6 +27,27 @@ function connectionOptions(url: string) {
   };
 }
 
+// The project is at its edge-secret limit, so the URL can also live in Vault, read through a
+// service-role-only RPC (migration 20261022120000). The edge secret wins when both exist.
+let lectorUrl: string | null = FR8ONBOARD_LECTOR_URL || null;
+async function resolveLectorUrl(): Promise<string> {
+  if (lectorUrl) return lectorUrl;
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return "";
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/fr8onboard_lector_url`, {
+    method: "POST",
+    headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
+    body: "{}"
+  });
+  if (!response.ok) {
+    console.error("fr8onboard-aptos vault", response.status);
+    return "";
+  }
+  const stored = await response.json() as string | null;
+  const value = (stored || "").trim();
+  if (value) lectorUrl = value;
+  return value;
+}
+
 let pool: Pool | null = null;
 
 Deno.serve(async (request) => {
@@ -39,14 +62,15 @@ Deno.serve(async (request) => {
 
   const body = await request.json().catch(() => ({})) as { action?: string; vendor_ids?: unknown };
   if (body.action !== "list_aptos") return jsonResponse({ error: "Unknown action" }, 400, request);
-  if (!FR8ONBOARD_LECTOR_URL) return jsonResponse({ configured: false, aptos: [] }, 200, request);
+  const url = await resolveLectorUrl();
+  if (!url) return jsonResponse({ configured: false, aptos: [] }, 200, request);
 
   const ids = (Array.isArray(body.vendor_ids) ? body.vendor_ids : [])
     .filter((id): id is string => typeof id === "string" && UUID.test(id))
     .slice(0, MAX_IDS);
   if (!ids.length) return jsonResponse({ configured: true, aptos: [] }, 200, request);
 
-  pool ??= new Pool(connectionOptions(FR8ONBOARD_LECTOR_URL), 1, true);
+  pool ??= new Pool(connectionOptions(url), 1, true);
   try {
     const client = await pool.connect();
     try {
