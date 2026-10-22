@@ -37,6 +37,8 @@ export async function listWhatsappQueueEvidence(db: any, user: Row, body: Row) {
       body_preview: text(row.body_preview), occurred_at: date(row.occurred_at), received_at: date(metadata.received_at),
       from_phone: typeof metadata.from_phone === "string" && /^\+?[1-9]\d{10,14}$/.test(metadata.from_phone) ? metadata.from_phone : null,
       association_reason: text(association.reason, 80),
+      resolved_by: text(record(metadata.manual_association).actor_email, 320),
+      resolved_at: date(record(metadata.manual_association).resolved_at),
       // IDs/credentials/payloads/approval signatures are deliberately excluded.
       provider_status: text(callback.status, 40) };
   });

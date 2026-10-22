@@ -37,7 +37,7 @@ const READS: Record<string, ReadonlySet<string>> = {
     "get_ratebook_health", "get_ratebook_route_detail", "get_ratebook_route_quotes", "get_rateware_version",
     "get_rfx_process_project", "get_saas_settings", "get_shipper", "get_upload_source_url",
     "get_vendor_relationship_activity", "get_whatsapp_connection_status", "growth_dashboard",
-    "list_bid_room_chat", "list_carrier_list_templates", "list_catalog_values", "list_contact_history",
+    "list_bid_room_chat", "list_carrier_list_templates", "list_catalog_values", "list_contact_history", "review_whatsapp_reply_association",
     "list_gmail_connections", "list_google_chat_connections", "list_google_chat_spaces",
     "list_growth_campaigns", "list_growth_results", "list_growth_segments", "list_interpretation_memory",
     "list_interpretation_memory_audit", "list_location_catalog_values", "list_observability_events",

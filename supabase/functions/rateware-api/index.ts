@@ -1,8 +1,10 @@
+import { evaluateReeferRestrictions, isReeferTemplate } from "./reefer-restrictions.mjs";
 import { createStagingAuditContext, stagingAuditHeaders, bindStagingAuditContext, stagingAuditFields } from "./staging-audit-context.mjs";
 import { readPublishedCarrierClassification } from "./published-classification.mjs";
 import { readCarrierProviderAdvisory } from "./carrier-provider-advisory.mjs";
 import { createWhatsappApprovalHandlers } from "./whatsapp-approved-outreach.ts";
 import { listWhatsappQueueEvidence } from "./whatsapp-queue-evidence.ts";
+import { whatsappReplyAssociation } from "./whatsapp-reply-association.ts";
 import { createHandoffPlanClient } from "./handoff-plan.ts";
 import { requireHandoffParity, handoffCommercialPatch, bidSnapshot } from "./handoff-contract.mjs";
 import { OUTREACH_APPROVAL_CONTRACT, OUTREACH_VERSION_CONFLICT, expectedOutreachVersions, requireOutreachVersion } from "./outreach-send-version.mjs";
@@ -1126,11 +1128,17 @@ async function materializeCarrierTemplateRfxParticipants(
   }
   const eligibleVendorIds = vendorIds.filter((vendorId) => !rejectionReasonByVendorId.has(vendorId));
 
-  const lanesResult = await supabase
-    .from("rfx_lanes")
-    .select("id,rfx_event_id,rfx_events!inner(id,owner_email)")
-    .in("id", laneIds)
-    .eq("rfx_events.owner_email", user.owner_email);
+  const restrictedReefer = isReeferTemplate(templateId);
+  const lanesResult = restrictedReefer
+    ? await supabase.from("rfx_lanes")
+      .select("id,rfx_event_id,origin_city,origin_state,origin_country,destination_city,destination_state,destination_country,equipment,trailer,operation,service_specifications,operation_criteria,business_rules,rfx_events!inner(id,owner_email,organization_id)")
+      .in("id", laneIds)
+      .eq("rfx_events.owner_email", user.owner_email)
+      .eq("rfx_events.organization_id", organizationId)
+    : await supabase.from("rfx_lanes")
+      .select("id,rfx_event_id,rfx_events!inner(id,owner_email)")
+      .in("id", laneIds)
+      .eq("rfx_events.owner_email", user.owner_email);
   if (lanesResult.error) throw lanesResult.error;
   const laneById = new Map(
     ((lanesResult.data || []) as Record<string, unknown>[])
@@ -1183,6 +1191,36 @@ async function materializeCarrierTemplateRfxParticipants(
     ).toLowerCase(),
     selected_count: selectedMatrixCount
   };
+  // Evaluate persisted lane requirements, never caller-supplied facts or prose
+  // from the template. Rejection precedes journal creation and token generation.
+  if (restrictedReefer) {
+    const restrictions = vendorIds.map((vendorId) => ({ vendor_id: vendorId,
+      ...evaluateReeferRestrictions({ templateId, organizationId, vendorId,
+        lanes: laneIds.map((laneId) => laneById.get(laneId)!) }) }));
+    if (restrictions.some((decision) => !decision.ok)) {
+      const previous = await supabase.from("carrier_template_materialization_operations")
+        .select(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS)
+        .eq("id", materializationOperationId).maybeSingle();
+      if (previous.error) throw previous.error;
+      const prior = objectRecord(previous.data);
+      if (prior.id) {
+        if (!carrierTemplateMaterializationOperationMatches(prior, operationContext)) {
+          return { status: 409, body: { ...responseContext,
+            code: "carrier_template_materialization_operation_conflict",
+            error: "This operation id belongs to a different materialization context." } };
+        }
+        // Never erase a terminal result or pretend an issued write did not run.
+        // This continuation reads the canonical outcome and performs no upsert.
+        if (["mutation_issued", "reconcile_required", "reconciled", "rejected"].includes(String(prior.status))) {
+          return await canonicalCarrierTemplateMaterializationResult(supabase, operationContext, responseContext, prior);
+        }
+      }
+      return { status: 409, body: { ...responseContext,
+        code: "carrier_template_restrictions_failed",
+        error: "Selected carrier/lane requirements are pending or outside the approved D2D Reefer scope.",
+        restrictions } };
+    }
+  }
   const operationJournal = await loadOrCreateCarrierTemplateMaterializationOperation(
     supabase,
     operationContext
@@ -4480,7 +4518,7 @@ function relationRecord(value: unknown): Record<string, unknown> {
 }
 
 const OUTREACH_MESSAGE_SELECT = "*, vendors(vendor_name,domain,primary_email,whatsapp_phone,whatsapp_group_name,whatsapp_group_url,whatsapp_group_status,whatsapp_do_not_contact), vendor_whatsapp_groups(group_name,group_url,verification_status,do_not_contact), outreach_campaigns(name,notes,whatsapp_target_mode,group_delivery_policy), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,invitation_token_encrypted,award_role,bid_rate,currency,responded_at)";
-const OUTREACH_MESSAGE_COMPACT_SELECT: string = "whatsapp_callback:send_result->webhook,whatsapp_send_outcome:send_result->>outcome,whatsapp_send_stage:send_result->>stage,id,created_at,updated_at,campaign_id,template_id,rfx_event_id,rfx_lane_id,rfx_lane_vendor_id,vendor_id,channel,recipient_email,recipient_phone,subject,gmail_compose_url,whatsapp_url,status,sent_at,last_contacted_at,metadata,sender_email,sender_label,sender_connection_status,provider_message_id,delivery_error,delivered_by,bounce_detected_at,bounce_status,whatsapp_target_mode,whatsapp_connection_id,normalized_recipient_phone,vendor_whatsapp_group_id,provider,meta_whatsapp_group_id,whatsapp_template_name,whatsapp_template_language,delivery_status,delivered_at,read_at,failed_at,manual_sent_at,manual_sent_by,ratebook_share_id,send_attempt_id,send_started_at,send_completed_at,gmail_connection_id,sender_address,sender_connection_type,provider_response_status,contact_key,outcome_reason,next_action,next_action_at,suppressed_at,suppression_reason,organization_id, vendors(vendor_name,domain,primary_email,whatsapp_phone,whatsapp_group_name,whatsapp_group_url,whatsapp_group_status,whatsapp_do_not_contact), vendor_whatsapp_groups(group_name,group_url,verification_status,do_not_contact), outreach_campaigns(name,whatsapp_target_mode,group_delivery_policy), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,award_role,bid_rate,currency,responded_at)";
+const OUTREACH_MESSAGE_COMPACT_SELECT: string = "whatsapp_callback:send_result->webhook,whatsapp_reply_association:send_result->manual_reply_association,whatsapp_send_outcome:send_result->>outcome,whatsapp_send_stage:send_result->>stage,id,created_at,updated_at,campaign_id,template_id,rfx_event_id,rfx_lane_id,rfx_lane_vendor_id,vendor_id,channel,recipient_email,recipient_phone,subject,gmail_compose_url,whatsapp_url,status,sent_at,last_contacted_at,metadata,sender_email,sender_label,sender_connection_status,provider_message_id,delivery_error,delivered_by,bounce_detected_at,bounce_status,whatsapp_target_mode,whatsapp_connection_id,normalized_recipient_phone,vendor_whatsapp_group_id,provider,meta_whatsapp_group_id,whatsapp_template_name,whatsapp_template_language,delivery_status,delivered_at,read_at,failed_at,manual_sent_at,manual_sent_by,ratebook_share_id,send_attempt_id,send_started_at,send_completed_at,gmail_connection_id,sender_address,sender_connection_type,provider_response_status,contact_key,outcome_reason,next_action,next_action_at,suppressed_at,suppression_reason,organization_id, vendors(vendor_name,domain,primary_email,whatsapp_phone,whatsapp_group_name,whatsapp_group_url,whatsapp_group_status,whatsapp_do_not_contact), vendor_whatsapp_groups(group_name,group_url,verification_status,do_not_contact), outreach_campaigns(name,whatsapp_target_mode,group_delivery_policy), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,award_role,bid_rate,currency,responded_at)";
 const OUTREACH_MESSAGE_EVENT_SELECT = "id,created_at,updated_at,campaign_id,template_id,rfx_event_id,rfx_lane_id,rfx_lane_vendor_id,vendor_id,channel,recipient_email,recipient_phone,subject,status,sent_at,last_contacted_at,metadata,sender_email,provider_message_id,delivery_error,bounce_detected_at,bounce_status,delivery_status,delivered_at,read_at,failed_at,manual_sent_at,provider_response_status,contact_key,outcome_reason,next_action,next_action_at,suppressed_at,suppression_reason";
 const OUTREACH_TRACKING_STATES = ["drafted", "queued", "sending", "sent", "delivered", "read", "manual_sent", "delivery_unknown", "failed", "replied", "quoted", "bounced", "suppressed", "archived"] as const;
 type OutreachTrackingState = typeof OUTREACH_TRACKING_STATES[number];
@@ -31347,6 +31385,11 @@ export function createRatewareApiHandler(
         skipped_rows: skipped,
         failures
       });
+    }
+
+    if (body.action === "review_whatsapp_reply_association" || body.action === "associate_whatsapp_reply") {
+      const result = await whatsappReplyAssociation(supabase, user, claims as Record<string, unknown>, body);
+      return jsonResponse(result.data, result.status);
     }
 
     if (body.action === "list_contact_history") {
