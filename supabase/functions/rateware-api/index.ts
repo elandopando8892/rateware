@@ -1,3 +1,6 @@
+import { createStagingAuditContext, stagingAuditHeaders, bindStagingAuditContext, stagingAuditFields } from "./staging-audit-context.mjs";
+import { readPublishedCarrierClassification } from "./published-classification.mjs";
+import { readCarrierProviderAdvisory } from "./carrier-provider-advisory.mjs";
 import { createWhatsappApprovalHandlers } from "./whatsapp-approved-outreach.ts";
 import { listWhatsappQueueEvidence } from "./whatsapp-queue-evidence.ts";
 import { createHandoffPlanClient } from "./handoff-plan.ts";
@@ -200,12 +203,12 @@ export function carrierTemplateLegacyMutationBlocked(
   );
 }
 
-function getClient() {
+function getClient(headers: Record<string, string> = {}) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error("Missing SUPABASE_URL or RATEWARE_SUPABASE_SERVICE_ROLE_KEY.");
   }
 
-  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { global: { headers } });
 }
 
 type RatewareSupabaseClient = ReturnType<typeof getClient>;
@@ -2620,12 +2623,11 @@ async function writeAuditLog(
   metadata: Record<string, unknown> = {}
 ) {
   const result = await supabase.from("saas_audit_log").insert(withOwner({
-    actor_email: user.owner_email,
     action,
     entity_type: entityType,
     entity_id: cleanText(entityId),
     summary,
-    metadata
+    ...stagingAuditFields(supabase, entityType, user.owner_email, metadata)
   }, user));
   if (result.error) throw result.error;
 }
@@ -12769,8 +12771,36 @@ function normalizeOutreachContactPolicy(value: unknown) {
   return {
     max_touches_per_event: boundedOutreachNumber(source.max_touches_per_event, 1, 1, 12),
     cooldown_hours: boundedOutreachNumber(source.cooldown_hours, 72, 0, 24 * 365),
-    daily_limit: boundedOutreachNumber(source.daily_limit, 100, 1, 5000)
+    // Explicit numeric zero disables only the internal draft-preparation cap.
+    // Missing, malformed and negative values retain the existing bounded policy.
+    daily_limit: source.daily_limit === 0 ? 0 : boundedOutreachNumber(source.daily_limit, 100, 1, 5000)
   };
+}
+
+async function currentRfxCarrierReviews(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, eventId: string) {
+  const result = await supabase.from("saas_audit_log")
+    .select("id,created_at,actor_email,action,metadata")
+    .eq("owner_email", user.owner_email)
+    .eq("entity_type", "rfx_event_carrier_review")
+    .contains("metadata", { rfx_event_id: eventId })
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(5001);
+  if (result.error) throw new Error(`Carrier review load failed: ${result.error.message}`);
+  if ((result.data || []).length > 5000) throw new Error("Carrier review history exceeds the safe read limit. No drafts were prepared.");
+  const latest = new Map<string, Record<string, unknown>>();
+  for (const row of result.data || []) {
+    const metadata = objectRecord(row.metadata);
+    const vendorId = cleanText(metadata.vendor_id);
+    if (!vendorId || latest.has(vendorId)) continue;
+    latest.set(vendorId, {
+      id: row.id, vendor_id: vendorId, reviewed: row.action === "rfx.invitation_carrier.reviewed",
+      reviewed_at: row.created_at, reviewed_by: row.actor_email,
+      channel: cleanText(metadata.channel), contact_snapshot: objectRecord(metadata.contact_snapshot),
+      review_version: Number(metadata.review_version || 1)
+    });
+  }
+  return [...latest.values()];
 }
 
 function normalizeOutreachSequencePolicy(value: unknown) {
@@ -25506,7 +25536,7 @@ async function markRfxAwardPackageImplementationReady(
 }
 
 type RatewareApiHandlerDependencies = {
-  getClient?: () => RatewareSupabaseClient;
+  getClient?: (headers?: Record<string, string>) => RatewareSupabaseClient;
   authenticate?: typeof requireRatewareUser;
   resolveUser?: RatewareIdentityDependencies["resolveUser"];
   carrierTemplatesEnabled?: boolean;
@@ -25567,7 +25597,7 @@ export function createRatewareApiHandler(
   let body: Record<string, unknown> = {};
 
   try {
-    const supabase = clientFactory();
+    let supabase = clientFactory();
     auditSupabase = supabase;
     const authenticationStartedAt = performance.now();
     const claims = await authenticate(request);
@@ -25582,9 +25612,30 @@ export function createRatewareApiHandler(
     const roleDenial = teamRoleDenial("rateware-api", claims as Record<string, unknown>, body);
     if (roleDenial) return jsonResponse(roleDenial, 403);
 
+    // Only server-verified identity enters the reserved PostgREST audit context.
+    const stagingAuditContext = createStagingAuditContext(claims, user, requestId, body.action);
+    supabase = bindStagingAuditContext(clientFactory(stagingAuditHeaders(stagingAuditContext)), stagingAuditContext);
+    auditSupabase = supabase;
+
     const growthAction = typeof body.action === "string" ? body.action : "";
     if (isGrowthAction(growthAction)) {
       return jsonResponse(await handleGrowthAction(supabase, user, body));
+    }
+
+    // Read-only published classification; body cannot choose organization or source IDs.
+    if (body.action === "get_published_carrier_classification") {
+      const result = await readPublishedCarrierClassification({ client: supabase, verifiedClaims: claims, workspace: user });
+      return jsonResponse(result.body, result.status);
+    }
+
+    // P7 is requested separately and cannot gate any commercial action.
+    if (body.action === "get_carrier_provider_advisory") {
+      return jsonResponse(await readCarrierProviderAdvisory({
+        client: supabase, verifiedClaims: claims, workspace: user,
+        vendorId: body.vendor_id,
+        legalEntityId: typeof body.legal_entity_id === "string" ? body.legal_entity_id : null,
+        enabled: (Deno.env.get("PROVIDER_SERVICE_ADVISORY_ENABLED") || "true").trim().toLowerCase() === "true"
+      }));
     }
 
     if (body.action === "list_carrier_list_templates") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
@@ -29715,32 +29766,7 @@ export function createRatewareApiHandler(
       const eventId = cleanText(body.rfx_event_id || body.event_id);
       if (!eventId || !UUID_PATTERN.test(eventId)) return jsonResponse({ error: "A valid RFx event id is required." }, 400);
       await requireOwnedRfxEvent(supabase, user, eventId);
-      const result = await supabase
-        .from("saas_audit_log")
-        .select("id,created_at,actor_email,action,entity_id,summary,metadata")
-        .eq("owner_email", user.owner_email)
-        .eq("entity_type", "rfx_event_carrier_review")
-        .contains("metadata", { rfx_event_id: eventId })
-        .order("created_at", { ascending: false })
-        .limit(5000);
-      if (result.error) throw result.error;
-      const latestByVendor = new Map<string, Record<string, unknown>>();
-      for (const row of result.data || []) {
-        const metadata = objectRecord(row.metadata);
-        const vendorId = cleanText(metadata.vendor_id);
-        if (!vendorId || latestByVendor.has(vendorId)) continue;
-        latestByVendor.set(vendorId, {
-          id: row.id,
-          vendor_id: vendorId,
-          reviewed: row.action === "rfx.invitation_carrier.reviewed",
-          reviewed_at: row.created_at,
-          reviewed_by: row.actor_email,
-          channel: cleanText(metadata.channel),
-          contact_snapshot: objectRecord(metadata.contact_snapshot),
-          review_version: Number(metadata.review_version || 1)
-        });
-      }
-      return jsonResponse({ rows: [...latestByVendor.values()] });
+      return jsonResponse({ rows: await currentRfxCarrierReviews(supabase, user, eventId) });
     }
 
     if (body.action === "record_rfx_invitation_wave_review") {
@@ -29935,11 +29961,17 @@ export function createRatewareApiHandler(
     if (body.action === "generate_outreach_drafts") {
       const campaign = await requireOwnedOutreachCampaign(supabase, user, body.campaign_id);
       const template = await fetchOutreachTemplate(supabase, user, body.template_id || campaign.template_id);
+      const hasReviewedSelection = Object.prototype.hasOwnProperty.call(body, "reviewed_vendor_ids");
+      const reviewedSelection = hasReviewedSelection ? normalizeBulkIds(body.reviewed_vendor_ids, { label: "Reviewed carrier ids", limit: 5000 }) : null;
+      if (hasReviewedSelection && (!reviewedSelection?.length || !campaign.rfx_event_id)) {
+        return jsonResponse({ error: "Choose a nonempty reviewed RFx audience before preparing drafts.", code: "reviewed_audience_required" }, 400);
+      }
       const invitationIds = normalizeBulkIds(body.invitation_ids, {
         label: "RFx invitation ids",
         limit: RFX_OUTREACH_INVITATION_ID_LIMIT
       });
-      const audiencePolicy = normalizeOutreachAudiencePolicy(body.audience_policy || campaign.audience_policy);
+      // Bidware's exact reviewed selection may narrow the saved campaign, never broaden it.
+      const audiencePolicy = normalizeOutreachAudiencePolicy(hasReviewedSelection ? campaign.audience_policy : body.audience_policy || campaign.audience_policy);
       const contactPolicy = normalizeOutreachContactPolicy(body.contact_policy || campaign.contact_policy);
       const sequencePolicy = normalizeOutreachSequencePolicy(body.sequence_policy || campaign.sequence_policy);
       let audienceVendorIds = audiencePolicy.vendor_ids;
@@ -30039,7 +30071,7 @@ export function createRatewareApiHandler(
           if (chunk.length) invitationQuery = invitationQuery.in("id", chunk);
           // An explicit selection always wins, including when the user starts from
           // "all eligible" and then narrows the wave in the audience ledger.
-          if (!chunk.length && hasExplicitAudience) {
+          if ((!chunk.length || hasReviewedSelection) && hasExplicitAudience) {
             invitationQuery = invitationQuery.in("vendor_id", audienceVendorIds);
           }
 
@@ -30055,9 +30087,34 @@ export function createRatewareApiHandler(
         }
         return batch;
       });
+      let selectedInvitations = invitationBatches.flat() as Record<string, unknown>[];
+      const reviewSkipped: Record<string, unknown>[] = [];
+      if (campaign.rfx_event_id) {
+        const reviews = await currentRfxCarrierReviews(supabase, user, String(campaign.rfx_event_id));
+        const reviewed = new Set(reviews.filter((row) => row.reviewed === true).map((row) => String(row.vendor_id)));
+        const eligible = new Set(selectedInvitations
+          .filter((row) => reviewed.has(String(row.vendor_id)) && cleanText(row.invitation_status)?.toLowerCase() !== "declined")
+          .map((row) => String(row.vendor_id)));
+        if (reviewedSelection?.some((vendorId) => !eligible.has(vendorId))) {
+          return jsonResponse({ error: "The reviewed selection changed. Refresh the audience before preparing drafts.", code: "reviewed_audience_changed" }, 409);
+        }
+        if (!eligible.size) {
+          return jsonResponse({ error: "No selected carriers have a current review. Review contacts before preparing drafts.", code: "reviewed_audience_required" }, 409);
+        }
+        const omitted = new Set<string>();
+        for (const row of selectedInvitations) {
+          const vendorId = String(row.vendor_id);
+          if (!eligible.has(vendorId) && !omitted.has(vendorId)) {
+            omitted.add(vendorId);
+            reviewSkipped.push({ vendor_id: vendorId, channel: requestedChannels[0], reason_code: "not_reviewed", reason: "Carrier is not reviewed or is not participating in this RFx." });
+          }
+        }
+        selectedInvitations = selectedInvitations.filter((row) => eligible.has(String(row.vendor_id))
+          && (!reviewedSelection || reviewedSelection.includes(String(row.vendor_id))));
+      }
       const invitations = await requireHydratedRfxInvitationTokens(
         supabase,
-        invitationBatches.flat() as Record<string, unknown>[],
+        selectedInvitations,
         "Outreach queue"
       );
       let eventLaneRows: Record<string, unknown>[] = [];
@@ -30077,7 +30134,7 @@ export function createRatewareApiHandler(
         : new Map<string, Record<string, unknown>>();
 
       const rows: Record<string, unknown>[] = [];
-      const skipped: Record<string, unknown>[] = [];
+      const skipped: Record<string, unknown>[] = [...reviewSkipped];
       const channelPreparationErrors: Record<string, string> = {};
       const invitationGroups = new Map<string, Record<string, unknown>[]>();
       for (const invitation of invitations) {
@@ -30243,7 +30300,7 @@ export function createRatewareApiHandler(
         const channelSkipped = skipped.filter((row) => cleanText(row.channel) === channel).length;
         return [channel, {
           requested: true,
-          queue_status: candidateDrafts || generated || preserved ? "ready" : channelSkipped ? "needs_contact" : "empty",
+          queue_status: generated || preserved ? "ready" : channelSkipped ? "needs_contact" : "empty",
           candidate_drafts: candidateDrafts,
           generated,
           preserved,
@@ -30692,7 +30749,11 @@ export function createRatewareApiHandler(
         created_after: rollingWindowStart,
         include_archived: false
       });
-      let remainingDailyCapacity = Math.max(0, contactPolicy.daily_limit - messagesInRollingWindow.length);
+      // Preparing a draft does not authorize a provider send. Bidware explicitly
+      // requests zero; positive caps keep their rolling-window behavior.
+      let remainingDailyCapacity = contactPolicy.daily_limit === 0
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, contactPolicy.daily_limit - messagesInRollingWindow.length);
       const dailyLimitedRows = rowsToUpsert.filter((row) => {
         const existing = existingMessagesByKey.get(draftKey(row));
         if (existing) return true;
@@ -30780,7 +30841,7 @@ export function createRatewareApiHandler(
       const campaignUpdate = await supabase
         .from("outreach_campaigns")
         .update({
-          status: "generated",
+          status: generatedMessages.length > 0 ? "generated" : campaign.status,
           sender_email: senderEmail || campaign.sender_email,
           sender_label: senderLabel || campaign.sender_label,
           sender_connection_status: senderConnectionStatus,
@@ -32641,9 +32702,9 @@ export function createRatewareApiHandler(
       if (result.error) throw result.error;
       if (!result.data) throw Object.assign(new Error("Rate row not found."), { code: "404" });
       // Read only the saved bid duration; never return the full extraction payload.
-      const transitDays = result.data?.transit_days;
+      const transitDays = (result.data as unknown as Record<string, unknown>)?.transit_days;
       return jsonResponse({ row: {
-        ...result.data,
+        ...(result.data as unknown as Record<string, unknown>),
         transit_days: typeof transitDays === "number" && Number.isFinite(transitDays) && transitDays >= 0
           ? transitDays
           : null

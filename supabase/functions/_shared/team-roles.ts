@@ -32,7 +32,7 @@ const READS: Record<string, ReadonlySet<string>> = {
   "rateware-api": new Set([
     "book_audit", "business_intelligence_drilldown", "business_intelligence_geo_density",
     "business_intelligence_pivot", "carrier_intelligence_chat", "dashboard_summary", "export_growth_campaign",
-    "export_ratebook_routes", "get_carrier_list_template", "get_growth_campaign", "get_outreach_message",
+    "export_ratebook_routes", "get_carrier_list_template", "get_carrier_provider_advisory", "get_published_carrier_classification", "get_growth_campaign", "get_outreach_message",
     "get_outreach_tracking_summary", "get_rate_row_detail", "get_ratebook", "get_ratebook_audit",
     "get_ratebook_health", "get_ratebook_route_detail", "get_ratebook_route_quotes", "get_rateware_version",
     "get_rfx_process_project", "get_saas_settings", "get_shipper", "get_upload_source_url",
