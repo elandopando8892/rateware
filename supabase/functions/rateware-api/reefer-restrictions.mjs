@@ -3,16 +3,18 @@
  * Unknown requirements never count as a match. Prose is not a policy source.
  */
 export const REEFER_POLICY = Object.freeze({
-  id: 'd2d-reefer-us-border-20261022',
+  id: 'd2d-reefer-us-border-20261022-innovativos-v2',
   templateId: '71aa36b3-0f36-4771-9728-e0e82d9f9561',
   organizationId: 'org_dbc2fd12c76',
-  evidence: 'bidware-reefer-preselection-approved-20261022',
+  evidence: 'bidware-reefer-preselection-approved-20261022; innovativos-historical-correction-20261022',
 });
 const rules = {
   '578217e1-2dd4-4ab2-9303-1b3e03e83029': {origin:'queretaro', destinations:['laredo:tx','pharr:tx','nogales:az'], products:['tomato','pine'], refs:['19f9620b96fd0360','19f964aaac530253','19faa14d0d6e80a5']},
   '5f2af3ef-b32a-4098-9a45-25650e5ffc4e': {origin:'queretaro', destinations:['pharr:tx'], products:['tomato'], refs:['19fa9b2069c7ae58','6aea6f5b-e82f-413f-9c15-15abd8fc12ca']},
   'ea86bbed-5d35-41c9-86ec-15a8d00397d5': {origin:'el marques', destinations:['laredo:tx'], products:['pine'], weightBelowKg:20000, refs:['19ff33d9cb6a73d7','19fecb5e98a845ab','19fecfb8f0c18705']},
-  'c99998e0-8a41-44e9-86ad-b35e233da2b5': {origin:'queretaro', destinations:['laredo:tx'], products:['tomato'], evidenceConflict:true, refs:['f2c1ccb2-9c86-4ea2-baac-5280565adce7','79129503-8f73-4c12-8d95-aab5cb4bfd74']},
+  // Captured rate payload, 2026-07-27. The joined lane was edited afterwards.
+  // Exact recorded case; 18,000 kg is not an inferred capacity ceiling.
+  'c99998e0-8a41-44e9-86ad-b35e233da2b5': {origin:'queretaro', destinations:['laredo:tx'], products:['arbolitos'], temperatureC:10, weightKg:18000, scopeCode:'innovativos_history', refs:['f2c1ccb2-9c86-4ea2-baac-5280565adce7','79129503-8f73-4c12-8d95-aab5cb4bfd74']},
   '4988e190-c942-4fac-b2af-981e8a8891b1': {origin:'queretaro', destinations:['laredo:tx','pharr:tx'], products:['tomato'], grossMaxKg:20000, handling:true, refs:['19f9653f64d15555','19fab280844fb753','19f961c81b78e60a']},
   '43d03561-afa1-4f3c-959f-452415bcc31f': {origin:'queretaro', destinations:['laredo:tx','pharr:tx'], products:['tomato'], refs:['19f96239971ff22a','19faa19555fcb0b6']},
 };
@@ -35,6 +37,8 @@ const products = {
   jitomate:'tomato',jitomates:'tomato',tomate:'tomato',tomates:'tomato',tomato:'tomato',tomatoes:'tomato',
   pino:'pine',pinos:'pine','arboles de navidad':'pine','pinos de navidad':'pine','christmas trees':'pine',
   'arboles de navidad / pinos de madera para exportacion':'pine',
+  // Preserve the source's literal commodity; do not equate it to all pines/trees.
+  arbolitos:'arbolitos',
 };
 function weight(value) {
   // A thousands comma requires three digits; decimal commas/ranges are ambiguous.
@@ -70,7 +74,11 @@ export function reeferFacts(lane) {
       .replace(/<[^>]*>/g,'').replace(/&nbsp;/gi,' ').replace(/&deg;|&#176;/gi,'°')
       .replace(/,\s*(?=[A-Za-zÁÉÍÓÚáéíóú][^,:\n]{0,55}:)/g,'\n');
     for (const line of text.split(/[\n;]/)) {
-      const match=line.trim().replace(/^[-*•]\s*/,'').match(/^([^:]{1,65}):\s*(.*?)\s*$/);
+      const explicit=line.trim().replace(/^[-*•]\s*/,'');
+      // Historical editor also stored "Temperatura 10° C" without a colon.
+      // Keep an anchored temperature label, including unknown/conflicting values.
+      const match=explicit.match(/^([^:]{1,65}):\s*(.*?)\s*$/)
+        ?? explicit.match(/^(temperatura|temperature)\s+(.+?)\s*$/i);
       if (!match) continue;
       const key=labels[fold(match[1])]; if (!key) continue;
       const values=seen.get(key) ?? []; values.push(parseValue(key,match[2])); seen.set(key,values);
@@ -103,7 +111,6 @@ export function evaluateReeferRestrictions({templateId,organizationId,vendorId,l
   const rule=rules[fold(vendorId)];
   if(organizationId!==REEFER_POLICY.organizationId) add('workspace','blocked');
   if(!rule) add('member','blocked');
-  if(rule?.evidenceConflict) add('evidence_conflict','pending');
   if(!Array.isArray(lanes)||!lanes.length) add('choose_lanes','pending');
   if(rule) for(const lane of Array.isArray(lanes)?lanes:[]) {
     const laneId=typeof lane?.id==='string'?lane.id:null;
@@ -119,7 +126,12 @@ export function evaluateReeferRestrictions({templateId,organizationId,vendorId,l
     const get=(key,code)=>{const f=facts[key];if(f?.state!=='known'){add(f?.state==='ambiguous'?'requirements_ambiguous':code,'pending',laneId);return null;}return f.value;};
     const product=get('product','product_missing');
     if(product!==null&&!rule.products.includes(product)) add('product','blocked',laneId);
-    get('temperature','temperature_missing');
+    const temperature=get('temperature','temperature_missing');
+    if(rule.temperatureC!==undefined && temperature!==null && temperature!==rule.temperatureC) add('temperature_innovativos','blocked',laneId);
+    if(rule.weightKg!==undefined) {
+      const w=get('weight','weight_missing');
+      if(w!==null&&w!==rule.weightKg) add('weight_innovativos','blocked',laneId);
+    }
     if(rule.weightBelowKg) {
       const w=get(facts.grossWeight?'grossWeight':'weight','weight_missing');
       if(w!==null&&w>=rule.weightBelowKg) add('weight_breco','blocked',laneId);
@@ -136,5 +148,5 @@ export function evaluateReeferRestrictions({templateId,organizationId,vendorId,l
     }
   }
   const status=issues.some(i=>i.status==='blocked')?'blocked':issues.length?'pending':'compatible';
-  return {applies:true,ok:status==='compatible',status,issues,policyId:REEFER_POLICY.id,sourceRefs:rule?.refs ?? []};
+  return {applies:true,ok:status==='compatible',status,issues,policyId:REEFER_POLICY.id,sourceRefs:rule?.refs ?? [],scopeCode:rule?.scopeCode ?? null};
 }

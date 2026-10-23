@@ -1,0 +1,252 @@
+{
+  "contract": "marksman.published-source-parity.v1",
+  "at": "2026-10-23T01:02:17.641584+00:00",
+  "repository": "rateware",
+  "parent": "0bf472d9307d58076c04689ca52568697f20d6a6",
+  "api": {
+    "version": 714,
+    "bundle_sha256": "033446819e03b924f5912608d5dcec5a3268b933500684bf464994051d153cda",
+    "sources": 33
+  },
+  "frontend": {
+    "deployment": "dpl_99CeuTsDyj7Uw2d2SvuKSQFiiGNv",
+    "assets": [
+      {
+        "path": "assets/index-C109sj6x.js",
+        "sha256": "86cc1677b305f3d2df691c7339728b3cf39271b39fdde958117d434ebe12404a"
+      },
+      {
+        "path": "assets/index-ClyIKPm0.css",
+        "sha256": "6ea1aeca6c823759464809290c1c161838db5a71139aa45dc336eea5ec420522"
+      },
+      {
+        "path": "assets/xlsx-BGhuli8m.js",
+        "sha256": "9884e2dba31195badb157ab848744211c04fa7b62b9f7031670cd7a5b96d25a9"
+      },
+      {
+        "path": "index.html",
+        "sha256": "626825884b957850be97d7da8250d8bf72ccd289aa78092bf9a5ea4620455833"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "supabase/functions/rateware-api/carrier-list-templates.ts",
+      "published_sha256": "ee5c1b7379c7a282ba48b1b34f56b3e61657b6c7c0a4fc3c7cc7febf629feac8",
+      "git_sha256": "ee5c1b7379c7a282ba48b1b34f56b3e61657b6c7c0a4fc3c7cc7febf629feac8",
+      "canonical_lf_sha256": "ee5c1b7379c7a282ba48b1b34f56b3e61657b6c7c0a4fc3c7cc7febf629feac8"
+    },
+    {
+      "path": "supabase/functions/rateware-api/carrier-provider-advisory.mjs",
+      "published_sha256": "bb8bea0acc7961868b682cf5ed5aae9c76850600b7b7edfb9ae4e56b802b4750",
+      "git_sha256": "bb8bea0acc7961868b682cf5ed5aae9c76850600b7b7edfb9ae4e56b802b4750",
+      "canonical_lf_sha256": "bb8bea0acc7961868b682cf5ed5aae9c76850600b7b7edfb9ae4e56b802b4750"
+    },
+    {
+      "path": "supabase/functions/rateware-api/gmail-connection-check.mjs",
+      "published_sha256": "deca7ba4cb9c1a6bec52d0a31da107b7cd26de0347eb3c1bdc8b35b09f6690f1",
+      "git_sha256": "deca7ba4cb9c1a6bec52d0a31da107b7cd26de0347eb3c1bdc8b35b09f6690f1",
+      "canonical_lf_sha256": "deca7ba4cb9c1a6bec52d0a31da107b7cd26de0347eb3c1bdc8b35b09f6690f1"
+    },
+    {
+      "path": "supabase/functions/rateware-api/gmail-delivery-evidence.mjs",
+      "published_sha256": "c4a1b9106cdc73ecf742e11ae76081b70a174a7c4a7a41825b2c8da2f37e3aa3",
+      "git_sha256": "c4a1b9106cdc73ecf742e11ae76081b70a174a7c4a7a41825b2c8da2f37e3aa3",
+      "canonical_lf_sha256": "c4a1b9106cdc73ecf742e11ae76081b70a174a7c4a7a41825b2c8da2f37e3aa3"
+    },
+    {
+      "path": "supabase/functions/rateware-api/gmail-message-verification.mjs",
+      "published_sha256": "f3bf9931d964cb828c3f7352b746707603a4a676cf1334a031bbaeb1348667b6",
+      "git_sha256": "f3bf9931d964cb828c3f7352b746707603a4a676cf1334a031bbaeb1348667b6",
+      "canonical_lf_sha256": "f3bf9931d964cb828c3f7352b746707603a4a676cf1334a031bbaeb1348667b6"
+    },
+    {
+      "path": "supabase/functions/rateware-api/gmail-send-guard.mjs",
+      "published_sha256": "ef5a4f0ade32f7e44b255e28d66cf63331142a7cac4b4e3b79d8af121a511f79",
+      "git_sha256": "ef5a4f0ade32f7e44b255e28d66cf63331142a7cac4b4e3b79d8af121a511f79",
+      "canonical_lf_sha256": "ef5a4f0ade32f7e44b255e28d66cf63331142a7cac4b4e3b79d8af121a511f79"
+    },
+    {
+      "path": "supabase/functions/rateware-api/growth.ts",
+      "published_sha256": "21d95199d89c84bbf3f12593b0b2aa90023d1df2b3d6cd97c474ff94ccad7c0c",
+      "git_sha256": "21d95199d89c84bbf3f12593b0b2aa90023d1df2b3d6cd97c474ff94ccad7c0c",
+      "canonical_lf_sha256": "21d95199d89c84bbf3f12593b0b2aa90023d1df2b3d6cd97c474ff94ccad7c0c"
+    },
+    {
+      "path": "supabase/functions/rateware-api/handoff-contract.mjs",
+      "published_sha256": "d8a814840dcea159c4d212e8fdc9c8a5d10ce43043a4849b5cbdfb7412016dcf",
+      "git_sha256": "d8a814840dcea159c4d212e8fdc9c8a5d10ce43043a4849b5cbdfb7412016dcf",
+      "canonical_lf_sha256": "d8a814840dcea159c4d212e8fdc9c8a5d10ce43043a4849b5cbdfb7412016dcf"
+    },
+    {
+      "path": "supabase/functions/rateware-api/handoff-plan.ts",
+      "published_sha256": "9c224532a2b2d470a106fd0d5bcc5f682464a64e4a7a7e00eea88160b4f75e02",
+      "git_sha256": "9c224532a2b2d470a106fd0d5bcc5f682464a64e4a7a7e00eea88160b4f75e02",
+      "canonical_lf_sha256": "9c224532a2b2d470a106fd0d5bcc5f682464a64e4a7a7e00eea88160b4f75e02"
+    },
+    {
+      "path": "supabase/functions/rateware-api/index.ts",
+      "published_sha256": "49a4f59b4bffab8ea233f42ff636d8ff3b0854de3b0434c365f4c45eff316120",
+      "git_sha256": "49a4f59b4bffab8ea233f42ff636d8ff3b0854de3b0434c365f4c45eff316120",
+      "canonical_lf_sha256": "49a4f59b4bffab8ea233f42ff636d8ff3b0854de3b0434c365f4c45eff316120"
+    },
+    {
+      "path": "supabase/functions/rateware-api/outreach-pagination.js",
+      "published_sha256": "9dc8b2ddf00000187d43595711d6d153ba27114c67491e7b7be609e9b1fce97a",
+      "git_sha256": "9dc8b2ddf00000187d43595711d6d153ba27114c67491e7b7be609e9b1fce97a",
+      "canonical_lf_sha256": "9dc8b2ddf00000187d43595711d6d153ba27114c67491e7b7be609e9b1fce97a"
+    },
+    {
+      "path": "supabase/functions/rateware-api/outreach-send-version.mjs",
+      "published_sha256": "71c1e02571cda3d1406ac33084ac7a4b6fa7056bb4fceeb632a8de2f847844e9",
+      "git_sha256": "71c1e02571cda3d1406ac33084ac7a4b6fa7056bb4fceeb632a8de2f847844e9",
+      "canonical_lf_sha256": "71c1e02571cda3d1406ac33084ac7a4b6fa7056bb4fceeb632a8de2f847844e9"
+    },
+    {
+      "path": "supabase/functions/rateware-api/published-classification.mjs",
+      "published_sha256": "cc5fa578118c7bc08ff861a4745c38eb3537bba02a90a0fbf3014c3a7b71a4af",
+      "git_sha256": "cc5fa578118c7bc08ff861a4745c38eb3537bba02a90a0fbf3014c3a7b71a4af",
+      "canonical_lf_sha256": "cc5fa578118c7bc08ff861a4745c38eb3537bba02a90a0fbf3014c3a7b71a4af"
+    },
+    {
+      "path": "supabase/functions/rateware-api/reefer-restrictions.d.mts",
+      "published_sha256": "6eee03a0232ac7eb25b74ae4cc193c4aec322d9f1fcae0c2b640483efd803abe",
+      "git_sha256": "6eee03a0232ac7eb25b74ae4cc193c4aec322d9f1fcae0c2b640483efd803abe",
+      "canonical_lf_sha256": "6eee03a0232ac7eb25b74ae4cc193c4aec322d9f1fcae0c2b640483efd803abe"
+    },
+    {
+      "path": "supabase/functions/rateware-api/reefer-restrictions.mjs",
+      "published_sha256": "c46c585a16ab8c2e05e48564636e4db8acd6e54c1cc6fb2a97e505526637846c",
+      "git_sha256": "c46c585a16ab8c2e05e48564636e4db8acd6e54c1cc6fb2a97e505526637846c",
+      "canonical_lf_sha256": "c46c585a16ab8c2e05e48564636e4db8acd6e54c1cc6fb2a97e505526637846c"
+    },
+    {
+      "path": "supabase/functions/rateware-api/rfx-closeout-guards.ts",
+      "published_sha256": "f6045a4e89d5ef7824e72c5429c27fafd8dfb5a81949a5740c05e476691d4162",
+      "git_sha256": "f6045a4e89d5ef7824e72c5429c27fafd8dfb5a81949a5740c05e476691d4162",
+      "canonical_lf_sha256": "f6045a4e89d5ef7824e72c5429c27fafd8dfb5a81949a5740c05e476691d4162"
+    },
+    {
+      "path": "supabase/functions/rateware-api/rfx-demand-values.ts",
+      "published_sha256": "42b180b214907d25cba12e1e31bdbd20daec863dadfddb3562833595cfff882f",
+      "git_sha256": "42b180b214907d25cba12e1e31bdbd20daec863dadfddb3562833595cfff882f",
+      "canonical_lf_sha256": "42b180b214907d25cba12e1e31bdbd20daec863dadfddb3562833595cfff882f"
+    },
+    {
+      "path": "supabase/functions/rateware-api/rfx-project-create.mjs",
+      "published_sha256": "b1c5bdb2c69ce9f02bed75a1effbf8d9f8e99c7ffc8b405f13fa362bfecdf7de",
+      "git_sha256": "b1c5bdb2c69ce9f02bed75a1effbf8d9f8e99c7ffc8b405f13fa362bfecdf7de",
+      "canonical_lf_sha256": "b1c5bdb2c69ce9f02bed75a1effbf8d9f8e99c7ffc8b405f13fa362bfecdf7de"
+    },
+    {
+      "path": "supabase/functions/rateware-api/rfx-rfi-link.mjs",
+      "published_sha256": "002502ef37cf1bbbd0b3785bee51be6c962ef239b6ff8f55e960d94de2859f70",
+      "git_sha256": "002502ef37cf1bbbd0b3785bee51be6c962ef239b6ff8f55e960d94de2859f70",
+      "canonical_lf_sha256": "002502ef37cf1bbbd0b3785bee51be6c962ef239b6ff8f55e960d94de2859f70"
+    },
+    {
+      "path": "supabase/functions/rateware-api/staging-audit-context.mjs",
+      "published_sha256": "ae5ae47c20c39dd9d34fea2064144b891ac47e57efc3d48e726ac6a46f9eebac",
+      "git_sha256": "ae5ae47c20c39dd9d34fea2064144b891ac47e57efc3d48e726ac6a46f9eebac",
+      "canonical_lf_sha256": "ae5ae47c20c39dd9d34fea2064144b891ac47e57efc3d48e726ac6a46f9eebac"
+    },
+    {
+      "path": "supabase/functions/rateware-api/whatsapp-approval.mjs",
+      "published_sha256": "4c09ed22a8ba6d553c4c72412498502fad79187d1c72e5666feb65c87aededbf",
+      "git_sha256": "4c09ed22a8ba6d553c4c72412498502fad79187d1c72e5666feb65c87aededbf",
+      "canonical_lf_sha256": "4c09ed22a8ba6d553c4c72412498502fad79187d1c72e5666feb65c87aededbf"
+    },
+    {
+      "path": "supabase/functions/rateware-api/whatsapp-approved-outreach.ts",
+      "published_sha256": "920cbe1db87a3929f2be9902db10b1e4e72f9d5f0f3c1979703fc55ac983a5dd",
+      "git_sha256": "920cbe1db87a3929f2be9902db10b1e4e72f9d5f0f3c1979703fc55ac983a5dd",
+      "canonical_lf_sha256": "920cbe1db87a3929f2be9902db10b1e4e72f9d5f0f3c1979703fc55ac983a5dd"
+    },
+    {
+      "path": "supabase/functions/rateware-api/whatsapp-queue-evidence.ts",
+      "published_sha256": "6df989c2cd121a34e4b38a575d8f4fc85280ba1d324c3514bbdefff22f56d607",
+      "git_sha256": "6df989c2cd121a34e4b38a575d8f4fc85280ba1d324c3514bbdefff22f56d607",
+      "canonical_lf_sha256": "6df989c2cd121a34e4b38a575d8f4fc85280ba1d324c3514bbdefff22f56d607"
+    },
+    {
+      "path": "supabase/functions/rateware-api/whatsapp-reply-association.ts",
+      "published_sha256": "abe760785a8689eeccc05e24733b9e4512bce9a199300961e6c93e001630577d",
+      "git_sha256": "abe760785a8689eeccc05e24733b9e4512bce9a199300961e6c93e001630577d",
+      "canonical_lf_sha256": "abe760785a8689eeccc05e24733b9e4512bce9a199300961e6c93e001630577d"
+    },
+    {
+      "path": "supabase/functions/_shared/auth.ts",
+      "published_sha256": "de3753441f1d58475bc3bed0c6d51c5625027de28b029b402201b796e975d797",
+      "git_sha256": "de3753441f1d58475bc3bed0c6d51c5625027de28b029b402201b796e975d797",
+      "canonical_lf_sha256": "de3753441f1d58475bc3bed0c6d51c5625027de28b029b402201b796e975d797"
+    },
+    {
+      "path": "supabase/functions/_shared/bid-room-google-chat.ts",
+      "published_sha256": "805a548e9e003c557e25139b03348467e014ac76ed0c4eab7a8f38eb10f44f08",
+      "git_sha256": "805a548e9e003c557e25139b03348467e014ac76ed0c4eab7a8f38eb10f44f08",
+      "canonical_lf_sha256": "805a548e9e003c557e25139b03348467e014ac76ed0c4eab7a8f38eb10f44f08"
+    },
+    {
+      "path": "supabase/functions/_shared/identity-contract.mjs",
+      "published_sha256": "50dc05e0c76e8139fe3ccd57d53f2014ff093d3e6a30414202a24e2ae88c1231",
+      "git_sha256": "50dc05e0c76e8139fe3ccd57d53f2014ff093d3e6a30414202a24e2ae88c1231",
+      "canonical_lf_sha256": "50dc05e0c76e8139fe3ccd57d53f2014ff093d3e6a30414202a24e2ae88c1231"
+    },
+    {
+      "path": "supabase/functions/_shared/kinde.ts",
+      "published_sha256": "6e581e431a1f5bc7f628ab550ff10bb4a924496463c9c87ce3a93ac049520aae",
+      "git_sha256": "6e581e431a1f5bc7f628ab550ff10bb4a924496463c9c87ce3a93ac049520aae",
+      "canonical_lf_sha256": "6e581e431a1f5bc7f628ab550ff10bb4a924496463c9c87ce3a93ac049520aae"
+    },
+    {
+      "path": "supabase/functions/_shared/published-classification-contract.mjs",
+      "published_sha256": "93369aad99d7c193a619eed2c61f37f84cb436e81bdfa550243d510d33c799d0",
+      "git_sha256": "93369aad99d7c193a619eed2c61f37f84cb436e81bdfa550243d510d33c799d0",
+      "canonical_lf_sha256": "93369aad99d7c193a619eed2c61f37f84cb436e81bdfa550243d510d33c799d0"
+    },
+    {
+      "path": "supabase/functions/_shared/quote-queue-scope.ts",
+      "published_sha256": "f529535f92ee1741be79c5db180e872159bb5bdbafab573a4f67a0f7cb9a0bd0",
+      "git_sha256": "f529535f92ee1741be79c5db180e872159bb5bdbafab573a4f67a0f7cb9a0bd0",
+      "canonical_lf_sha256": "f529535f92ee1741be79c5db180e872159bb5bdbafab573a4f67a0f7cb9a0bd0"
+    },
+    {
+      "path": "supabase/functions/_shared/runtime-identity.ts",
+      "published_sha256": "ac5e0d2f8eb6784aeb0d3d41f1faf4446af20ca7839352bbf154b9b8b27ba3ab",
+      "git_sha256": "ac5e0d2f8eb6784aeb0d3d41f1faf4446af20ca7839352bbf154b9b8b27ba3ab",
+      "canonical_lf_sha256": "ac5e0d2f8eb6784aeb0d3d41f1faf4446af20ca7839352bbf154b9b8b27ba3ab"
+    },
+    {
+      "path": "supabase/functions/_shared/source-download-routing.mjs",
+      "published_sha256": "896af4843f5072b600b04a1aaf98da66904e3dcd2c162f539c8114ded4427735",
+      "git_sha256": "896af4843f5072b600b04a1aaf98da66904e3dcd2c162f539c8114ded4427735",
+      "canonical_lf_sha256": "896af4843f5072b600b04a1aaf98da66904e3dcd2c162f539c8114ded4427735"
+    },
+    {
+      "path": "supabase/functions/_shared/team-roles.ts",
+      "published_sha256": "0048c3ab008d801441d06ceb53504e2403c618ead694048ea91cc9c1f7119f1a",
+      "git_sha256": "0048c3ab008d801441d06ceb53504e2403c618ead694048ea91cc9c1f7119f1a",
+      "canonical_lf_sha256": "0048c3ab008d801441d06ceb53504e2403c618ead694048ea91cc9c1f7119f1a"
+    },
+    {
+      "path": "supabase/functions/_shared/workspace.ts",
+      "published_sha256": "0f4be9711f82492a15fb27dc89bfb42f627000e413ff82b180383ddd7d8fcdcd",
+      "git_sha256": "0f4be9711f82492a15fb27dc89bfb42f627000e413ff82b180383ddd7d8fcdcd",
+      "canonical_lf_sha256": "0f4be9711f82492a15fb27dc89bfb42f627000e413ff82b180383ddd7d8fcdcd"
+    }
+  ],
+  "changes": [
+    "supabase/functions/rateware-api/reefer-restrictions.d.mts",
+    "supabase/functions/rateware-api/reefer-restrictions.mjs"
+  ],
+  "tests": {
+    "typecheck": true,
+    "buildIdenticalToProduction": true,
+    "policyAndLoaderRepeated": 117,
+    "originalHttpTestsNotRepeated": 33,
+    "originalBrowserCasesNotRepeated": 10
+  },
+  "newProductionDeployment": false,
+  "migrations": false,
+  "normalization": "API: exact bytes. Frontend: preserve equivalent Git blobs, normalize changed sources to LF; exact build output verified."
+}
