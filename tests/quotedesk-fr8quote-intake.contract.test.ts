@@ -107,3 +107,17 @@ Deno.test("Fr8Quote: el correo armado con la plantilla sale por Gmail de sales@ 
   assertEquals(f.store.tables.quotedesk_quotes[0].status, "quoted");
   assert(r.body.email.provider_message_id);
 }));
+
+Deno.test("Fr8Quote: el aviso interno sale solo a sales@ desde sales@, una vez, y una operación desconocida se rechaza", () => run(async (f) => {
+  const notice = { contract: "fr8quote.quotedesk.v1", idempotency_key: "n-1", op: "notify_sales", email: { to: "otro@externo.test", subject: "Aceptada: RFX102426-0029", html: "<p>Aceptada</p>", text: "Aceptada" } };
+  const r = await f.send(notice);
+  assertEquals(r.status, 200, JSON.stringify(r.body));
+  assertEquals(r.body.notice.to, "sales@heymarksman.com");
+  assertEquals(f.provider.length, 1);
+  const raw = atob(String(f.provider[0].raw).replace(/-/g, "+").replace(/_/g, "/"));
+  assert(/^To: sales@heymarksman\.com/m.test(raw), raw.slice(0, 300));
+  assertEquals((await f.send(notice)).body.duplicate, true);
+  assertEquals(f.provider.length, 1);
+  assertEquals((await f.send({ contract: "fr8quote.quotedesk.v1", idempotency_key: "n-2", op: "borrar_todo" })).status, 400);
+  assertEquals(f.store.tables.quotedesk_quotes.length, 0);
+}));
