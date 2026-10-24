@@ -1,4 +1,5 @@
 import { RADAR_RFI_LINK_ACTION_CONTRACT_EXTENSION as radarRfiLinkExtension } from '../supabase/functions/_shared/action-contract-radar-rfi-link.mjs';
+import { RFX_LANE_CONDITIONS_REPLIES_ACTION_CONTRACT_EXTENSION as laneConditionsRepliesExtension } from '../supabase/functions/_shared/action-contract-rfx-lane-conditions-replies.mjs';
 import { SPOT_CONVERSION_ACTION_CONTRACT_EXTENSION as spotConversionExtension } from '../supabase/functions/_shared/action-contract-spot-conversion.mjs';
 import { RFX_SEGMENT_CONFIRMATIONS_ACTION_CONTRACT_EXTENSION as segmentConfirmationsExtension } from '../supabase/functions/_shared/action-contract-rfx-segment-confirmations.mjs';
 import { RFX_CARRIER_QUESTION_DRAFT_ACTION_CONTRACT_EXTENSION as carrierQuestionDraftExtension } from '../supabase/functions/_shared/action-contract-rfx-carrier-question-drafts.mjs';
@@ -612,3 +613,9 @@ for(const [key,delta] of Object.entries(radarRfiLinkExtension.expectedCountsDelt
 Object.assign(ACTION_CONTRACT.reviewedMetadataFingerprints,radarRfiLinkExtension.reviewedMetadataFingerprints);
 Object.assign(ACTION_CONTRACT.reviewedAuthorizationFingerprints,radarRfiLinkExtension.reviewedAuthorizationFingerprints);
 ACTION_CONTRACT.surfaces.push(...radarRfiLinkExtension.surfaces);
+
+// R1 lane conditions and R2 carrier replies (production since 2026-10-23/24); register these four only.
+for(const [key,delta] of Object.entries(laneConditionsRepliesExtension.expectedCountsDelta)) ACTION_CONTRACT.expectedCounts[key]+=delta;
+Object.assign(ACTION_CONTRACT.reviewedMetadataFingerprints,laneConditionsRepliesExtension.reviewedMetadataFingerprints);
+Object.assign(ACTION_CONTRACT.reviewedAuthorizationFingerprints,laneConditionsRepliesExtension.reviewedAuthorizationFingerprints);
+ACTION_CONTRACT.surfaces.push(...laneConditionsRepliesExtension.surfaces);
