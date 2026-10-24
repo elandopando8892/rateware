@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
 import { belongsToThread, carrierChatMessage, carrierChatThread } from "../_shared/carrier-chat-view.mjs";
+import { biddingClosed, checkConditionAnswer, conditionKeyFromRubric, LEGACY_RUBRIC_KEYS, publicLaneCondition } from "../_shared/rfx-lane-conditions.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -1075,7 +1076,9 @@ async function currentInvitationContext(supabase: RfxBidSupabaseClient, token: s
 }
 
 const SEGMENT_CONFIRMATION_ANSWERS = new Set(["pending", "agree", "exception", "disagree", "not_applicable"]);
-const SEGMENT_CONFIRMATION_RUBRICS = new Set(["logistics_model", "operation_criteria", "business_rules", "service_specifications", "carrier_requirements", "other_notes"]);
+// The six legacy rubrics stay valid; a route condition arrives as "cond.<key>"
+// and is checked against the lane's own conditions when saved (2026-10-22).
+const SEGMENT_CONFIRMATION_RUBRICS = LEGACY_RUBRIC_KEYS;
 
 function normalizeSegmentConfirmationRows(input: unknown) {
   const rows = Array.isArray(input) ? input : [];
@@ -1085,17 +1088,63 @@ function normalizeSegmentConfirmationRows(input: unknown) {
     const rubricKey = cleanText(record.rubric_key);
     const answer = cleanText(record.answer)?.toLowerCase() || "pending";
     if (!segmentKey) throw new Error("Segment key is required.");
-    if (!rubricKey || !SEGMENT_CONFIRMATION_RUBRICS.has(rubricKey)) throw new Error("Invalid segment rubric.");
+    const conditionKey = conditionKeyFromRubric(rubricKey);
+    if (!rubricKey || (!conditionKey && !SEGMENT_CONFIRMATION_RUBRICS.has(rubricKey))) throw new Error("Invalid segment rubric.");
     if (!SEGMENT_CONFIRMATION_ANSWERS.has(answer)) throw new Error("Invalid segment confirmation answer.");
     return {
       segment_key: segmentKey,
       rubric_key: rubricKey,
+      condition_key: conditionKey,
+      raw_value: record.value,
       answer,
       // A blank textarea can arrive as null from a carrier portal submission.
       // Keep the checklist save path valid when no exception note is needed.
       comment: (cleanText(record.comment) || "").slice(0, 1200)
     };
   });
+}
+
+async function listLaneConditions(supabase: RfxBidSupabaseClient, laneId: unknown) {
+  const id = cleanText(laneId);
+  if (!id) return [];
+  const result = await supabase
+    .from("rfx_lane_conditions")
+    .select("condition_key,importance,target,note,sort_order,revision")
+    .eq("rfx_lane_id", id)
+    .order("sort_order", { ascending: true });
+  if (result.error) throw result.error;
+  return result.data || [];
+}
+
+/**
+ * A route condition answer must name a condition the team set on this
+ * invitation's own lane, carry a datum of the right kind, explain an
+ * exception, and not claim "agree" with a datum that misses the target. Once
+ * the event stops taking bids (status or passed deadline) the answers are
+ * frozen like the bid itself.
+ */
+async function checkLaneConditionAnswers(
+  supabase: RfxBidSupabaseClient,
+  invitation: Record<string, unknown>,
+  event: Record<string, unknown>,
+  rows: ReturnType<typeof normalizeSegmentConfirmationRows>
+) {
+  const checks = new Map<string, { value: unknown; revision: number }>();
+  const conditionRows = rows.filter((row) => row.condition_key);
+  if (!conditionRows.length) return checks;
+  if (biddingClosed(event, new Date(), BID_DEADLINE_UTC_OFFSET)) {
+    throw new Error("This bid event is closed. Route conditions can no longer be answered.");
+  }
+  const conditions = new Map(
+    (await listLaneConditions(supabase, invitation.rfx_lane_id)).map((row) => [String(row.condition_key), row])
+  );
+  for (const row of conditionRows) {
+    const condition = conditions.get(String(row.condition_key));
+    if (!condition) throw new Error("Invalid segment rubric.");
+    const value = checkConditionAnswer(condition, row.answer, row.raw_value, row.comment);
+    checks.set(row.rubric_key, { value, revision: Number(condition.revision) || 1 });
+  }
+  return checks;
 }
 
 async function listSegmentConfirmations(
@@ -1122,6 +1171,7 @@ async function saveSegmentConfirmations(
   const event = relationRecord(invitation.rfx_events);
   const rows = normalizeSegmentConfirmationRows(input.confirmations);
   if (!rows.length) return { rows: [] };
+  const conditionChecks = await checkLaneConditionAnswers(supabase, invitation, event, rows);
   const now = new Date().toISOString();
   const payload = rows.map((row) => ({
     owner_user_id: cleanText(event.owner_user_id) || null,
@@ -1133,6 +1183,8 @@ async function saveSegmentConfirmations(
     rubric_key: row.rubric_key,
     answer: row.answer,
     comment: row.comment,
+    value: row.condition_key ? conditionChecks.get(row.rubric_key)?.value ?? null : null,
+    condition_revision: row.condition_key ? conditionChecks.get(row.rubric_key)?.revision ?? null : null,
     source: "carrier_portal",
     metadata: {
       source: "rfx_lane_fit",
@@ -5051,7 +5103,12 @@ Deno.serve(async (request) => {
         live_board: readOnlyPeek ? { ...liveBoard, current_invitation_token: undefined } : liveBoard,
         carrier_book: readOnlyPeek ? { ...book, invited: book.invited.map(invitationWithoutToken),
           quoted: book.quoted.map(invitationWithoutToken) } : book,
-        ...(!readOnlyPeek ? { bid_history: bidHistory, segment_confirmations: segmentConfirmations } : {})
+        ...(!readOnlyPeek ? {
+          bid_history: bidHistory,
+          segment_confirmations: segmentConfirmations,
+          // The route conditions of this invitation's lane, as the carrier answers them.
+          lane_conditions: (await listLaneConditions(supabase, result.data.rfx_lane_id)).map(publicLaneCondition).filter(Boolean)
+        } : {})
       });
       if (readOnlyPeek) response.headers.set("Cache-Control", "private, no-store, max-age=0");
       return response;
