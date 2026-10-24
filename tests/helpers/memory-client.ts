@@ -46,6 +46,7 @@ export function memoryClient(tables: Record<string, Row[]>) {
         else if (name === 'limit') end = args[0] - 1;
         else if (name === 'order') orders.push([key, args[1]?.ascending !== false]);
         else if (name === 'eq') filters.push(row => field(row, key) === args[1]);
+        else if (name === 'ilike') filters.push(row => String(field(row, key) ?? '').toLowerCase() === String(args[1]).replace(/\\(.)/g, '$1').toLowerCase());
         else if (name === 'neq') filters.push(row => field(row, key) !== args[1]);
         else if (name === 'in') filters.push(row => args[1].includes(field(row, key)));
         else if (name === 'is') filters.push(row => (field(row, key) ?? null) === args[1]);
@@ -55,7 +56,7 @@ export function memoryClient(tables: Record<string, Row[]>) {
         else if (name === 'contains') filters.push(row => Object.entries(args[1]).every(([k, v]) => field(row, key)?.[k] === v));
         else if (name === 'not' && args[1] === 'is') filters.push(row => (field(row, key) ?? null) !== args[2]);
         else throw new Error(`Unmocked query method: ${String(name)} on ${table}`);
-        if (['eq', 'neq', 'in', 'is', 'gt', 'gte', 'lte', 'contains', 'not'].includes(String(name))) call.filters.push([name, ...args]);
+        if (['eq', 'ilike', 'neq', 'in', 'is', 'gt', 'gte', 'lte', 'contains', 'not'].includes(String(name))) call.filters.push([name, ...args]);
         return query;
       };
     } });

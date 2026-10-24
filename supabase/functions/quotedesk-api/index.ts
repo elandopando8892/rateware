@@ -1513,6 +1513,175 @@ async function saveAccessorial(supabase: Db, workspace: Workspace, input: Row) {
 
 // ---------------------------------------------------------------- handler
 
+// ---------------------------------------------------------------- Fr8Quote intake
+
+// Contrato fr8quote.quotedesk.v1 (docs/contrato-quotedesk-v1.md en Fr8Quote): Fr8Quote entrega cotizaciones ya
+// calculadas, firmadas con HMAC (X-FR8-Timestamp, X-FR8-Signature = sha256 de «timestamp.cuerpo», X-Idempotency-Key).
+// Llegan al workspace que tiene conectado el buzón de sales@ y usan las mismas funciones que la interfaz:
+// create_quote y save_quote_lane (cost_source fcm; carrier_rate + markup fijo = precio de venta de Fr8Quote).
+// Si viene el correo ya armado con la plantilla de sales@, sale por el mismo remitente de Gmail y queda en la bitácora.
+// El secreto vive en Vault (fr8quote_quotedesk_secret): el proyecto está en el límite de secretos de Edge Functions.
+const FR8QUOTE_CONTRACT = "fr8quote.quotedesk.v1";
+const FR8QUOTE_MAX_SKEW_S = 300;
+
+async function hmacSha256Hex(secret: string, value: string) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function safeEqual(a: string, b: string) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function fr8quoteWorkspace(supabase: Db): Promise<Workspace> {
+  const result = await supabase.from("gmail_mailbox_connections").select("owner_user_id,owner_email,organization_id")
+    .eq("mailbox_email", GMAIL_ALLOWED_SENDER).eq("status", "connected").order("updated_at", { ascending: false }).limit(1).maybeSingle();
+  if (result.error) throw result.error;
+  const row = result.data as Row | null;
+  const ownerEmail = text(row?.owner_email, 320);
+  if (!row || !ownerEmail) throw new HttpError(503, `${GMAIL_ALLOWED_SENDER} no está conectado en Bidware.`);
+  return { owner_user_id: text(row.owner_user_id, 200), owner_email: ownerEmail, organization_id: text(row.organization_id, 200) };
+}
+
+/** El shipper por su ID del CRM o, si no viene, por su nombre exacto (sin distinguir mayúsculas). */
+async function fr8quoteShipper(supabase: Db, workspace: Workspace, header: Row) {
+  const id = text(header.shipper_id, 80);
+  if (id && UUID_PATTERN.test(id)) return await requireShipper(supabase, workspace, id);
+  const name = text(header.client_name, 300);
+  if (!name) throw new HttpError(422, "La cotización de Fr8Quote no trae cliente: captura el cliente o su ID de Bidware.");
+  const pattern = name.replace(/[\\%_]/g, (c) => `\\${c}`);
+  for (const column of ["shipper_name", "legal_name"]) {
+    const found = await supabase.from("shippers").select("id,shipper_name,legal_name")
+      .eq("owner_email", workspace.owner_email).ilike(column, pattern).limit(1).maybeSingle();
+    if (found.error) throw found.error;
+    if (found.data) return found.data as Row;
+  }
+  throw new HttpError(422, `«${name}» no está en el CRM de Bidware. Dalo de alta o captura su ID de Bidware en Fr8Quote.`);
+}
+
+async function fr8quoteIntake(request: Request, supabase: Db) {
+  const raw = await request.text();
+  if (raw.length > 3_000_000) throw new HttpError(413, "El paquete de Fr8Quote es demasiado grande.");
+  const timestamp = request.headers.get("x-fr8-timestamp") || "";
+  const signature = request.headers.get("x-fr8-signature") || "";
+  const headerKey = request.headers.get("x-idempotency-key") || "";
+  const secretResult = await supabase.rpc("quotedesk_fr8quote_secret");
+  if (secretResult.error) throw secretResult.error;
+  const secret = typeof secretResult.data === "string" ? secretResult.data.trim() : "";
+  if (!secret) throw new HttpError(503, "La entrada de Fr8Quote no está configurada.");
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > FR8QUOTE_MAX_SKEW_S) throw new HttpError(401, "Firma vencida.");
+  if (!safeEqual(signature, `sha256=${await hmacSha256Hex(secret, `${timestamp}.${raw}`)}`)) throw new HttpError(401, "Firma inválida.");
+
+  let pkg: Row;
+  try { pkg = record(JSON.parse(raw)); } catch { throw new HttpError(400, "El paquete no es JSON válido."); }
+  const idempotencyKey = text(pkg.idempotency_key, 80);
+  if (pkg.contract !== FR8QUOTE_CONTRACT || !idempotencyKey || idempotencyKey !== headerKey) throw new HttpError(400, "Contrato o clave de idempotencia inválidos.");
+  const quotes = (Array.isArray(pkg.quotes) ? pkg.quotes : []).map(record);
+  if (!quotes.length || quotes.length > 10 || quotes.some((q) => !Array.isArray(q.lanes) || !q.lanes.length || q.lanes.length > LANE_LIMIT)) {
+    throw new HttpError(400, `Cada entrega trae de 1 a 10 cotizaciones de 1 a ${LANE_LIMIT} rutas.`);
+  }
+  const workspace = await fr8quoteWorkspace(supabase);
+  const checksum = await sha256Hex(raw);
+
+  // Idempotencia: el reintento de una entrega terminada devuelve el mismo recibo.
+  const existing = await supabase.from("quotedesk_fr8quote_imports").select("*")
+    .eq("owner_email", workspace.owner_email).eq("idempotency_key", idempotencyKey).maybeSingle();
+  if (existing.error) throw existing.error;
+  let row = existing.data as Row | null;
+  if (row?.status === "done") return { ...record(row.receipt), duplicate: true };
+  if (row?.status === "processing") throw new HttpError(409, "Esta entrega de Fr8Quote se está procesando.");
+  if (row) {
+    const retry = await supabase.from("quotedesk_fr8quote_imports").update({ status: "processing", error: null, payload_checksum: checksum, updated_at: nowIso() })
+      .eq("id", row.id).eq("status", "failed").select().maybeSingle();
+    if (retry.error) throw retry.error;
+    if (!retry.data) throw new HttpError(409, "Esta entrega de Fr8Quote se está procesando.");
+    row = retry.data as Row;
+  } else {
+    const inserted = await supabase.from("quotedesk_fr8quote_imports").insert(owned({
+      idempotency_key: idempotencyKey, payload_checksum: checksum, status: "processing", exported_by: text(pkg.exported_by, 320)
+    }, workspace)).select().single();
+    if (inserted.error) {
+      if (inserted.error.code === "23505") throw new HttpError(409, "Esta entrega de Fr8Quote se está procesando.");
+      throw inserted.error;
+    }
+    row = inserted.data as Row;
+  }
+
+  try {
+    // Todos los shippers se validan antes de crear nada.
+    const shippers = [];
+    for (const q of quotes) shippers.push(await fr8quoteShipper(supabase, workspace, record(q.header)));
+    const created: Row[] = [];
+    for (const [i, q] of quotes.entries()) {
+      const header = record(q.header);
+      const quote = await createQuote(supabase, workspace, {
+        shipper_id: shippers[i].id, quote_type: header.quote_type, channel: header.channel, currency: header.currency,
+        valid_until: header.valid_until, title: header.title, requested_by: header.requested_by, notes: header.notes
+      });
+      for (const lane of q.lanes as unknown[]) await saveQuoteLane(supabase, workspace, quote.id, record(lane));
+      created.push({ id: quote.id, folio: quote.folio, lanes: (q.lanes as unknown[]).length });
+    }
+
+    let email: Row | null = null;
+    const mail = record(pkg.email);
+    if (mail.to) email = await fr8quoteEmail(supabase, workspace, created, idempotencyKey, mail);
+    const receipt = { contract: FR8QUOTE_CONTRACT, idempotency_key: idempotencyKey, quotes: created, email, duplicate: false };
+    await supabase.from("quotedesk_fr8quote_imports").update({ status: "done", receipt, updated_at: nowIso() }).eq("id", row.id);
+    await audit(supabase, workspace, "quotedesk_fr8quote_imported", "quotedesk_quote", String(created[0].id),
+      `Fr8Quote: ${created.map((c) => c.folio).join(", ")}${email ? ` enviada a ${mail.to}` : ""}.`, { idempotency_key: idempotencyKey });
+    return receipt;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await supabase.from("quotedesk_fr8quote_imports").update({ status: "failed", error: message.slice(0, 2000), updated_at: nowIso() }).eq("id", row.id);
+    throw error;
+  }
+}
+
+/** Envía el correo que armó Fr8Quote con la plantilla de sales@ y lo registra como el envío de la primera cotización. */
+async function fr8quoteEmail(supabase: Db, workspace: Workspace, created: Row[], deliveryKey: string, mail: Row) {
+  const to = text(mail.to, 320)?.toLowerCase() || "";
+  if (!isEmail(to)) throw new HttpError(400, "El destinatario no es un correo válido.");
+  const subject = text(mail.subject, 300) || `Cotización ${created[0].folio}`;
+  const html = String(mail.html || "");
+  const plain = String(mail.text || "");
+  if (!html || html.length > 1_000_000) throw new HttpError(400, "El correo de Fr8Quote no trae cuerpo válido.");
+  if ((await suppressedEmails(supabase, workspace.owner_email, [to])).size) throw new HttpError(400, `No se envía a ${to}: está en la lista de rebotes o bajas.`);
+  const checksum = await sha256Hex(JSON.stringify({ to, subject, html, text: plain }));
+  const idempotencyKey = await sha256Hex(`${FR8QUOTE_CONTRACT}:${workspace.owner_email}:${deliveryKey}:${checksum}`);
+  const inserted = await supabase.from("quotedesk_quote_emails").insert(owned({
+    quote_id: created[0].id, idempotency_key: idempotencyKey, payload_checksum: checksum, mailbox_email: GMAIL_ALLOWED_SENDER,
+    recipient_email: to, cc_emails: [], subject, status: "sending", attempted_at: nowIso(), requested_by_user_id: workspace.owner_user_id
+  }, workspace)).select().single();
+  if (inserted.error) throw inserted.error;
+  const receipt = inserted.data as Row;
+  const finish = (patch: Row) => supabase.from("quotedesk_quote_emails").update({ ...patch, updated_at: nowIso() }).eq("id", receipt.id);
+  let sent: { id: string; threadId: string | null };
+  try {
+    const token = await gmailAccessToken(supabase, workspace.owner_email);
+    sent = await sendGmailRaw(token, gmailRawMessage({
+      to, from: GMAIL_ALLOWED_SENDER, fromName: EMAIL_SENDER_NAME, subject, text: plain, html,
+      headers: { "X-QuoteDesk-Folio": created.map((c) => String(c.folio)).join(", "), "X-QuoteDesk-Receipt-Id": String(receipt.id) }
+    }));
+  } catch (error) {
+    const outcome = error instanceof GmailSendError ? error.outcome : "delivery_unknown";
+    const message = error instanceof Error ? error.message : String(error);
+    await finish({ status: outcome, error: message });
+    throw new HttpError(502, outcome === "failed" ? message : `${message} No sabemos si salió: revisa Enviados en Gmail antes de reintentar.`);
+  }
+  await finish({ status: "sent", provider_message_id: sent.id, provider_thread_id: sent.threadId, sent_at: nowIso(), error: null });
+  const now = nowIso();
+  for (const c of created) {
+    await supabase.from("quotedesk_quotes").update({ status: "quoted", status_changed_at: now, quoted_at: now, updated_at: now })
+      .eq("owner_email", workspace.owner_email).eq("id", c.id).in("status", ["new", "estimating"]);
+  }
+  return { to, subject, provider_message_id: sent.id };
+}
+
 const deliveryQueue = quoteQueue({ requireQuote, draft: quoteEmailDraft, send: sendQuoteEmail, validEmail: isEmail });
 
 export function createQuotedeskApiHandler(dependencies: {
@@ -1524,6 +1693,8 @@ return async function handle(request: Request) {
   if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
   try {
     const supabase = (dependencies.getClient || db)();
+    // Fr8Quote entra firmado de servidor a servidor, no con la sesión de un usuario.
+    if (request.headers.get("x-fr8-signature")) return jsonResponse(await fr8quoteIntake(request, supabase), 200, request);
     const { workspace, claims } = await (dependencies.resolveSession || resolveWorkspace)(request, supabase);
     let body: Row;
     try {
