@@ -15,6 +15,7 @@ import { teamRoleDenial } from "../_shared/team-roles.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from "../_shared/runtime-identity.ts";
 import { GMAIL_ALLOWED_SENDER, GmailSendError, gmailAccessToken, gmailRawMessage, sendGmailRaw, suppressedEmails } from "../_shared/gmail-send.ts";
 import { isEmail, renderQuoteEmail } from "./email.mjs";
+import { ensureQuoteTemplate, sendQuoteTemplate, WhatsappError, waNumber } from "./whatsapp.ts";
 import { metersToMiles, placeQuery, queryKey } from "./routes.mjs";
 import {
   SCOPE_LABEL,
@@ -1521,6 +1522,8 @@ async function saveAccessorial(supabase: Db, workspace: Workspace, input: Row) {
 // create_quote y save_quote_lane (cost_source fcm; carrier_rate + markup fijo = precio de venta de Fr8Quote).
 // Si viene el correo ya armado con la plantilla de sales@, sale por el mismo remitente de Gmail y queda en la bitácora.
 // El secreto vive en Vault (fr8quote_quotedesk_secret): el proyecto está en el límite de secretos de Edge Functions.
+// Dos operaciones sin cotizaciones: «whatsapp_template» consulta (o registra en Meta) la plantilla de la propuesta y
+// «whatsapp_send» manda la propuesta por WhatsApp desde el número de HeyMarksman, con la misma idempotencia.
 const FR8QUOTE_CONTRACT = "fr8quote.quotedesk.v1";
 const FR8QUOTE_MAX_SKEW_S = 300;
 
@@ -1581,8 +1584,19 @@ async function fr8quoteIntake(request: Request, supabase: Db) {
   try { pkg = record(JSON.parse(raw)); } catch { throw new HttpError(400, "El paquete no es JSON válido."); }
   const idempotencyKey = text(pkg.idempotency_key, 80);
   if (pkg.contract !== FR8QUOTE_CONTRACT || !idempotencyKey || idempotencyKey !== headerKey) throw new HttpError(400, "Contrato o clave de idempotencia inválidos.");
+  const op = text(pkg.op, 40) || "";
+  if (op === "whatsapp_template") {
+    try { return { contract: FR8QUOTE_CONTRACT, template: await ensureQuoteTemplate() }; } catch (error) { throw asHttp(error); }
+  }
+  const wa = record(pkg.whatsapp);
+  const waTo = op === "whatsapp_send" ? waNumber(wa.to) : null;
+  const waParams = (Array.isArray(wa.params) ? wa.params : []).map((v) => text(v, 300) || "");
+  if (op === "whatsapp_send" && (!waTo || waParams.length !== 5 || waParams.some((v) => !v))) {
+    throw new HttpError(400, "WhatsApp necesita el número con lada de país y los 5 datos de la plantilla.");
+  }
+  if (op && op !== "whatsapp_send") throw new HttpError(400, `Operación desconocida: ${op}.`);
   const quotes = (Array.isArray(pkg.quotes) ? pkg.quotes : []).map(record);
-  if (!quotes.length || quotes.length > 10 || quotes.some((q) => !Array.isArray(q.lanes) || !q.lanes.length || q.lanes.length > LANE_LIMIT)) {
+  if (!op && !quotes.length || quotes.length > 10 || quotes.some((q) => !Array.isArray(q.lanes) || !q.lanes.length || q.lanes.length > LANE_LIMIT)) {
     throw new HttpError(400, `Cada entrega trae de 1 a 10 cotizaciones de 1 a ${LANE_LIMIT} rutas.`);
   }
   const workspace = await fr8quoteWorkspace(supabase);
@@ -1613,6 +1627,15 @@ async function fr8quoteIntake(request: Request, supabase: Db) {
   }
 
   try {
+    if (op === "whatsapp_send") {
+      let messageId: string;
+      try { messageId = await sendQuoteTemplate(waTo!, waParams as [string, string, string, string, string]); } catch (error) { throw asHttp(error); }
+      const receipt = { contract: FR8QUOTE_CONTRACT, idempotency_key: idempotencyKey, whatsapp: { to: waTo, message_id: messageId }, duplicate: false };
+      await supabase.from("quotedesk_fr8quote_imports").update({ status: "done", receipt, updated_at: nowIso() }).eq("id", row.id);
+      await audit(supabase, workspace, "quotedesk_fr8quote_whatsapp_sent", "quotedesk_quote", waParams[1],
+        `Fr8Quote: propuesta ${waParams[1]} enviada por WhatsApp a +${waTo}.`, { idempotency_key: idempotencyKey, message_id: messageId });
+      return receipt;
+    }
     // Todos los shippers se validan antes de crear nada.
     const shippers = [];
     for (const q of quotes) shippers.push(await fr8quoteShipper(supabase, workspace, record(q.header)));
@@ -1641,6 +1664,8 @@ async function fr8quoteIntake(request: Request, supabase: Db) {
     throw error;
   }
 }
+
+const asHttp = (error: unknown) => error instanceof WhatsappError ? new HttpError(error.status, error.message) : error;
 
 /** Envía el correo que armó Fr8Quote con la plantilla de sales@ y lo registra como el envío de la primera cotización. */
 async function fr8quoteEmail(supabase: Db, workspace: Workspace, created: Row[], deliveryKey: string, mail: Row) {
