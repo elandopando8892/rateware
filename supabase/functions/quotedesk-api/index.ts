@@ -16,6 +16,7 @@ import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from "../_shared/r
 import { GMAIL_ALLOWED_SENDER, GmailSendError, gmailAccessToken, gmailRawMessage, sendGmailRaw, suppressedEmails } from "../_shared/gmail-send.ts";
 import { isEmail, renderQuoteEmail } from "./email.mjs";
 import { ensureQuoteTemplate, sendQuoteTemplate, WhatsappError, waNumber } from "./whatsapp.ts";
+import { importRatebook, RatebookError } from "./ratebook.ts";
 import { metersToMiles, placeQuery, queryKey } from "./routes.mjs";
 import {
   SCOPE_LABEL,
@@ -1587,6 +1588,16 @@ async function fr8quoteIntake(request: Request, supabase: Db) {
   const op = text(pkg.op, 40) || "";
   if (op === "whatsapp_template") {
     try { return { contract: FR8QUOTE_CONTRACT, template: await ensureQuoteTemplate() }; } catch (error) { throw asHttp(error); }
+  }
+  // Tarifa en revisión (fr8quote.rateware-rate.v1): va a la bandeja fcm_ratebook_imports, con su propia idempotencia.
+  if (op === "ratebook_import") {
+    const workspace = await fr8quoteWorkspace(supabase);
+    try {
+      return await importRatebook(supabase, workspace, record(pkg.rate_package));
+    } catch (error) {
+      if (error instanceof RatebookError) throw new HttpError(error.status, error.field ? `${error.message}: ${error.field}` : error.message);
+      throw error;
+    }
   }
   const wa = record(pkg.whatsapp);
   const waTo = op === "whatsapp_send" ? waNumber(wa.to) : null;
