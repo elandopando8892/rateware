@@ -821,12 +821,102 @@ const surfaces = [
     "coverageSignals": [
       "direct"
     ]
+  },
+  {
+    "contractVersion": "1.3.0",
+    "canonicalId": "edge.quotedesk-api.list_fcm_ratebook_imports",
+    "actionName": "list_fcm_ratebook_imports",
+    "sourceKind": "edge-selector",
+    "sourceFile": "supabase/functions/quotedesk-api/index.ts",
+    "handler": "jsonResponse",
+    "endpoint": "POST /functions/v1/quotedesk-api body.action",
+    "businessModule": "Commercial",
+    "operation": "read",
+    "resource": "quotedesk",
+    "access": "read",
+    "exposure": "human",
+    "sensitivity": "medium",
+    "tenantRelevance": "tenant-scoped",
+    "proposedPermissionKey": "quotedesk.read",
+    "functionalOwner": "Commercial",
+    "decisionStatus": "pending_human_approval",
+    "lifecycle": "active",
+    "replacementAction": null,
+    "sourceFingerprint": "73a585b5f3d1a3d03a2bbf7cc498db095433bd38426397ec7c7f98f689a3fb98",
+    "notes": "Review Queue › Fr8Quote. Lists the workspace rows of the rate-in-review inbox (fcm_ratebook_imports); Supabase session resolved to the rateware workspace and scoped by owner_email.",
+    "analysisCoverage": "shared-observed",
+    "dependencyFiles": [
+      "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
+      "supabase/functions/_shared/identity-contract.mjs",
+      "supabase/functions/_shared/kinde.ts",
+      "supabase/functions/_shared/runtime-identity.ts",
+      "supabase/functions/_shared/workspace.ts",
+      "supabase/functions/quotedesk-api/calc.mjs",
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/ratebook.ts",
+      "supabase/functions/quotedesk-api/routes.mjs",
+      "supabase/functions/quotedesk-api/whatsapp.ts"
+    ],
+    "rpcSignature": null,
+    "coverageSignals": [
+      "shared_dependency_observed",
+      "external_dependency"
+    ]
+  },
+  {
+    "contractVersion": "1.3.0",
+    "canonicalId": "edge.quotedesk-api.review_fcm_ratebook_import",
+    "actionName": "review_fcm_ratebook_import",
+    "sourceKind": "edge-selector",
+    "sourceFile": "supabase/functions/quotedesk-api/index.ts",
+    "handler": "jsonResponse",
+    "endpoint": "POST /functions/v1/quotedesk-api body.action",
+    "businessModule": "Commercial",
+    "operation": "manage",
+    "resource": "quotedesk",
+    "access": "write",
+    "exposure": "human",
+    "sensitivity": "medium-high",
+    "tenantRelevance": "tenant-scoped",
+    "proposedPermissionKey": "quotedesk.manage",
+    "functionalOwner": "Commercial",
+    "decisionStatus": "pending_human_approval",
+    "lifecycle": "active",
+    "replacementAction": null,
+    "sourceFingerprint": "73a585b5f3d1a3d03a2bbf7cc498db095433bd38426397ec7c7f98f689a3fb98",
+    "notes": "Review Queue › Fr8Quote. Approves or rejects a pending_review row (rejection requires a note); approval publishes nothing. Scoped by owner_email; audited.",
+    "analysisCoverage": "shared-observed",
+    "dependencyFiles": [
+      "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
+      "supabase/functions/_shared/identity-contract.mjs",
+      "supabase/functions/_shared/kinde.ts",
+      "supabase/functions/_shared/runtime-identity.ts",
+      "supabase/functions/_shared/workspace.ts",
+      "supabase/functions/quotedesk-api/calc.mjs",
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/ratebook.ts",
+      "supabase/functions/quotedesk-api/routes.mjs",
+      "supabase/functions/quotedesk-api/whatsapp.ts"
+    ],
+    "rpcSignature": null,
+    "coverageSignals": [
+      "shared_dependency_observed",
+      "external_dependency"
+    ]
   }
 ];
 
 export const QUOTEDESK_ACTION_CONTRACT_EXTENSION = {
-  expectedCountsDelta: { governable: 20, edge: 18, postgres: 2, ratewareApi: 0 },
+  expectedCountsDelta: { governable: 22, edge: 20, postgres: 2, ratewareApi: 0 },
   reviewedMetadataFingerprints: {
+    "edge.quotedesk-api.list_fcm_ratebook_imports": "e02abacad8496bfeb78dba57bc297f67b4dc34a02fc4f932f9479734933f6cf7",
+    "edge.quotedesk-api.review_fcm_ratebook_import": "5f0818c090e5ecc63ff2bd10dd10e0594b4ad7c61cca00ff6aac4dc650f72e54",
     "edge.quotedesk-api.apply_bid_room_awards": "520cbc675125c9fc766a73d30249860b359dacf3026ea40b36a7298b8c4275a2",
     "edge.quotedesk-api.create_quote": "5ebce40775d7d6894b38112bbf72a9ac7a5608b1c1780d926a02393648baad96",
     "edge.quotedesk-api.delete_quote_lane": "55c2fd2e9242c2b5e3492b95073f59e4ad17a5b485a6b65421568103ba8fe2c9",
@@ -849,6 +939,8 @@ export const QUOTEDESK_ACTION_CONTRACT_EXTENSION = {
     "rpc.public.quotedesk_fr8quote_secret()": "aa39c3c2a56a7fb451074a7fb4b58e78bb0f5a8ea37863c12c4bfc4a766f596a"
   },
   reviewedAuthorizationFingerprints: {
+    "edge.quotedesk-api.list_fcm_ratebook_imports": "bc0862c23e66a0ccd1f3c4709694884db808ebbab1c6b094ed442b02aa4868f7",
+    "edge.quotedesk-api.review_fcm_ratebook_import": "bc0862c23e66a0ccd1f3c4709694884db808ebbab1c6b094ed442b02aa4868f7",
     "edge.quotedesk-api.apply_bid_room_awards": "5651524abcca740eb705565bbecc90b81f98fc150bfe1701ffe28ee7d51a4d14",
     "edge.quotedesk-api.create_quote": "5651524abcca740eb705565bbecc90b81f98fc150bfe1701ffe28ee7d51a4d14",
     "edge.quotedesk-api.delete_quote_lane": "5651524abcca740eb705565bbecc90b81f98fc150bfe1701ffe28ee7d51a4d14",

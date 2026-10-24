@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-operate.css" />
     <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
+    <link rel="stylesheet" href="./src/fr8quote-rates.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="staging-review" data-p3v2-states="loaded loading empty review-required error">
     <div class="rw-app" data-platform55-app>
@@ -37,6 +38,32 @@
                 <p>Evidence, validation gaps, and selection scope stay visible. Only an explicit human approval can publish an eligible row to Rateware.</p>
               </div>
             </section>
+          <section id="fr8quote-rates" class="workspace-panel rw-operate-panel fr8q-panel" aria-labelledby="fr8quote-rates-title" hidden>
+            <div class="workbench-header">
+              <div>
+                <p class="eyebrow">Fr8Quote · cost model</p>
+                <h2 id="fr8quote-rates-title">Fr8Quote rates in review <span id="fr8quote-rates-count" class="bulk-scope-pill">0</span></h2>
+                <p class="muted">Priced from the carrier cost model. Approving keeps the rate as a reviewed reference; nothing is published.</p>
+              </div>
+              <div class="toolbar">
+                <label>View
+                  <select id="fr8quote-rates-status">
+                    <option value="pending_review">Pending review</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="superseded">Superseded</option>
+                    <option value="all">All</option>
+                  </select>
+                </label>
+                <button id="fr8quote-rates-refresh" class="secondary" type="button">Refresh</button>
+              </div>
+            </div>
+            <p id="fr8quote-rates-message" class="muted" role="status"></p>
+            <div class="table-wrap"><table class="fr8q-table">
+              <thead><tr><th>Lane</th><th class="num">All-in</th><th>Validity</th><th>Version</th><th>Review</th></tr></thead>
+              <tbody id="fr8quote-rates-body"></tbody>
+            </table></div>
+          </section>
           <section class="workspace-panel spreadsheet-workbench review-queue-workspace rw-operate-panel">
             <div class="workbench-header">
               <div>
@@ -383,5 +410,6 @@
     </div>
 
     <script type="module" src="./src/staging-review.js"></script>
+    <script type="module" src="./src/fr8quote-rates.js"></script>
   </body>
 </html>
