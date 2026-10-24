@@ -790,11 +790,42 @@ const surfaces = [
     "coverageSignals": [
       "direct"
     ]
+  },
+  {
+    "contractVersion": "1.3.0",
+    "canonicalId": "rpc.public.quotedesk_fr8quote_secret()",
+    "actionName": "public.quotedesk_fr8quote_secret",
+    "sourceKind": "postgres-function",
+    "sourceFile": "supabase/migrations/20261024050000_quotedesk_fr8quote_intake.sql",
+    "handler": "public.quotedesk_fr8quote_secret()",
+    "endpoint": "PostgreSQL function / PostgREST RPC surface public.quotedesk_fr8quote_secret()",
+    "businessModule": "Commercial",
+    "operation": "read",
+    "resource": "quotedesk-config",
+    "access": "read",
+    "exposure": "internal/service-role",
+    "sensitivity": "high",
+    "tenantRelevance": "platform-scoped",
+    "proposedPermissionKey": "internal.rpc.quotedesk_fr8quote_secret",
+    "functionalOwner": "Commercial",
+    "decisionStatus": "internal_only",
+    "lifecycle": "active",
+    "replacementAction": null,
+    "sourceFingerprint": "aceca413820c43b5b19d7995378efdf29d8d7b343ca3b6836452c3dc77d4185f",
+    "notes": "Returns the HMAC secret of the Fr8Quote intake (fr8quote.quotedesk.v1) stored in Vault (fr8quote_quotedesk_secret); EXECUTE revoked from public/anon/authenticated and granted only to service_role for the quotedesk-api edge function.",
+    "analysisCoverage": "direct",
+    "dependencyFiles": [
+      "supabase/migrations/20261024050000_quotedesk_fr8quote_intake.sql"
+    ],
+    "rpcSignature": "",
+    "coverageSignals": [
+      "direct"
+    ]
   }
 ];
 
 export const QUOTEDESK_ACTION_CONTRACT_EXTENSION = {
-  expectedCountsDelta: { governable: 19, edge: 18, postgres: 1, ratewareApi: 0 },
+  expectedCountsDelta: { governable: 20, edge: 18, postgres: 2, ratewareApi: 0 },
   reviewedMetadataFingerprints: {
     "edge.quotedesk-api.apply_bid_room_awards": "520cbc675125c9fc766a73d30249860b359dacf3026ea40b36a7298b8c4275a2",
     "edge.quotedesk-api.create_quote": "5ebce40775d7d6894b38112bbf72a9ac7a5608b1c1780d926a02393648baad96",
@@ -814,7 +845,8 @@ export const QUOTEDESK_ACTION_CONTRACT_EXTENSION = {
     "edge.quotedesk-api.set_quote_status": "0e93fbcbf6857a2624cb1c7137a3d50f88f8b2cfe48836e606556e97c68c4ed6",
     "edge.quotedesk-api.suggest_lane_miles": "75ce9023ebdb3fb5e821c7079a4f8d11c282f7697342a78317f957ca15ba78a4",
     "edge.quotedesk-api.update_quote": "7f4237f527baa91dee97b8ee290da22908f402746125f092b7297fead56c97da",
-    "rpc.public.quotedesk_google_maps_api_key()": "b897b39ec259f6f161869c156adcd844ee25ef5fb4146c273823ccce0168c781"
+    "rpc.public.quotedesk_google_maps_api_key()": "b897b39ec259f6f161869c156adcd844ee25ef5fb4146c273823ccce0168c781",
+    "rpc.public.quotedesk_fr8quote_secret()": "aa39c3c2a56a7fb451074a7fb4b58e78bb0f5a8ea37863c12c4bfc4a766f596a"
   },
   reviewedAuthorizationFingerprints: {
     "edge.quotedesk-api.apply_bid_room_awards": "5651524abcca740eb705565bbecc90b81f98fc150bfe1701ffe28ee7d51a4d14",
@@ -835,7 +867,8 @@ export const QUOTEDESK_ACTION_CONTRACT_EXTENSION = {
     "edge.quotedesk-api.set_quote_status": "5651524abcca740eb705565bbecc90b81f98fc150bfe1701ffe28ee7d51a4d14",
     "edge.quotedesk-api.suggest_lane_miles": "5651524abcca740eb705565bbecc90b81f98fc150bfe1701ffe28ee7d51a4d14",
     "edge.quotedesk-api.update_quote": "5651524abcca740eb705565bbecc90b81f98fc150bfe1701ffe28ee7d51a4d14",
-    "rpc.public.quotedesk_google_maps_api_key()": "1936fece2e18e3af9a68d8ce760587155c54e9afa8e7d1de664c60de4253c3e7"
+    "rpc.public.quotedesk_google_maps_api_key()": "1936fece2e18e3af9a68d8ce760587155c54e9afa8e7d1de664c60de4253c3e7",
+    "rpc.public.quotedesk_fr8quote_secret()": "aceca413820c43b5b19d7995378efdf29d8d7b343ca3b6836452c3dc77d4185f"
   },
   surfaces
 };
