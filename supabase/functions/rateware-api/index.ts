@@ -26,6 +26,15 @@ import type { WorkspaceUser } from "../_shared/workspace.ts";
 import { requireEligibleRfxCloseout } from "./rfx-closeout-guards.ts";
 import { rfxDemandOperation, rfxDemandService } from "./rfx-demand-values.ts";
 import {
+  biddingClosed,
+  normalizeLaneConditions,
+  publicLaneCondition,
+  RFX_CONDITION_CATALOG,
+  RFX_CONDITION_CATALOG_VERSION,
+  sameRequirement
+} from "../_shared/rfx-lane-conditions.mjs";
+import { carrierReplies, summarizeCarrierReplies } from "../_shared/rfx-carrier-replies.mjs";
+import {
   CARRIER_TEMPLATE_IMPORT_MAX_ROWS,
   carrierTemplateNameKey,
   normalizeCarrierTemplateInput,
@@ -10584,7 +10593,7 @@ async function fetchRfxSegmentConfirmations(supabase: RatewareSupabaseClient, ev
   for (let offset = 0; ; offset += pageSize) {
     const result = await supabase
       .from("rfx_segment_confirmations")
-      .select("rfx_lane_vendor_id,vendor_id,segment_key,rubric_key,answer,comment,updated_at")
+      .select("rfx_lane_vendor_id,vendor_id,segment_key,rubric_key,answer,comment,value,condition_revision,updated_at")
       .eq("rfx_event_id", eventId)
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
@@ -18514,6 +18523,132 @@ async function syncGmailBounces(
     cleaned_vendors: cleanedVendors,
     rows: suppressionRows.map((row) => ({ email: row.email, status: row.status, reason: row.reason }))
   };
+}
+
+// Read-only: who answered an RFx invitation by email (the sent Gmail thread, or a new email that names the
+// event) or in the Bid Room chat. Nothing is written; callers use it to stop follow-ups (added 2026-10-24).
+async function listRfxCarrierReplies(
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown> = {}
+) {
+  const event = await requireOwnedRfxEvent(supabase, user, input.event_id);
+  const checkedAt = new Date().toISOString();
+  const invitationsResult = await supabase
+    .from("rfx_lane_vendors")
+    .select("id,vendor_id,rfx_lane_id,vendors(primary_email,secondary_emails,domain)")
+    .eq("rfx_event_id", event.id);
+  if (invitationsResult.error) throw invitationsResult.error;
+  const invitations = (invitationsResult.data || []).map((row) => {
+    const vendor = relationRecord(row.vendors);
+    const emails = [vendor.primary_email, ...(Array.isArray(vendor.secondary_emails) ? vendor.secondary_emails : [])]
+      .map((value) => cleanText(value)?.toLowerCase())
+      .filter(Boolean) as string[];
+    return { id: String(row.id), vendor_id: String(row.vendor_id), rfx_lane_id: String(row.rfx_lane_id), emails, domain: cleanText(vendor.domain) };
+  });
+
+  const chatResult = await supabase
+    .from("bid_room_chat_messages")
+    .select("id,vendor_id,rfx_lane_id,sender_role,created_at")
+    .eq("owner_email", user.owner_email)
+    .eq("rfx_event_id", event.id)
+    .eq("sender_role", "carrier")
+    .limit(1000);
+  if (chatResult.error) throw chatResult.error;
+
+  const sentResult = await supabase
+    .from("outreach_messages")
+    .select("rfx_lane_vendor_id,provider_thread_id,sent_at")
+    .eq("owner_email", user.owner_email)
+    .eq("rfx_event_id", event.id)
+    .eq("channel", "email")
+    .not("provider_thread_id", "is", null)
+    .not("sent_at", "is", null)
+    .limit(2000);
+  if (sentResult.error) throw sentResult.error;
+  const sent = sentResult.data || [];
+
+  const connectionResult = await supabase
+    .from("gmail_mailbox_connections")
+    .select("scopes")
+    .eq("owner_email", user.owner_email)
+    .eq("mailbox_email", GMAIL_ALLOWED_SENDER)
+    .eq("status", "connected")
+    .maybeSingle();
+  if (connectionResult.error) throw connectionResult.error;
+
+  const threadReplies: Record<string, unknown>[] = [];
+  const searchReplies: Record<string, unknown>[] = [];
+  let emailStatus = "checked";
+  let scannedThreads = 0;
+  if (!gmailCanReadMailbox(connectionResult.data)) {
+    emailStatus = "gmail_not_readable";
+  } else {
+    const accessToken = await gmailAccessToken(supabase, user, GMAIL_ALLOWED_SENDER);
+    const gmailGet = async (path: string) => {
+      const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me${path}`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(cleanText(data?.error?.message) || `Gmail reply lookup failed (${response.status}).`);
+      return data;
+    };
+    const metadata = "format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Auto-Submitted&metadataHeaders=Precedence&metadataHeaders=X-Autoreply";
+    const asReplyInput = (message: Record<string, unknown>) => ({
+      id: message.id,
+      threadId: message.threadId,
+      internalDate: message.internalDate,
+      headers: gmailMessageHeaders(message)
+    });
+    const threads = new Map<string, { since: string; invitationIds: Set<string> }>();
+    for (const row of sent) {
+      const threadId = cleanText(row.provider_thread_id);
+      if (!threadId) continue;
+      const entry = threads.get(threadId) || { since: String(row.sent_at), invitationIds: new Set<string>() };
+      if (String(row.sent_at) < entry.since) entry.since = String(row.sent_at);
+      if (row.rfx_lane_vendor_id) entry.invitationIds.add(String(row.rfx_lane_vendor_id));
+      threads.set(threadId, entry);
+    }
+    const threadIds = [...threads.keys()];
+    for (const chunk of chunkValues(threadIds, 8)) {
+      const results = await Promise.all(chunk.map((threadId) =>
+        gmailGet(`/threads/${encodeURIComponent(threadId)}?${metadata}`).catch(() => null)
+      ));
+      results.forEach((thread, index) => {
+        if (!thread) return;
+        scannedThreads += 1;
+        const entry = threads.get(chunk[index])!;
+        const messages = (Array.isArray(thread.messages) ? thread.messages : []).map((message: unknown) => asReplyInput(objectRecord(message)));
+        for (const reply of carrierReplies({ mailbox: GMAIL_ALLOWED_SENDER, messages, since: entry.since })) {
+          for (const invitationId of entry.invitationIds) threadReplies.push({ ...reply, rfx_lane_vendor_id: invitationId });
+        }
+      });
+    }
+    // A carrier may answer in a new email instead of the thread; the event reference is in every invitation subject.
+    const reference = cleanText(event.rfx_id);
+    const firstSent = sent.map((row) => String(row.sent_at)).sort()[0];
+    if (reference && firstSent) {
+      const after = Math.floor(new Date(firstSent).getTime() / 1000);
+      const listed = await gmailGet(`/messages?maxResults=100&q=${encodeURIComponent(`"${reference}" -from:me after:${after}`)}`);
+      const ids = (Array.isArray(listed.messages) ? listed.messages : [])
+        .map((message: unknown) => cleanText(objectRecord(message).id))
+        .filter(Boolean) as string[];
+      for (const chunk of chunkValues(ids, 8)) {
+        const messages = (await Promise.all(chunk.map((id) => gmailGet(`/messages/${encodeURIComponent(id)}?${metadata}`).catch(() => null))))
+          .filter(Boolean)
+          .map((message) => asReplyInput(objectRecord(message)));
+        searchReplies.push(...carrierReplies({ mailbox: GMAIL_ALLOWED_SENDER, messages, since: firstSent }));
+      }
+    }
+  }
+
+  const rows = summarizeCarrierReplies({
+    invitations,
+    threadReplies,
+    searchReplies,
+    chatMessages: chatResult.data || []
+  });
+  return { event_id: event.id, checked_at: checkedAt, email_status: emailStatus, scanned_threads: scannedThreads, rows };
 }
 
 function normalizeGoogleChatSpaceName(value: unknown) {
@@ -28822,6 +28957,93 @@ export function createRatewareApiHandler(
         );
       }
       return jsonResponse({ no_award: declare, updated: rows.length, unchanged: lanes.length - changing.length, rows });
+    }
+
+    if (body.action === "list_rfx_carrier_replies") {
+      return jsonResponse(await listRfxCarrierReplies(supabase, user, body));
+    }
+
+    if (body.action === "list_rfx_condition_catalog") {
+      return jsonResponse({ version: RFX_CONDITION_CATALOG_VERSION, conditions: RFX_CONDITION_CATALOG });
+    }
+
+    if (body.action === "list_rfx_lane_conditions") {
+      const event = await requireOwnedRfxEvent(supabase, user, body.event_id);
+      const result = await supabase
+        .from("rfx_lane_conditions")
+        .select("rfx_lane_id,condition_key,importance,target,note,sort_order,revision,updated_at")
+        .eq("rfx_event_id", event.id)
+        .order("sort_order", { ascending: true });
+      if (result.error) throw result.error;
+      const rows = (result.data || []).map((row) => {
+        const shown = publicLaneCondition(row);
+        return shown ? { rfx_lane_id: row.rfx_lane_id, updated_at: row.updated_at, ...shown } : null;
+      }).filter(Boolean);
+      return jsonResponse({ version: RFX_CONDITION_CATALOG_VERSION, rows });
+    }
+
+    if (body.action === "save_rfx_lane_conditions") {
+      // Replaces one lane's route conditions. A condition whose importance,
+      // target or note changes gets a new revision, so the carriers' earlier
+      // answers read as stale instead of being rewritten (decided 2026-10-22).
+      const event = await requireOwnedRfxEvent(supabase, user, body.event_id);
+      // Closed by status or by a passed deadline (Fr8Bid closes bids by moving due_date).
+      if (biddingClosed(event, new Date(), (Deno.env.get("BID_DEADLINE_UTC_OFFSET") || "-06:00").trim())) {
+        return jsonResponse({ error: "Bidding on this event is closed. Route conditions cannot change." }, 409);
+      }
+      const laneId = cleanText(body.lane_id);
+      if (!laneId) return jsonResponse({ error: "RFx lane id is required." }, 400);
+      const lane = await supabase.from("rfx_lanes").select("id").eq("id", laneId).eq("rfx_event_id", event.id).maybeSingle();
+      if (lane.error) throw lane.error;
+      if (!lane.data) return jsonResponse({ error: "RFx lane not found in this event." }, 404);
+      let next: ReturnType<typeof normalizeLaneConditions>;
+      try {
+        next = normalizeLaneConditions(body.conditions);
+      } catch (error) {
+        return jsonResponse({ error: error instanceof Error ? error.message : "Invalid route conditions." }, 400);
+      }
+      const current = await supabase.from("rfx_lane_conditions").select("*").eq("rfx_lane_id", laneId);
+      if (current.error) throw current.error;
+      const byKey = new Map((current.data || []).map((row) => [String(row.condition_key), row]));
+      const now = new Date().toISOString();
+      const upserts = next.map((row) => {
+        const previous = byKey.get(row.condition_key);
+        const revision = !previous ? 1 : sameRequirement(previous, row) ? previous.revision : previous.revision + 1;
+        return {
+          ...row,
+          owner_user_id: cleanText(event.owner_user_id) || null,
+          owner_email: cleanText(event.owner_email) || null,
+          rfx_event_id: event.id,
+          rfx_lane_id: laneId,
+          revision,
+          updated_at: now
+        };
+      });
+      const removed = [...byKey.keys()].filter((key) => !next.some((row) => row.condition_key === key));
+      if (removed.length) {
+        const deleted = await supabase.from("rfx_lane_conditions").delete().eq("rfx_lane_id", laneId).in("condition_key", removed);
+        if (deleted.error) throw deleted.error;
+      }
+      const saved = upserts.length
+        ? await supabase.from("rfx_lane_conditions").upsert(upserts, { onConflict: "rfx_lane_id,condition_key" }).select("*")
+        : { data: [], error: null };
+      if (saved.error) throw saved.error;
+      await writeAuditLog(
+        supabase,
+        user,
+        "bid_room.lane.conditions",
+        "rfx_lanes",
+        laneId,
+        `Set ${upserts.length} route condition(s)`,
+        {
+          rfx_event_id: event.id,
+          keys: upserts.map((row) => row.condition_key),
+          removed,
+          revised: upserts.filter((row) => byKey.has(row.condition_key) && byKey.get(row.condition_key)?.revision !== row.revision).map((row) => row.condition_key)
+        }
+      );
+      const rows = (saved.data || []).map((row) => ({ rfx_lane_id: row.rfx_lane_id, ...publicLaneCondition(row) }));
+      return jsonResponse({ version: RFX_CONDITION_CATALOG_VERSION, rows, removed });
     }
 
     if (body.action === "list_rfx_segment_confirmations") {
