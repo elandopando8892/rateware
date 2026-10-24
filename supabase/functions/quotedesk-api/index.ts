@@ -1594,7 +1594,12 @@ async function fr8quoteIntake(request: Request, supabase: Db) {
   if (op === "whatsapp_send" && (!waTo || waParams.length !== 5 || waParams.some((v) => !v))) {
     throw new HttpError(400, "WhatsApp necesita el número con lada de país y los 5 datos de la plantilla.");
   }
-  if (op && op !== "whatsapp_send") throw new HttpError(400, `Operación desconocida: ${op}.`);
+  // Aviso interno (p. ej. «el cliente aceptó»): solo a sales@, desde sales@.
+  const note = record(pkg.email);
+  if (op === "notify_sales" && (!text(note.subject, 300) || !String(note.html || "") || String(note.html).length > 200_000)) {
+    throw new HttpError(400, "El aviso necesita asunto y cuerpo.");
+  }
+  if (op && op !== "whatsapp_send" && op !== "notify_sales") throw new HttpError(400, `Operación desconocida: ${op}.`);
   const quotes = (Array.isArray(pkg.quotes) ? pkg.quotes : []).map(record);
   if (!op && !quotes.length || quotes.length > 10 || quotes.some((q) => !Array.isArray(q.lanes) || !q.lanes.length || q.lanes.length > LANE_LIMIT)) {
     throw new HttpError(400, `Cada entrega trae de 1 a 10 cotizaciones de 1 a ${LANE_LIMIT} rutas.`);
@@ -1634,6 +1639,23 @@ async function fr8quoteIntake(request: Request, supabase: Db) {
       await supabase.from("quotedesk_fr8quote_imports").update({ status: "done", receipt, updated_at: nowIso() }).eq("id", row.id);
       await audit(supabase, workspace, "quotedesk_fr8quote_whatsapp_sent", "quotedesk_quote", waParams[1],
         `Fr8Quote: propuesta ${waParams[1]} enviada por WhatsApp a +${waTo}.`, { idempotency_key: idempotencyKey, message_id: messageId });
+      return receipt;
+    }
+    if (op === "notify_sales") {
+      const subject = text(note.subject, 300)!;
+      let sent: { id: string; threadId: string | null };
+      try {
+        const token = await gmailAccessToken(supabase, workspace.owner_email);
+        sent = await sendGmailRaw(token, gmailRawMessage({
+          to: GMAIL_ALLOWED_SENDER, from: GMAIL_ALLOWED_SENDER, fromName: "Fr8Quote", subject, text: String(note.text || ""), html: String(note.html),
+          headers: { "X-Fr8Quote-Notice": idempotencyKey }
+        }));
+      } catch (error) {
+        throw new HttpError(502, error instanceof Error ? error.message : String(error));
+      }
+      const receipt = { contract: FR8QUOTE_CONTRACT, idempotency_key: idempotencyKey, notice: { to: GMAIL_ALLOWED_SENDER, provider_message_id: sent.id }, duplicate: false };
+      await supabase.from("quotedesk_fr8quote_imports").update({ status: "done", receipt, updated_at: nowIso() }).eq("id", row.id);
+      await audit(supabase, workspace, "quotedesk_fr8quote_notice_sent", "quotedesk_fr8quote_import", String(row.id), `Fr8Quote: ${subject}`, { idempotency_key: idempotencyKey });
       return receipt;
     }
     // Todos los shippers se validan antes de crear nada.
