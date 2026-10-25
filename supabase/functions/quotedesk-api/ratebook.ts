@@ -65,3 +65,27 @@ export async function importRatebook(supabase: any, workspace: { owner_email: st
     .eq("owner_email", workspace.owner_email).eq("source_quote_id", quoteId).eq("status", "pending_review").neq("id", inserted.data.id);
   return { accepted: true, duplicate: false, receipt_id: inserted.data.id, status: "pending_review", payload_checksum: checksum };
 }
+
+/** La revisión se hace en Fr8Quote: aprobar o rechazar (con nota) la tarifa pendiente de esa entrega. Aprobar no publica nada. */
+export async function reviewRatebook(supabase: any, workspace: { owner_email: string }, body: Row) {
+  const key = String(body.rate_idempotency_key ?? "");
+  const decision = String(body.decision ?? "");
+  const reviewer = String(body.reviewer ?? "").trim().slice(0, 320) || null;
+  const note = String(body.note ?? "").trim().slice(0, 1000) || null;
+  if (!/^[0-9a-f]{64}$/.test(key)) throw new RatebookError(400, "invalid_key", "rate_idempotency_key");
+  if (decision !== "approved" && decision !== "rejected") throw new RatebookError(400, "invalid_decision", "decision");
+  if (decision === "rejected" && !note) throw new RatebookError(400, "note_required", "note");
+  const current = await supabase.from("fcm_ratebook_imports").select("id,status,reviewed_at,reviewed_by_email,review_note")
+    .eq("owner_email", workspace.owner_email).eq("idempotency_key", key).maybeSingle();
+  if (current.error) throw new RatebookError(503, "receiver_unavailable");
+  if (!current.data) throw new RatebookError(404, "not_found");
+  // La misma decisión repetida devuelve el estado actual; otra decisión sobre una ya revisada choca.
+  if (current.data.status === decision) return { row: current.data, duplicate: true };
+  if (current.data.status !== "pending_review") throw new RatebookError(409, `already_${current.data.status}`);
+  const { data, error } = await supabase.from("fcm_ratebook_imports")
+    .update({ status: decision, reviewed_at: new Date().toISOString(), reviewed_by_email: reviewer, review_note: note, updated_at: new Date().toISOString() })
+    .eq("id", current.data.id).eq("status", "pending_review").select("id,status,reviewed_at,reviewed_by_email,review_note").maybeSingle();
+  if (error) throw new RatebookError(503, "receiver_unavailable");
+  if (!data) throw new RatebookError(409, "not_pending");
+  return { row: data, duplicate: false };
+}

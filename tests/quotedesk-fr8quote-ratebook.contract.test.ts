@@ -30,7 +30,7 @@ async function ratePackage(version = 1, snapshot = "snap-1", over: Row = {}) {
   return pkg;
 }
 
-async function run(test: (f: { store: ReturnType<typeof memoryClient>; send: (rate: Row) => Promise<{ status: number; body: Row }> }) => Promise<void>) {
+async function run(test: (f: { store: ReturnType<typeof memoryClient>; send: (rate: Row) => Promise<{ status: number; body: Row }>; sendRaw: (body: Row) => Promise<{ status: number; body: Row }> }) => Promise<void>) {
   const store = memoryClient({
     fcm_ratebook_imports: [], quotedesk_fr8quote_imports: [], quotedesk_quotes: [], saas_audit_log: [],
     gmail_mailbox_connections: [{ id: "g", owner_email: "org:team-a", owner_user_id: "user-a", organization_id: "team-a", mailbox_email: "sales@heymarksman.com", status: "connected", updated_at: "2026-10-01" }],
@@ -38,14 +38,17 @@ async function run(test: (f: { store: ReturnType<typeof memoryClient>; send: (ra
   const client = { from: (t: string) => store.client.from(t), rpc: () => Promise.resolve({ data: SECRET, error: null }) };
   const handle = createQuotedeskApiHandler({ getClient: () => client as never, resolveSession: () => { throw new Error("no debe pedir sesión de usuario"); } });
   async function send(rate: Row) {
-    const body = { contract: "fr8quote.quotedesk.v1", idempotency_key: rate.idempotency_key, op: "ratebook_import", rate_package: rate };
+    return sendRaw({ idempotency_key: rate.idempotency_key, op: "ratebook_import", rate_package: rate });
+  }
+  async function sendRaw(extra: Row) {
+    const body = { contract: "fr8quote.quotedesk.v1", idempotency_key: crypto.randomUUID().replace(/-/g, ""), ...extra };
     const raw = JSON.stringify(body), ts = String(Math.floor(Date.now() / 1000));
     const response = await handle(new Request("https://fixture.test/quotedesk-api", { method: "POST", body: raw, headers: {
       "content-type": "application/json", "X-FR8-Timestamp": ts, "X-FR8-Signature": `sha256=${await hmac(SECRET, `${ts}.${raw}`)}`, "X-Idempotency-Key": String(body.idempotency_key),
     } }));
     return { status: response.status, body: await response.json() };
   }
-  await test({ store, send });
+  await test({ store, send, sendRaw });
 }
 
 Deno.test("Rateware: la tarifa entra en revisión, el reintento no duplica y la misma clave con otro contenido choca", () => run(async (f) => {
@@ -74,4 +77,16 @@ Deno.test("Rateware: precio que no sale del costo, unidad de tramo, estado o cla
   assertEquals((await f.send({ ...base, status: "approved" })).status, 400);
   assertEquals((await f.send({ ...base, idempotency_key: await sha("otra") })).status, 400);
   assertEquals(f.store.tables.fcm_ratebook_imports.length, 0);
+}));
+
+Deno.test("Rateware: la revisión desde Fr8Quote aprueba o rechaza con nota, repetirla no cambia nada y otra decisión choca", () => run(async (f) => {
+  const pkg = await ratePackage(1, "snap-1");
+  await f.send(pkg);
+  const review = (decision: string, note?: string) => f.sendRaw({ op: "ratebook_review", review: { rate_idempotency_key: pkg.idempotency_key, decision, note, reviewer: "jose@fixture.test" } });
+  assertEquals((await review("rejected")).status, 400);
+  const ok = await review("approved", "Revisada");
+  assertEquals([ok.status, ok.body.row.status, ok.body.row.reviewed_by_email], [200, "approved", "jose@fixture.test"]);
+  assertEquals((await review("approved")).body.duplicate, true);
+  assertEquals((await review("rejected", "no")).status, 409);
+  assertEquals(f.store.tables.fcm_ratebook_imports[0].status, "approved");
 }));
