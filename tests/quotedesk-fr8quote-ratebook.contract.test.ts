@@ -75,3 +75,23 @@ Deno.test("Rateware: precio que no sale del costo, unidad de tramo, estado o cla
   assertEquals((await f.send({ ...base, idempotency_key: await sha("otra") })).status, 400);
   assertEquals(f.store.tables.fcm_ratebook_imports.length, 0);
 }));
+
+Deno.test("Rateware: la sección de revisión lista la bandeja del workspace, aprueba y exige nota para rechazar", () => run(async (f) => {
+  await f.send(await ratePackage(1, "snap-1"));
+  f.store.tables.fcm_ratebook_imports.push({ id: "ajeno", owner_email: "org:otro", status: "pending_review", source_quote_id: "x", received_at: "2026-10-24" });
+  const session = createQuotedeskApiHandler({ getClient: () => ({ from: (t: string) => f.store.client.from(t) }) as never, resolveSession: () => Promise.resolve({
+    workspace: { owner_email: "org:team-a", owner_user_id: "user-a", organization_id: "team-a" },
+    claims: { roles: ["operator"], email: "jose@fixture.test" },
+  }) as never });
+  const call = async (body: Row) => { const r = await session(new Request("https://fixture.test/quotedesk-api", { method: "POST", body: JSON.stringify(body) })); return { status: r.status, body: await r.json() }; };
+  const list = await call({ action: "list_fcm_ratebook_imports" });
+  assertEquals(list.status, 200, JSON.stringify(list.body));
+  assertEquals(list.body.rows.length, 1);
+  const id = list.body.rows[0].id;
+  assertEquals((await call({ action: "review_fcm_ratebook_import", id, decision: "rejected" })).status, 400);
+  const ok = await call({ action: "review_fcm_ratebook_import", id, decision: "approved", note: "Revisada" });
+  assertEquals([ok.status, ok.body.row.status, ok.body.row.reviewed_by_email], [200, "approved", "jose@fixture.test"]);
+  assertEquals((await call({ action: "review_fcm_ratebook_import", id, decision: "rejected", note: "otra" })).status, 409);
+  assertEquals((await call({ action: "review_fcm_ratebook_import", id: "ajeno", decision: "approved" })).status, 409);
+  assertEquals((await call({ action: "list_fcm_ratebook_imports", status: "pending_review" })).body.rows.length, 0);
+}));
