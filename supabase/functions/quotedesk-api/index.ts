@@ -16,7 +16,7 @@ import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from "../_shared/r
 import { GMAIL_ALLOWED_SENDER, GmailSendError, gmailAccessToken, gmailRawMessage, sendGmailRaw, suppressedEmails } from "../_shared/gmail-send.ts";
 import { isEmail, renderQuoteEmail } from "./email.mjs";
 import { ensureQuoteTemplate, sendQuoteTemplate, WhatsappError, waNumber } from "./whatsapp.ts";
-import { importRatebook, listRatebookImports, RatebookError, reviewRatebookImport } from "./ratebook.ts";
+import { importRatebook, RatebookError, reviewRatebook } from "./ratebook.ts";
 import { metersToMiles, placeQuery, queryKey } from "./routes.mjs";
 import {
   SCOPE_LABEL,
@@ -1590,10 +1590,17 @@ async function fr8quoteIntake(request: Request, supabase: Db) {
     try { return { contract: FR8QUOTE_CONTRACT, template: await ensureQuoteTemplate() }; } catch (error) { throw asHttp(error); }
   }
   // Tarifa en revisión (fr8quote.rateware-rate.v1): va a la bandeja fcm_ratebook_imports, con su propia idempotencia.
-  if (op === "ratebook_import") {
+  // La revisión de esa tarifa se hace en Fr8Quote (op «ratebook_review»): aprobar o rechazar con nota, auditado.
+  if (op === "ratebook_import" || op === "ratebook_review") {
     const workspace = await fr8quoteWorkspace(supabase);
     try {
-      return await importRatebook(supabase, workspace, record(pkg.rate_package));
+      if (op === "ratebook_import") return await importRatebook(supabase, workspace, record(pkg.rate_package));
+      const result = await reviewRatebook(supabase, workspace, record(pkg.review));
+      if (!result.duplicate) {
+        await audit(supabase, workspace, `fcm_ratebook.${result.row.status}`, "fcm_ratebook_import", String(result.row.id),
+          `Tarifa de Fr8Quote ${result.row.status === "approved" ? "aprobada" : "rechazada"} en Fr8Quote por ${result.row.reviewed_by_email ?? "Fr8Quote"}.`, { note: result.row.review_note });
+      }
+      return result;
     } catch (error) {
       if (error instanceof RatebookError) throw new HttpError(error.status, error.field ? `${error.message}: ${error.field}` : error.message);
       throw error;
@@ -1696,24 +1703,6 @@ async function fr8quoteIntake(request: Request, supabase: Db) {
     await supabase.from("quotedesk_fr8quote_imports").update({ status: "failed", error: message.slice(0, 2000), updated_at: nowIso() }).eq("id", row.id);
     throw error;
   }
-}
-
-const ratebookHttp = (error: unknown) =>
-  error instanceof RatebookError ? new HttpError(error.status, error.field ? `${error.message}: ${error.field}` : error.message) : error;
-
-/** Review Queue › Fr8Quote: la bandeja de tarifas en revisión del workspace. */
-async function listFr8quoteRates(supabase: Db, workspace: Workspace, body: Row) {
-  try { return await listRatebookImports(supabase, workspace, body); } catch (error) { throw ratebookHttp(error); }
-}
-
-/** Review Queue › Fr8Quote: aprobar o rechazar con nota; queda en la bitácora. Aprobar no publica nada. */
-async function reviewFr8quoteRate(supabase: Db, workspace: Workspace, claims: unknown, body: Row) {
-  const reviewer = text(record(claims).email, 320) || workspace.owner_email;
-  let result;
-  try { result = await reviewRatebookImport(supabase, workspace, reviewer, body); } catch (error) { throw ratebookHttp(error); }
-  await audit(supabase, workspace, `fcm_ratebook.${result.row.status}`, "fcm_ratebook_import", String(result.row.id),
-    `Tarifa de Fr8Quote ${result.row.status === "approved" ? "aprobada" : "rechazada"} por ${reviewer}.`, { note: result.row.review_note });
-  return result;
 }
 
 const asHttp = (error: unknown) => error instanceof WhatsappError ? new HttpError(error.status, error.message) : error;
@@ -1824,11 +1813,6 @@ return async function handle(request: Request) {
         return jsonResponse(await deliveryQueue.list(supabase, workspace, body), 200, request);
       case "send_quote_queue_message":
         return jsonResponse(await deliveryQueue.send(supabase, workspace, body), 200, request);
-      // Tarifas en revisión que entrega Fr8Quote: la sección «Fr8Quote» de Review Queue las lista y las revisa.
-      case "list_fcm_ratebook_imports":
-        return jsonResponse(await listFr8quoteRates(supabase, workspace, body), 200, request);
-      case "review_fcm_ratebook_import":
-        return jsonResponse(await reviewFr8quoteRate(supabase, workspace, claims, body), 200, request);
       case "list_quote_emails": {
         const quote = await requireQuote(supabase, workspace, body.quote_id);
         return jsonResponse({ rows: await quoteEmails(supabase, workspace, String(quote.id)) }, 200, request);

@@ -30,7 +30,7 @@ async function ratePackage(version = 1, snapshot = "snap-1", over: Row = {}) {
   return pkg;
 }
 
-async function run(test: (f: { store: ReturnType<typeof memoryClient>; send: (rate: Row) => Promise<{ status: number; body: Row }> }) => Promise<void>) {
+async function run(test: (f: { store: ReturnType<typeof memoryClient>; send: (rate: Row) => Promise<{ status: number; body: Row }>; sendRaw: (body: Row) => Promise<{ status: number; body: Row }> }) => Promise<void>) {
   const store = memoryClient({
     fcm_ratebook_imports: [], quotedesk_fr8quote_imports: [], quotedesk_quotes: [], saas_audit_log: [],
     gmail_mailbox_connections: [{ id: "g", owner_email: "org:team-a", owner_user_id: "user-a", organization_id: "team-a", mailbox_email: "sales@heymarksman.com", status: "connected", updated_at: "2026-10-01" }],
@@ -38,14 +38,17 @@ async function run(test: (f: { store: ReturnType<typeof memoryClient>; send: (ra
   const client = { from: (t: string) => store.client.from(t), rpc: () => Promise.resolve({ data: SECRET, error: null }) };
   const handle = createQuotedeskApiHandler({ getClient: () => client as never, resolveSession: () => { throw new Error("no debe pedir sesión de usuario"); } });
   async function send(rate: Row) {
-    const body = { contract: "fr8quote.quotedesk.v1", idempotency_key: rate.idempotency_key, op: "ratebook_import", rate_package: rate };
+    return sendRaw({ idempotency_key: rate.idempotency_key, op: "ratebook_import", rate_package: rate });
+  }
+  async function sendRaw(extra: Row) {
+    const body = { contract: "fr8quote.quotedesk.v1", idempotency_key: crypto.randomUUID().replace(/-/g, ""), ...extra };
     const raw = JSON.stringify(body), ts = String(Math.floor(Date.now() / 1000));
     const response = await handle(new Request("https://fixture.test/quotedesk-api", { method: "POST", body: raw, headers: {
       "content-type": "application/json", "X-FR8-Timestamp": ts, "X-FR8-Signature": `sha256=${await hmac(SECRET, `${ts}.${raw}`)}`, "X-Idempotency-Key": String(body.idempotency_key),
     } }));
     return { status: response.status, body: await response.json() };
   }
-  await test({ store, send });
+  await test({ store, send, sendRaw });
 }
 
 Deno.test("Rateware: la tarifa entra en revisión, el reintento no duplica y la misma clave con otro contenido choca", () => run(async (f) => {
@@ -76,22 +79,14 @@ Deno.test("Rateware: precio que no sale del costo, unidad de tramo, estado o cla
   assertEquals(f.store.tables.fcm_ratebook_imports.length, 0);
 }));
 
-Deno.test("Rateware: la sección de revisión lista la bandeja del workspace, aprueba y exige nota para rechazar", () => run(async (f) => {
-  await f.send(await ratePackage(1, "snap-1"));
-  f.store.tables.fcm_ratebook_imports.push({ id: "ajeno", owner_email: "org:otro", status: "pending_review", source_quote_id: "x", received_at: "2026-10-24" });
-  const session = createQuotedeskApiHandler({ getClient: () => ({ from: (t: string) => f.store.client.from(t) }) as never, resolveSession: () => Promise.resolve({
-    workspace: { owner_email: "org:team-a", owner_user_id: "user-a", organization_id: "team-a" },
-    claims: { roles: ["operator"], email: "jose@fixture.test" },
-  }) as never });
-  const call = async (body: Row) => { const r = await session(new Request("https://fixture.test/quotedesk-api", { method: "POST", body: JSON.stringify(body) })); return { status: r.status, body: await r.json() }; };
-  const list = await call({ action: "list_fcm_ratebook_imports" });
-  assertEquals(list.status, 200, JSON.stringify(list.body));
-  assertEquals(list.body.rows.length, 1);
-  const id = list.body.rows[0].id;
-  assertEquals((await call({ action: "review_fcm_ratebook_import", id, decision: "rejected" })).status, 400);
-  const ok = await call({ action: "review_fcm_ratebook_import", id, decision: "approved", note: "Revisada" });
+Deno.test("Rateware: la revisión desde Fr8Quote aprueba o rechaza con nota, repetirla no cambia nada y otra decisión choca", () => run(async (f) => {
+  const pkg = await ratePackage(1, "snap-1");
+  await f.send(pkg);
+  const review = (decision: string, note?: string) => f.sendRaw({ op: "ratebook_review", review: { rate_idempotency_key: pkg.idempotency_key, decision, note, reviewer: "jose@fixture.test" } });
+  assertEquals((await review("rejected")).status, 400);
+  const ok = await review("approved", "Revisada");
   assertEquals([ok.status, ok.body.row.status, ok.body.row.reviewed_by_email], [200, "approved", "jose@fixture.test"]);
-  assertEquals((await call({ action: "review_fcm_ratebook_import", id, decision: "rejected", note: "otra" })).status, 409);
-  assertEquals((await call({ action: "review_fcm_ratebook_import", id: "ajeno", decision: "approved" })).status, 409);
-  assertEquals((await call({ action: "list_fcm_ratebook_imports", status: "pending_review" })).body.rows.length, 0);
+  assertEquals((await review("approved")).body.duplicate, true);
+  assertEquals((await review("rejected", "no")).status, 409);
+  assertEquals(f.store.tables.fcm_ratebook_imports[0].status, "approved");
 }));

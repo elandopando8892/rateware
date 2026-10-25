@@ -66,35 +66,26 @@ export async function importRatebook(supabase: any, workspace: { owner_email: st
   return { accepted: true, duplicate: false, receipt_id: inserted.data.id, status: "pending_review", payload_checksum: checksum };
 }
 
-const REVIEW_STATUSES = new Set(["pending_review", "approved", "rejected", "superseded"]);
-
-/** La bandeja del workspace para revisarla: las más recientes primero, filtrable por estado. */
-export async function listRatebookImports(supabase: any, workspace: { owner_email: string }, body: Row) {
-  const status = String(body.status ?? "pending_review");
-  let query = supabase.from("fcm_ratebook_imports")
-    .select("id,received_at,status,source_quote_id,source_quote_version,payload,reviewed_at,reviewed_by_email,review_note")
-    .eq("owner_email", workspace.owner_email).order("received_at", { ascending: false }).limit(100);
-  if (status !== "all") {
-    if (!REVIEW_STATUSES.has(status)) throw new RatebookError(400, "invalid_status", "status");
-    query = query.eq("status", status);
-  }
-  const { data, error } = await query;
-  if (error) throw new RatebookError(503, "receiver_unavailable");
-  return { rows: data ?? [] };
-}
-
-/** Aprobar o rechazar una tarifa en revisión, con nota. Aprobar no publica nada: la deja revisada como referencia. */
-export async function reviewRatebookImport(supabase: any, workspace: { owner_email: string }, reviewer: string, body: Row) {
-  const id = String(body.id ?? "");
+/** La revisión se hace en Fr8Quote: aprobar o rechazar (con nota) la tarifa pendiente de esa entrega. Aprobar no publica nada. */
+export async function reviewRatebook(supabase: any, workspace: { owner_email: string }, body: Row) {
+  const key = String(body.rate_idempotency_key ?? "");
   const decision = String(body.decision ?? "");
-  if (!id) throw new RatebookError(400, "missing_id", "id");
-  if (decision !== "approved" && decision !== "rejected") throw new RatebookError(400, "invalid_decision", "decision");
+  const reviewer = String(body.reviewer ?? "").trim().slice(0, 320) || null;
   const note = String(body.note ?? "").trim().slice(0, 1000) || null;
+  if (!/^[0-9a-f]{64}$/.test(key)) throw new RatebookError(400, "invalid_key", "rate_idempotency_key");
+  if (decision !== "approved" && decision !== "rejected") throw new RatebookError(400, "invalid_decision", "decision");
   if (decision === "rejected" && !note) throw new RatebookError(400, "note_required", "note");
+  const current = await supabase.from("fcm_ratebook_imports").select("id,status,reviewed_at,reviewed_by_email,review_note")
+    .eq("owner_email", workspace.owner_email).eq("idempotency_key", key).maybeSingle();
+  if (current.error) throw new RatebookError(503, "receiver_unavailable");
+  if (!current.data) throw new RatebookError(404, "not_found");
+  // La misma decisión repetida devuelve el estado actual; otra decisión sobre una ya revisada choca.
+  if (current.data.status === decision) return { row: current.data, duplicate: true };
+  if (current.data.status !== "pending_review") throw new RatebookError(409, `already_${current.data.status}`);
   const { data, error } = await supabase.from("fcm_ratebook_imports")
     .update({ status: decision, reviewed_at: new Date().toISOString(), reviewed_by_email: reviewer, review_note: note, updated_at: new Date().toISOString() })
-    .eq("owner_email", workspace.owner_email).eq("id", id).eq("status", "pending_review").select("id,status,reviewed_at,reviewed_by_email,review_note").maybeSingle();
+    .eq("id", current.data.id).eq("status", "pending_review").select("id,status,reviewed_at,reviewed_by_email,review_note").maybeSingle();
   if (error) throw new RatebookError(503, "receiver_unavailable");
   if (!data) throw new RatebookError(409, "not_pending");
-  return { row: data };
+  return { row: data, duplicate: false };
 }
