@@ -10,7 +10,8 @@ export async function issueRfxRfiLink({client,project,user,input,actorId,generat
   // than trusting it or breaking those callers: the output host is server-owned.
   const days=Number(input.expires_in_days??input.expiresInDays??14);
   if(!Number.isInteger(days)||days<1||days>90)fail('RFI link validity is invalid','400');
-  const origin=input.radar_lead_id===undefined?null:await radarOrigin(client,actorId,input.radar_lead_id,project);
+  if(input.radar_after_requirement_id!==undefined&&(input.radar_lead_id===undefined||!uuid.test(input.radar_after_requirement_id)))fail('Radar origin is invalid','400');
+  const origin=input.radar_lead_id===undefined?null:await radarOrigin(client,actorId,input.radar_lead_id,project,input.radar_after_requirement_id);
   const token=generateToken();
   if(!/^[a-f0-9]{72}$/.test(token))fail('RFI token unavailable');
   const tokenHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token))),b=>b.toString(16).padStart(2,'0')).join('');
@@ -31,17 +32,18 @@ export async function issueRfxRfiLink({client,project,user,input,actorId,generat
     message:recovered?'Private capture link ready. No message was sent.':'The existing link cannot be recovered. Reconcile it in Bidware.'};
 }
 
-async function radarOrigin(client,actorId,leadId,project) {
+async function radarOrigin(client,actorId,leadId,project,afterRequirementId) {
   if(!uuid.test(actorId)||typeof leadId!=='string'||!leadId.trim()||leadId.length>180||/[\u0000-\u001f]/.test(leadId))fail('Radar origin is invalid','400');
   const ownerId=actorId.toLowerCase();
-  async function job(prefix,id,action) {
+  async function job(prefix,id,action,selectionAfter) {
     const {data,error}=await client.from('demand_radar_spot_jobs').select('state,action,receipt_text,request_hash')
-      .eq('owner_user_id',ownerId).eq('job_key',`${prefix}:${await digest([ownerId,id])}`).maybeSingle();
+      .eq('owner_user_id',ownerId).eq('job_key',`${prefix}:${await digest(selectionAfter===undefined?[ownerId,id]:[ownerId,id,'after',selectionAfter.toLowerCase()])}`).maybeSingle();
     if(error||!data||data.state!=='completed'||data.action!==action)fail('Radar origin receipt unavailable');
     try{return {row:JSON.parse(data.receipt_text),hash:data.request_hash};}catch{fail('Radar origin receipt unavailable');}
   }
-  const selected=(await job('bidware_lead_request',leadId,'bidware_lead_request_confirm')).row;
-  if(selected.ownerId!==ownerId||selected.leadId!==leadId||!uuid.test(selected.requirementId))fail('Radar origin mismatch');
+  const selected=(await job('bidware_lead_request',leadId,'bidware_lead_request_confirm',afterRequirementId)).row;
+  if(selected.ownerId!==ownerId||selected.leadId!==leadId||!uuid.test(selected.requirementId)
+    ||selected.afterRequirementId!==afterRequirementId?.toLowerCase())fail('Radar origin mismatch');
   const approval=await job('bidware_approval',selected.requirementId,'bidware_requirement_approve');
   const approved=approval.row;
   if(approved.ownerId!==ownerId||approved.id!==selected.requirementId||approved.state!=='approved'||approved.revision!==1

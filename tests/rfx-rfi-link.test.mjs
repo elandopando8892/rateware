@@ -41,6 +41,31 @@ test('binds only the three sealed cloud receipts for the authenticated actor',as
   assert.deepEqual(f.origin(),{system:'demand_radar',ownerId:actor,leadId:'test-lead',requirementId:requirement,operationId:operation});
   assert.equal(f.calls(),1);
 });
+
+test('a successor link uses its own selection and project, preserving the first link origin',async()=>{
+  const f=fixture(),firstKey=`bidware_lead_request:${hash([actor,'test-lead'])}`;
+  const first=f.rows.get(firstKey),row=JSON.parse(first.receipt_text);
+  const previous='ffffffff-ffff-4fff-8fff-ffffffffffff';
+  const successorKey=`bidware_lead_request:${hash([actor,'test-lead','after',previous])}`;
+  f.rows.set(successorKey,{...first,receipt_text:JSON.stringify({...row,afterRequirementId:previous})});
+  f.args.input.radar_after_requirement_id=previous;
+  await issueRfxRfiLink(f.args);assert.equal(f.calls(),1);
+  assert.equal(f.origin().requirementId,requirement);assert.equal(f.origin().operationId,operation);
+  assert.equal(f.rows.get(firstKey),first);
+  f.args.input.radar_after_requirement_id=operation;
+  await assert.rejects(()=>issueRfxRfiLink(f.args));assert.equal(f.calls(),1);
+});
+
+test('a predecessor reference never bypasses private origin or project checks',async()=>{
+  for(const mutate of [
+    f=>{f.args.input={radar_after_requirement_id:requirement};},
+    f=>{f.args.input.radar_after_requirement_id='invalid';},
+    f=>{f.args.input.radar_after_requirement_id=operation;},
+    f=>{const key=`bidware_lead_request:${hash([actor,'test-lead'])}`;
+      const original=f.rows.get(key);f.rows.set(`bidware_lead_request:${hash([actor,'test-lead','after',requirement])}`,original);
+      f.args.input.radar_after_requirement_id=requirement;},
+  ]) {const f=fixture();mutate(f);await assert.rejects(()=>issueRfxRfiLink(f.args));assert.equal(f.calls(),0);}
+});
 test('forged source, foreign actor, incomplete jobs and wrong project cannot issue',async()=>{
   for(const mutate of [
     f=>{f.args.input.radar_lead_id='foreign-lead';},

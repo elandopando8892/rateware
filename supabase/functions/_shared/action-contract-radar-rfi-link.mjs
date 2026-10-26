@@ -19,8 +19,10 @@ export const RADAR_RFI_LINK_ACTION_CONTRACT_EXTENSION={
     'rpc.public.issue_rfx_rfi_link_once(uuid,text,text,text,text,integer,jsonb)':'bde54768b07c02d5be4adf14e970a2e42d042b68e1dc70e44d7deb4bb767c35f',
   },
   reviewedAuthorizationFingerprints:{
-    // v696: preserves the Gmail verification/guard additions in main ba7125c2.
-    'edge.rateware-api.create_rfx_rfi_magic_link':'1d37b674062861933709a664dafbbda61378bd49d81ac84cef0290b9211ea69a',
+    // E3 local review: optional predecessor selects a separate sealed Radar job.
+    // Owner, operation, project and all three receipt checks remain mandatory.
+    // Scope: this checkout only; refresh against the live release before promotion.
+    'edge.rateware-api.create_rfx_rfi_magic_link':'550e204df15ca605e8dd3c3a68be63e558be7f5ef9ff3d01fe3f95d832955164',
     'rpc.public.guard_rfx_radar_origin()':'c854cdd7a0d443a6ecdcc80dba945600356b62b872293f2a43754b99d97f716e',
     'rpc.public.issue_rfx_rfi_link_once(uuid,text,text,text,text,integer,jsonb)':'42e2ebe98c7f75a11137276e8815fec0c447d9921067009719ab3cd6e7ffa8b6',
   },
