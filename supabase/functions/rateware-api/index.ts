@@ -15715,9 +15715,11 @@ async function fetchOutreachTemplate(supabase: RatewareSupabaseClient, user: { o
     .from("outreach_templates")
     .select("*")
     .eq("id", templateId)
-    .single();
+    .maybeSingle();
   if (result.error) throw result.error;
-  if (result.data.owner_email && result.data.owner_email !== user.owner_email) throw new Error("Outreach template not found.");
+  if (!result.data || (result.data.owner_email && result.data.owner_email !== user.owner_email)) {
+    throw Object.assign(new Error("Outreach template not found."), { code: "404" });
+  }
   return result.data;
 }
 
@@ -15729,8 +15731,9 @@ async function requireOwnedOutreachCampaign(supabase: RatewareSupabaseClient, us
     .select("*")
     .eq("id", campaignId)
     .eq("owner_email", user.owner_email)
-    .single();
+    .maybeSingle();
   if (result.error) throw result.error;
+  if (!result.data) throw Object.assign(new Error("Outreach campaign not found."), { code: "404" });
   return result.data;
 }
 
