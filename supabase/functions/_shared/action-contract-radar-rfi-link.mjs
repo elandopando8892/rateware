@@ -21,8 +21,8 @@ export const RADAR_RFI_LINK_ACTION_CONTRACT_EXTENSION={
   reviewedAuthorizationFingerprints:{
     // E3 local review: optional predecessor selects a separate sealed Radar job.
     // Owner, operation, project and all three receipt checks remain mandatory.
-    // Scope: this checkout only; refresh against the live release before promotion.
-    'edge.rateware-api.create_rfx_rfi_magic_link':'550e204df15ca605e8dd3c3a68be63e558be7f5ef9ff3d01fe3f95d832955164',
+    // Integrated on main ae0dbfeb; production deploy preserves all other v718 sources.
+    'edge.rateware-api.create_rfx_rfi_magic_link':"8bc3740f9107aa7a90e389b1e31ce471bec9023dd3375218467fd98eb21a3c26",
     'rpc.public.guard_rfx_radar_origin()':'c854cdd7a0d443a6ecdcc80dba945600356b62b872293f2a43754b99d97f716e',
     'rpc.public.issue_rfx_rfi_link_once(uuid,text,text,text,text,integer,jsonb)':'42e2ebe98c7f75a11137276e8815fec0c447d9921067009719ab3cd6e7ffa8b6',
   },
