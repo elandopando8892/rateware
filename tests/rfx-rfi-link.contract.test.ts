@@ -20,9 +20,9 @@ Deno.test('real authenticated route uses atomic receiver; replay, role and works
     saved??={id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',status:'active',expires_at:'2099-01-01T00:00:00Z',created_at:'2026-10-08T00:00:00Z',token_encrypted:input.p_token_encrypted};
     return {data:{reused,row:saved},error:null};
   }};
-  const handler=createRatewareApiHandler({getClient:()=>db as never,
-    authenticate:async()=>({sub:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',email:'operator@example.test',rateware_organization_id:'test',roles:[role]} as never),
-    resolveUser:async()=>({owner_user_id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',owner_email:'org:test'} as never)});
+  const handler=createRatewareApiHandler({getClient:()=>({...db}) as never,
+    authenticate:async()=>({auth_provider:'supabase',org_code:'test',sub:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',email:'operator@example.test',rateware_organization_id:'test',roles:[role]} as never),
+    resolveUser:async()=>({organization_id:'test',owner_user_id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',owner_email:'org:test'} as never)});
   const request=()=>new Request('https://rateware.test/functions/v1/rateware-api',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'create_rfx_rfi_magic_link',project_id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'})});
   try {
     const response=await handler(request());assertEquals(response.status,200);
