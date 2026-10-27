@@ -1,6 +1,42 @@
 export const OUTREACH_RELATED_ROW_BATCH_LIMIT = 25000;
 export const OUTREACH_RELATED_ROW_PAGE_SIZE = 1000;
 
+// Advisory read, not a database snapshot. A changed or incomplete scan is never
+// exposed as a complete campaign list. No automatic retries after a failure.
+export async function fetchStableRfxCampaignRows(fetchPage) {
+  const scan = async () => {
+    let total;
+    const rows = await fetchBoundedKeysetRows({
+      fetchPage: async (page) => {
+        const result = await fetchPage(page);
+        if (!page.afterId) {
+          total = result.count;
+          if (!Number.isSafeInteger(total) || total < 0 || total > 5000) {
+            throw new Error("RFx campaign count unavailable or outside the read limit.");
+          }
+        }
+        return result.data;
+      },
+      label: "RFx campaigns", limit: 5000, pageSize: 250
+    });
+    // Also detect a lower PostgREST row cap or a deletion during pagination.
+    if (rows.length !== total) throw new Error("RFx campaign count changed or read was truncated.");
+    return rows;
+  };
+  try {
+    const first = await scan();
+    const second = await scan();
+    if (JSON.stringify(first) !== JSON.stringify(second)) {
+      throw new Error("RFx campaigns changed during retrieval.");
+    }
+    return second;
+  } catch (error) {
+    throw Object.assign(new Error("RFx campaign read incomplete; reconcile again."), {
+      code: "409", stage: "rfx_campaign_read", cause: error
+    });
+  }
+}
+
 export async function fetchBoundedKeysetRows({
   fetchPage,
   label,

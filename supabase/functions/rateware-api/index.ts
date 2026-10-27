@@ -47,6 +47,7 @@ import { handleGrowthAction, isGrowthAction } from "./growth.ts";
 import {
   assertOutreachMatrixWithinLimit,
   fetchBoundedKeysetRows,
+  fetchStableRfxCampaignRows,
   OUTREACH_RELATED_ROW_BATCH_LIMIT,
   OUTREACH_RELATED_ROW_PAGE_SIZE
 } from "./outreach-pagination.js";
@@ -30090,6 +30091,41 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "list_outreach_campaigns") {
+      // Opt-in complete, event-scoped read. Keep legacy callers and their counters unchanged.
+      if (Object.prototype.hasOwnProperty.call(body, "rfx_event_id")) {
+        const eventId = typeof body.rfx_event_id === "string" ? body.rfx_event_id.trim() : "";
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) {
+          return jsonResponse({ error: "A valid RFx event id is required." }, 400);
+        }
+        if (!user.organization_id) return jsonResponse({ error: "A verified organization is required." }, 403);
+        const event = await requireOwnedRfxEvent(supabase, user, eventId);
+        if (event.organization_id != null && event.organization_id !== user.organization_id) {
+          return jsonResponse({ error: "RFx event not found." }, 404);
+        }
+        const rows = await fetchStableRfxCampaignRows(async ({ afterId, limit }) => {
+          let query = supabase.from("outreach_campaigns")
+            .select("id,organization_id,owner_email,rfx_event_id,template_id,name,status,audience_policy,created_at,updated_at", afterId ? {} : { count: "exact" })
+            .eq("owner_email", user.owner_email)
+            .eq("rfx_event_id", event.id)
+            .neq("status", "archived")
+            .order("id", { ascending: true })
+            .limit(limit);
+          if (afterId) query = query.gt("id", afterId);
+          const result = await query;
+          if (result.error) throw result.error;
+          // Do not silently hide inconsistent rows as an empty first campaign.
+          for (const row of result.data || []) {
+            if (row.organization_id !== user.organization_id || row.rfx_event_id !== event.id) {
+              throw new Error("RFx campaign scope could not be verified.");
+            }
+          }
+          return result;
+        });
+        rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))
+          || String(b.id).localeCompare(String(a.id)));
+        return jsonResponse({ rows, total: rows.length, complete: true, campaign_read_version: 1,
+          rfx_event_id: event.id, organization_id: user.organization_id });
+      }
       const campaignsResult = await supabase
         .from("outreach_campaigns")
         .select("*, rfx_events(rfx_id,name,customer,status), outreach_templates(name,channel)")
