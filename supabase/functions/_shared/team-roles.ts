@@ -44,7 +44,7 @@ const READS: Record<string, ReadonlySet<string>> = {
     "list_outreach_audience_segments", "list_outreach_campaigns", "list_outreach_messages",
     "list_outreach_templates", "list_ratebook_carriers", "list_ratebooks", "list_rateware",
     "list_rateware_audit", "list_rateware_filter_values", "list_rateware_rows_by_ids",
-    "list_rateware_versions", "list_rfx_detail", "list_rfx_event_context", "list_rfx_events",
+    "list_rateware_versions", "list_rfx_detail", "list_rfx_event_context", "list_rfx_events", "get_markos_bid_room_snapshot",
     // The carrier contact reviews; the contract declares them in an extension file (added 2026-09-29).
     "list_rfx_invitation_wave_reviews", "list_rfx_segment_confirmations",
     // Route conditions per lane (added 2026-10-22).

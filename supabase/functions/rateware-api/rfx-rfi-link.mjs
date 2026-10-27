@@ -56,3 +56,4 @@ async function radarOrigin(client,actorId,leadId,project,afterRequirementId) {
     ||created.hash!==await digest(approved.project))fail('Radar origin mismatch');
   return {system:'demand_radar',ownerId,leadId,requirementId:selected.requirementId,operationId:approved.operationId};
 }
+

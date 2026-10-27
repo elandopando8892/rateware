@@ -1,3 +1,4 @@
+import { handleMarkosSnapshot } from "./markos-snapshot.mjs";
 import { evaluateReeferRestrictions, isReeferTemplate } from "./reefer-restrictions.mjs";
 import { createStagingAuditContext, stagingAuditHeaders, bindStagingAuditContext, stagingAuditFields } from "./staging-audit-context.mjs";
 import { readPublishedCarrierClassification } from "./published-classification.mjs";
@@ -25792,6 +25793,16 @@ export function createRatewareApiHandler(
     const stagingAuditContext = createStagingAuditContext(claims, user, requestId, body.action);
     supabase = bindStagingAuditContext(clientFactory(stagingAuditHeaders(stagingAuditContext)), stagingAuditContext);
     auditSupabase = supabase;
+
+    // Internal read contract: errors are returned here, never sent to the audit writer.
+    if (body.action === "get_markos_bid_room_snapshot") {
+      const result = request.method === "POST"
+        ? await handleMarkosSnapshot(supabase, user, body)
+        : {status:405,body:{error:"Usa POST.",execution:"not_executed"}};
+      const response = jsonResponse(result.body, result.status);
+      response.headers.set("Cache-Control", "private, no-store");
+      return response;
+    }
 
     const growthAction = typeof body.action === "string" ? body.action : "";
     if (isGrowthAction(growthAction)) {
