@@ -6,6 +6,7 @@ import {
   S3Client,
 } from "npm:@aws-sdk/client-s3@3.1127.0";
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3.1127.0";
+import { assertSourceMutationAllowed } from "./source-retention.ts";
 
 export type StorageProvider = "supabase" | "oracle_s3";
 export type StorageMode = "supabase" | "dual" | "oracle";
@@ -181,7 +182,11 @@ export async function putStorageObject(
     etag: string | null;
   }
 > {
+  assertSourceMutationAllowed(logicalBucket, Boolean(options.upsert));
   const provider = normalizeProvider(providerValue);
+  // Oracle PutObject below is unconditional, even when options.upsert=false.
+  // Do not certify it as create-only evidence until provider semantics are proven.
+  assertSourceMutationAllowed(logicalBucket, provider === "oracle_s3");
   if (provider === "supabase") {
     const result = await supabaseStorage(supabase, logicalBucket).upload(
       path,
@@ -290,6 +295,7 @@ export async function deleteStorageObject(
   logicalBucket: string,
   path: string,
 ) {
+  assertSourceMutationAllowed(logicalBucket, true);
   const provider = normalizeProvider(providerValue);
   if (provider === "supabase") {
     const result = await supabaseStorage(supabase, logicalBucket).remove([
@@ -314,6 +320,9 @@ export async function createStorageUploadUrl(
     sha256?: string | null;
   } = {},
 ) {
+  // Upload capabilities outlive this request and bypass the durable upload
+  // intent/receipt path. No current caller needs this for retained originals.
+  assertSourceMutationAllowed(logicalBucket, true);
   const provider = normalizeProvider(providerValue);
   if (provider === "supabase") {
     const result = await supabaseStorage(supabase, logicalBucket)

@@ -8,9 +8,9 @@
  *   admin     everything.
  *   operator  day-to-day work: builds and runs events and quotes, talks to
  *             carriers and shippers. Doesn't award or hand awards to rateware,
- *             publish a Ratebook, archive, restore, merge or delete records,
- *             change the shared catalog, revoke what a shipper was given, or
- *             disconnect an integration.
+ *             publish a Ratebook, archive, restore or delete records, change the
+ *             shared catalog, revoke what a shipper was given, or disconnect an
+ *             integration.
  *   viewer    reads only.
  *
  * Only accounts that belong to an organization are held to a role, and one of
@@ -32,25 +32,19 @@ const READS: Record<string, ReadonlySet<string>> = {
   "rateware-api": new Set([
     "book_audit", "business_intelligence_drilldown", "business_intelligence_geo_density",
     "business_intelligence_pivot", "carrier_intelligence_chat", "dashboard_summary", "export_growth_campaign",
-    "export_ratebook_routes", "get_carrier_list_template", "get_carrier_provider_advisory", "get_published_carrier_classification", "get_growth_campaign", "get_outreach_message",
+    "export_ratebook_routes", "get_carrier_list_template", "get_growth_campaign", "get_outreach_message",
     "get_outreach_tracking_summary", "get_rate_row_detail", "get_ratebook", "get_ratebook_audit",
     "get_ratebook_health", "get_ratebook_route_detail", "get_ratebook_route_quotes", "get_rateware_version",
     "get_rfx_process_project", "get_saas_settings", "get_shipper", "get_upload_source_url",
     "get_vendor_relationship_activity", "get_whatsapp_connection_status", "growth_dashboard",
-    "list_bid_room_chat", "list_carrier_list_templates", "list_catalog_values", "list_contact_history", "review_whatsapp_reply_association",
+    "list_bid_room_chat", "list_carrier_list_templates", "list_catalog_values", "list_contact_history",
     "list_gmail_connections", "list_google_chat_connections", "list_google_chat_spaces",
     "list_growth_campaigns", "list_growth_results", "list_growth_segments", "list_interpretation_memory",
     "list_interpretation_memory_audit", "list_location_catalog_values", "list_observability_events",
     "list_outreach_audience_segments", "list_outreach_campaigns", "list_outreach_messages",
     "list_outreach_templates", "list_ratebook_carriers", "list_ratebooks", "list_rateware",
     "list_rateware_audit", "list_rateware_filter_values", "list_rateware_rows_by_ids",
-    "list_rateware_versions", "list_rfx_detail", "list_rfx_event_context", "list_rfx_events", "get_markos_bid_room_snapshot",
-    // The carrier contact reviews; the contract declares them in an extension file (added 2026-09-29).
-    "list_rfx_invitation_wave_reviews", "list_rfx_segment_confirmations",
-    // Route conditions per lane (added 2026-10-22).
-    "list_rfx_condition_catalog", "list_rfx_lane_conditions",
-    // Carrier replies by email or Bid Room chat, read-only (added 2026-10-24).
-    "list_rfx_carrier_replies",
+    "list_rateware_versions", "list_rfx_detail", "list_rfx_event_context", "list_rfx_events",
     "list_rfx_process_projects", "list_rfx_response_vendor_ids", "list_saas_audit_log",
     "list_shipper_duplicates", "list_shippers", "list_staging", "list_staging_filter_values",
     "list_staging_options", "list_upload_staged_rows", "list_uploads", "list_vendor_improvement_cases",
@@ -62,9 +56,7 @@ const READS: Record<string, ReadonlySet<string>> = {
   ]),
   "quotedesk-api": new Set([
     "event_origins", "get_context", "get_quote", "list_fcm_cost_bases", "list_quote_emails", "list_quotes",
-    "preview_quote_email", "list_quote_queue", "list_spot_request_quotes", "suggest_lane_miles",
-    // The FCM estimate prices a route without saving it, like suggest_lane_miles (opened 2026-09-29).
-    "estimate_lane_fcm",
+    "preview_quote_email", "suggest_lane_miles",
   ]),
 };
 
@@ -74,8 +66,6 @@ const ADMIN: Record<string, ReadonlySet<string>> = {
     // Awarding, handing the awards to rateware, and publishing the Ratebook (decided 2026-09-27)
     "award_rfx_lane_vendor", "clear_rfx_award", "closeout_awarded_rfx_to_rateware", "create_rfx_award_package",
     "generate_rfx_award_notices", "mark_rfx_award_package_implementation_ready", "publish_ratebook",
-    // Declaring a lane void or reopening it (decided 2026-09-29)
-    "set_rfx_lane_no_award",
     // Archiving, restoring and deleting records; merging shippers archives the duplicate
     "archive_rfx_event", "delete_rfx_event", "archive_carrier_list_template", "restore_carrier_list_template",
     "delete_vendor_segment", "remove_vendors", "archive_shippers", "delete_shipper_record", "archive_ratebook",
@@ -111,26 +101,6 @@ const ADMIN_STATUSES: Record<string, ReadonlySet<string>> = {
   "quotedesk-api.set_quote_status": new Set(["archived", "new"]),
 };
 
-/**
- * Carrier stages only an Administrador sets (decided 2026-09-29). A carrier is
- * archived through its base stage, not its status, so ADMIN_STATUSES can't
- * see it. Taking one out of the archive depends on the row, so the handlers
- * check that after reading it.
- */
-const ADMIN_BASE_STAGES: Record<string, ReadonlySet<string>> = {
-  "rateware-api.bulk_update_vendors": new Set(["archived"]),
-  "rateware-api.update_vendor": new Set(["archived"]),
-};
-
-/**
- * Actions whose preview only reads and whose confirmed run (`dry_run: false`)
- * is an Administrador's. Merging duplicate carriers deletes the duplicate
- * (decided 2026-09-29), like merging shippers archives it.
- */
-const ADMIN_UNLESS_PREVIEW: Record<string, ReadonlySet<string>> = {
-  "rateware-api": new Set(["consolidate_exact_vendor_duplicates"]),
-};
-
 const record = (value: unknown) =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
@@ -144,11 +114,8 @@ function statusesIn(body: Record<string, unknown>) {
 /** What calling `action` on `fn` asks of the role. Anything unlisted is day-to-day work. */
 export function teamRoleNeed(fn: string, action: string, body: Record<string, unknown> = {}): TeamNeed {
   if (ADMIN[fn]?.has(action)) return "admin";
-  if (ADMIN_UNLESS_PREVIEW[fn]?.has(action)) return body.dry_run === false ? "admin" : "read";
   const statuses = ADMIN_STATUSES[`${fn}.${action}`];
   if (statuses && statusesIn(body).some((status) => statuses.has(status))) return "admin";
-  const stages = ADMIN_BASE_STAGES[`${fn}.${action}`];
-  if (stages?.has(String(record(body.patch).base_stage ?? "").trim().toLowerCase())) return "admin";
   if (READS[fn]?.has(action)) return "read";
   return "operate";
 }
@@ -174,9 +141,7 @@ export const teamRoleAllows = (role: TeamRole, need: TeamNeed) =>
  * What only a row can tell, the handler checks after reading it: taking
  * approved rates out of the rate base (archiving, deleting or reopening them,
  * directly or through their upload) and restoring an archived shipper
- * (decided 2026-09-28), and archiving or restoring a carrier through the CRM
- * template or when importing carriers, or restoring one by moving or editing
- * it, decided 2026-09-29. The 403 body when the account isn't an
+ * (decided 2026-09-28). The 403 body when the account isn't an
  * Administrador, otherwise null.
  */
 export function adminOnlyDenial(fn: string, claims: Record<string, unknown>, action: string, error: string) {
@@ -189,7 +154,6 @@ export function adminOnlyDenial(fn: string, claims: Record<string, unknown>, act
 
 export const RATE_BASE_REMOVAL_ERROR = "Solo un Administrador puede sacar tarifas del tarifario.";
 export const SHIPPER_ARCHIVE_ERROR = "Solo un Administrador puede archivar o restaurar un shipper.";
-export const CARRIER_ARCHIVE_ERROR = "Solo un Administrador puede archivar o restaurar un carrier.";
 
 /** The 403 body when the account's role doesn't allow the call, otherwise null. */
 export function teamRoleDenial(fn: string, claims: Record<string, unknown>, body: Record<string, unknown>) {

@@ -1,5 +1,14 @@
 # RATEWARE AI
 
+## Reglas del repositorio (2026-10-29)
+
+Aplican a toda persona o agente (Claude, Codex u otro).
+
+1. **Producción = git.** Todo código de Edge Functions (`supabase/functions`) y toda migración (`supabase/migrations`) entra por pull request a `main` antes o al mismo tiempo que se despliega. Nada se despliega desde un paquete de `.artifacts` ni desde una carpeta que no sea un checkout de `main`.
+2. **Cada despliegue de una función cita el SHA de `main`** que se desplegó (en la descripción del PR o en el mensaje del commit de conciliación).
+3. **Una migración aplicada en rateware-prod se versiona aquí con el mismo timestamp** con el que quedó registrada en `supabase_migrations.schema_migrations`.
+4. Si producción y `main` divergen, el primer paso es un PR que copie exactamente lo activo (sin cambiar comportamiento), como el que versionó `rfx-bid-api` v347.
+
 ## Radar RFI release — 2026-10-16
 
 The atomic Radar RFI receiver is deployed as rateware-api v696, preserving
