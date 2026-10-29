@@ -1,8 +1,18 @@
+import { lockedBrokeragePolicy, lockedCommercialViolation, projectLockedCarrierPayload } from "../_shared/locked-carrier-commercial.mjs";
+import { biddingClosed, checkConditionAnswer, conditionKeyFromRubric, LEGACY_RUBRIC_KEYS, publicLaneCondition } from "../_shared/rfx-lane-conditions.mjs";
+import {createAssistedPilotEdgeBridge,isAssistedPilotTransportRequest} from "../_shared/assisted-pilot-edge-bridge.mjs";
+import {createAssistedPilotServerRuntime} from "../_shared/assisted-pilot-server-composition.mjs";
+import {createAssistedPilotWriteGuard} from "../_shared/assisted-pilot-write-guard.mjs";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
 import { belongsToThread, carrierChatMessage, carrierChatThread } from "../_shared/carrier-chat-view.mjs";
-import { biddingClosed, checkConditionAnswer, conditionKeyFromRubric, LEGACY_RUBRIC_KEYS, publicLaneCondition } from "../_shared/rfx-lane-conditions.mjs";
+import { createNativeBidHandler, isNativeBidRequest } from "../_shared/native-bid-handler.mjs";
+import { createNativeClientFeeReader } from "../_shared/native-client-fee-reader.mjs";
+import { writeAuthenticatedBidPreparation, readAuthenticatedBidPreparation } from "../_shared/bid-operation-store.mjs";
+import type { OriginalSourceRef, OriginalSourceContext } from "../_shared/bid-original-source.ts";
+import { PRIVATE_DELIVERY_CONTRACT, activePrivateInvitation, loadPrivateDeliveryEvidence,
+  privateInvitationProjection } from "../_shared/private-invitation-evidence.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -4832,13 +4842,225 @@ async function saveCustomerRfi(supabase: RfxBidSupabaseClient, input: Record<str
   };
 }
 
+// Opt-in native contract reuses scalar validation/economics below, never the
+// legacy multi-step writer. Scope/approval/source gates live in the shared module.
+function nativeBidUserClient(token: string) {
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!SUPABASE_URL || !anonKey) throw new Error("Native identity RPC is not configured.");
+  return createClient(SUPABASE_URL, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
+// Native book resolution is a scoped read, not token hydration or migration.
+async function findBookInvitation(client: RfxBidSupabaseClient, root: Record<string, unknown>, invitationId: string) {
+  const owner = relationRecord(root.rfx_events).owner_email;
+  if (!cleanText(root.vendor_id) || !cleanText(root.rfx_event_id) || !cleanText(owner)) return null;
+  const { data, error } = await client.from("rfx_lane_vendors")
+    .select(`id,vendor_id,rfx_event_id,rfx_lane_id,invitation_status,updated_at,award_role,
+      bid_rate,currency,weekly_capacity,transit_days,valid_through,notes,commercial_model,
+      marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,
+      alternative_units,alternative_notes,equipment_available,current_unit_location,
+      deadhead_distance,deadhead_unit,unit_details,eta_pickup,eta_delivery,mirror_account_enabled,
+      availability_validation_status,responded_at,client_fee_amount,commercial_rounding_increment,
+      vendors(vendor_name,domain,primary_email),rfx_events!inner(*),rfx_lanes(*)`)
+    .eq("id", invitationId).eq("vendor_id", root.vendor_id)
+    .eq("rfx_event_id", root.rfx_event_id).eq("rfx_events.owner_email", owner).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+const nativeBidHandler = createNativeBidHandler({
+  // Read eligibility and atomic execution are independent, default-off opt-ins.
+  clientFeeEnabled: Deno.env.get("RATEWARE_NATIVE_CLIENT_FEE_READ_ENABLED") === "true" && BID_DEADLINE_UTC_OFFSET === "-06:00",
+  clientFeeAtomicEnabled: Deno.env.get("RATEWARE_NATIVE_CLIENT_FEE_ATOMIC_ENABLED") === "true"
+    && Deno.env.get("RATEWARE_NATIVE_CLIENT_FEE_READ_ENABLED") === "true" && BID_DEADLINE_UTC_OFFSET === "-06:00",
+  readClientFeeContext: async (client: RfxBidSupabaseClient, invitation: any) => {
+    const { headStorageObject, downloadStorageObject } = await import("../_shared/object-storage.ts");
+    const reader = createNativeClientFeeReader({enabled:true,client,utcOffset:BID_DEADLINE_UTC_OFFSET,
+      readObjectHead:(bucket:string,path:string)=>headStorageObject(client,"supabase",bucket,path),
+      downloadObject:(bucket:string,path:string)=>downloadStorageObject(client,"supabase",bucket,path)});
+    return reader.read(invitation);
+  },
+  enabled: Deno.env.get("RATEWARE_NATIVE_BID_LOCAL_ENABLED") === "true" && BID_DEADLINE_UTC_OFFSET === "-06:00",
+  preparationEnabled: Deno.env.get("RATEWARE_NATIVE_BID_PREPARATION_ENABLED") === "true" && BID_DEADLINE_UTC_OFFSET === "-06:00",
+  preparedReviewEnabled: Deno.env.get("RATEWARE_NATIVE_BID_REVIEW_ENABLED") === "true" && BID_DEADLINE_UTC_OFFSET === "-06:00",
+  confirmationEnabled: Deno.env.get("RATEWARE_NATIVE_BID_CONFIRMATION_ENABLED") === "true" && BID_DEADLINE_UTC_OFFSET === "-06:00",
+  contextEnabled: Deno.env.get("RATEWARE_NATIVE_BID_CONTEXT_ENABLED") === "true" && BID_DEADLINE_UTC_OFFSET === "-06:00",
+  receiptEnabled: Deno.env.get("RATEWARE_NATIVE_BID_RECEIPT_ENABLED") === "true" && BID_DEADLINE_UTC_OFFSET === "-06:00",
+  writePreparation: writeAuthenticatedBidPreparation,
+  readPreparation: readAuthenticatedBidPreparation,
+  contextUtcOffset: BID_DEADLINE_UTC_OFFSET,
+  // Independent LOCAL opt-in: legacy submission opt-in alone grants no commit.
+  preparedCommitEnabled: Deno.env.get("RATEWARE_NATIVE_BID_COMMIT_ENABLED") === "true"
+    && Deno.env.get("RATEWARE_NATIVE_BID_PREPARATION_ENABLED") === "true"
+    && Deno.env.get("RATEWARE_NATIVE_BID_CONFIRMATION_ENABLED") === "true"
+    && BID_DEADLINE_UTC_OFFSET === "-06:00",
+  assistedOriginalReadEnabled: Deno.env.get("RATEWARE_NATIVE_BID_ASSISTED_READ_ENABLED") === "true",
+  readBoundOriginal: async (client: RfxBidSupabaseClient, member: any, invitationId: string, requestId: string) => {
+    const {data,error} = await client.rpc("rateware_resolve_preparation_original_local_v1", {
+      p_actor_id: member.actorId, p_organization_id: member.organizationId, p_invitation_id: invitationId, p_request_id: requestId,
+    });
+    if (error) throw new Error("Assisted original is unavailable.");
+    return data;
+  },
+  originalSourceEnabled: Deno.env.get("RATEWARE_NATIVE_BID_ORIGINAL_SOURCE_ENABLED") === "true",
+  verifyOriginalSource: async (client: RfxBidSupabaseClient, member: { organizationId: string }, _invitation: unknown,
+    command: any, reference: OriginalSourceRef | undefined) => {
+    // Keep the existing object-storage dependencies off the no-file/legacy path.
+    const { verifyBidOriginalSource, resolveBidPreparationOriginalSource } = await import("../_shared/bid-original-source.ts");
+    if (command.preparation === true) {
+      return resolveBidPreparationOriginalSource(client, {
+        scope: { ...command.scope, organizationId: member.organizationId, requestId: command.requestId },
+        rawUploadId: command.rawUploadId, sourceSignature: command.source.sourceSignature,
+      }, async (scope, rawUploadId) => {
+        const { data, error } = await client.rpc("rateware_preparation_original_context_local_v1", {
+          p_actor_id: scope.actorId, p_organization_id: scope.organizationId,
+          p_invitation_id: scope.invitationId, p_request_id: scope.requestId, p_raw_upload_id: rawUploadId,
+        });
+        if (error) throw new Error("Preparation original context is unavailable.");
+        return data as OriginalSourceContext | null;
+      });
+    }
+    if (!reference) throw new Error("Original source reference is required.");
+    return verifyBidOriginalSource(client, {
+      scope: { ...command.scope, organizationId: member.organizationId, requestId: command.requestId },
+      reference, sourceSignature: command.source.sourceSignature,
+    }, async (scope, rawUploadId) => {
+      const { data, error } = await client.rpc("rateware_bid_original_context_local_v1", {
+        p_actor_id: scope.actorId, p_organization_id: scope.organizationId,
+        p_invitation_id: scope.invitationId, p_request_id: scope.requestId, p_raw_upload_id: rawUploadId,
+      });
+      if (error) throw new Error("Original source context is unavailable.");
+      return data as OriginalSourceContext | null;
+    });
+  },
+  origin: Deno.env.get("RATEWARE_NATIVE_BID_ORIGIN") || "",
+  getClient,
+  getOperationClient: nativeBidUserClient,
+  readMembership: async (token: string) => {
+    return nativeBidUserClient(token).rpc("loads_carrier_bootstrap_v1");
+  },
+  findInvitation: (client: RfxBidSupabaseClient, token: string) => findInvitationByToken(client, token,
+    "*,vendors(vendor_name,domain,primary_email),rfx_events(*),rfx_lanes(*)", false),
+  findBookInvitation,
+  blockReason: bidSubmissionBlockReason,
+  normalizeBid: (input: Record<string, unknown>, invitation: Record<string, unknown>) => {
+    const body = input.bid as Record<string, unknown>;
+    if (!cleanText(body.currency) || !normalizeCommercialModel(body.commercial_model)) {
+      throw new Error("Native quote requires explicit currency and commercial model.");
+    }
+    const commercialModel = normalizeCommercialModelForUpdate(body.commercial_model, invitation.commercial_model)!;
+    const legacyModel = legacyCommercialModel(commercialModel);
+    const deadheadDistance = strictNonNegativeBidNumber(body.deadhead_distance, "Deadhead distance");
+    return {
+      bid_rate: strictBidNumber(body.bid_rate, "Bid rate", { required: true }),
+      currency: strictCurrencyCode(body.currency),
+      commercial_model: commercialModel,
+      marksman_margin_pct: legacyModel === "direct_cost_plus"
+        ? strictOptionalPercentWithDefault(body.marksman_margin_pct, "Suggested margin to share", 2, 5, DEFAULT_COMMERCIAL_SHARE_PCT)
+        : legacyModel === "xbf_buy_sell"
+          ? strictOptionalPercentWithDefault(body.marksman_margin_pct, "Suggested XBF buy-sell margin", XBF_BUY_SELL_MIN_MARKUP_PCT, XBF_BUY_SELL_MAX_MARKUP_PCT, XBF_BUY_SELL_DEFAULT_MARKUP_PCT) : null,
+      carrier_share_pct: legacyModel === "carrier_share"
+        ? strictOptionalPercentWithDefault(body.carrier_share_pct, "Carrier invoice share", 2, 5, DEFAULT_COMMERCIAL_SHARE_PCT) : null,
+      weekly_capacity: strictBidNumber(body.weekly_capacity, "Weekly capacity"),
+      transit_days: strictBidNumber(body.transit_days, "Transit days"),
+      valid_through: strictDateOnly(body.valid_through, "Valid through"),
+      best_alternative_offered: cleanBoolean(body.best_alternative_offered) === true,
+      alternative_equipment: cleanText(body.alternative_equipment),
+      alternative_units: strictBidNumber(body.alternative_units, "Alternative units"),
+      alternative_notes: cleanText(body.alternative_notes),
+      equipment_available: cleanBoolean(body.equipment_available),
+      current_unit_location: cleanText(body.current_unit_location),
+      deadhead_distance: deadheadDistance,
+      deadhead_unit: deadheadDistance !== null ? normalizeDeadheadUnit(body.deadhead_unit) || "mi" : null,
+      unit_details: cleanText(body.unit_details),
+      eta_pickup: cleanTimestamp(body.eta_pickup), eta_delivery: cleanTimestamp(body.eta_delivery),
+      mirror_account_enabled: cleanBoolean(body.mirror_account_enabled) === true,
+      notes: cleanText(body.notes), best_final: cleanBoolean(body.best_final) === true,
+    };
+  },
+  captureBid: (invitation: Record<string, unknown>, payload: Record<string, unknown>) => {
+    const now = new Date().toISOString();
+    const revision = payload.best_final ? "best_final" : cleanNumber(invitation.bid_rate) !== null ? "revision" : "initial";
+    const capture = bidRateStagingInput(invitation, { ...invitation, ...payload, responded_at: now }, revision, now);
+    // The store sets authority, evidence, status and staff-owned financial fields.
+    const protectedFields = new Set(["owner_email", "vendor_id", "id", "created_at", "updated_at",
+      "raw_upload_id", "interpretation_job_id", "status", "source_evidence", "extracted_payload",
+      "client_fee_amount", "commercial_rounding_increment"]);
+    return Object.fromEntries(Object.entries(capture).filter(([key]) => !protectedFields.has(key)));
+  },
+});
+
+function nativeBidResponse(result: Response, request: Request) {
+  return new Response(result.body, { status: result.status,
+    headers: { ...corsHeaders(request), ...Object.fromEntries(result.headers) } });
+}
+async function prepareNativeBid(request: Request, body: unknown) {
+  return nativeBidResponse(await nativeBidHandler.prepareBid(request, body), request);
+}
+async function readNativeBidContext(request: Request, body: unknown) {
+  return nativeBidResponse(await nativeBidHandler.context(request, body), request);
+}
+async function reviewPreparedBid(request: Request, body: unknown) {
+  return nativeBidResponse(await nativeBidHandler.reviewPrepared(request, body), request);
+}
+async function confirmPreparedBid(request: Request, body: unknown) {
+  return nativeBidResponse(await nativeBidHandler.confirmPrepared(request, body), request);
+}
+async function recoverBidConfirmation(request: Request, body: unknown) {
+  return nativeBidResponse(await nativeBidHandler.confirmPrepared(request, body), request);
+}
+async function commitPreparedBid(request: Request, body: unknown) {
+  return nativeBidResponse(await nativeBidHandler.commitPrepared(request, body), request);
+}
+async function lookupPreparedBid(request: Request, body: unknown) {
+  return nativeBidResponse(await nativeBidHandler.lookupPrepared(request, body), request);
+}
+
+// B2 integration: B1 code and private delivery evidence stay unchanged.
+const b2RawConfiguration = Deno.env.get("RATEWARE_ASSISTED_B2_CONFIG") || "";
+const b2Configuration = (() => {try {return b2RawConfiguration.length<=4096 && b2RawConfiguration ? JSON.parse(b2RawConfiguration) : null;}catch{return null;}})();
+const b2Bridge = createAssistedPilotEdgeBridge({
+ enabled:false/* B2 containment: preserve pilot selection and B1 */,
+ origin:Deno.env.get("RATEWARE_NATIVE_BID_ORIGIN")||"",pilot:b2Configuration?.pilot,
+ readCarrierContext:(request:Request,input:any)=>nativeBidHandler.context(request,input),
+ createRuntime:({origin,pilot,isEnabled}:any)=>createAssistedPilotServerRuntime({origin,pilot,isEnabled,getClient}),
+});
+const b2WriteGuard = createAssistedPilotWriteGuard({configuration:b2Configuration,configurationPresent:b2RawConfiguration.length>0,
+ resolveInvitationByToken:(token:string)=>findInvitationByToken(getClient(),token,"id",false),
+});
+
 Deno.serve(async (request) => {
-  const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
+  let carrierCommercialScope: any = null;
+  const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(projectLockedCarrierPayload(body, carrierCommercialScope), status, request);
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
 
   try {
-    const supabase = getClient();
     const body = await request.json().catch(() => ({}));
+    if (isAssistedPilotTransportRequest(body)) return nativeBidResponse(await b2Bridge.fetch(request,body),request);
+    const b2Blocked = await b2WriteGuard(body);
+    if (b2Blocked) return nativeBidResponse(b2Blocked,request);
+    if (isNativeBidRequest(body)) {
+      if (body.action === "resolve_preparation_original") {
+        return nativeBidResponse(await nativeBidHandler.resolvePreparationOriginal(request, body), request);
+      } else if (body.action === "lookup_prepared_bid") {
+        return lookupPreparedBid(request, body);
+      } else if (body.action === "read_native_bid_context") {
+        return readNativeBidContext(request, body);
+      } else if (body.action === "prepare_native_bid") {
+        return prepareNativeBid(request, body);
+      } else if (body.action === "review_prepared_bid") {
+        return reviewPreparedBid(request, body);
+      } else if (body.action === "confirm_prepared_bid") {
+        return confirmPreparedBid(request, body);
+      } else if (body.action === "recover_bid_confirmation") {
+        return recoverBidConfirmation(request, body);
+      } else if (body.action === "commit_prepared_bid") {
+        return commitPreparedBid(request, body);
+      }
+      return nativeBidResponse(await nativeBidHandler.fetch(request, body), request);
+    }
+    const supabase = getClient();
     if (body.action === "bid_support_reply") {
       const result = await bidSupportReply(supabase, body);
       if (result.status) {
@@ -4889,11 +5111,23 @@ Deno.serve(async (request) => {
 
     const token = cleanText(body.token);
     if (!token) return jsonResponse({ error: "Invitation token is required." }, 400);
+    const policyContext = await findInvitationByToken(supabase, token, "rfx_event_id,rfx_events(id,rfx_master_package)", false);
+    const lockedPolicy = lockedBrokeragePolicy(policyContext);
+    if (lockedPolicy && policyContext) carrierCommercialScope = { eventId: policyContext.rfx_event_id, policy: lockedPolicy };
+    if (body.action === "submit_bid") {
+      const violation = lockedCommercialViolation(body, policyContext);
+      if (violation) return jsonResponse(violation, 409);
+    }
 
     if (body.action === "get_invitation" || body.action === "peek_invitation") {
       // Loads may verify a carrier's private book without recording a view or
       // opportunistically migrating legacy tokens. The token remains required.
       const readOnlyPeek = body.action === "peek_invitation";
+      const invitationResponse = (payload: unknown, status = 200) => {
+        const response = jsonResponse(payload, status);
+        if (readOnlyPeek) response.headers.set("Cache-Control", "private, no-store, max-age=0");
+        return response;
+      };
       const invitation = await findInvitationByToken(supabase, token, `
           id,
           rfx_event_id,
@@ -4939,12 +5173,33 @@ Deno.serve(async (request) => {
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,operation_start_date,bid_visibility_mode,notes,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
       rfx_lanes(*)
         `, !readOnlyPeek);
-      if (!invitation) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
+      if (!invitation) {
+        const response = invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+        return response;
+      }
       const result = { data: invitation };
-      if (readOnlyPeek && (
-        ["archived", "revoked", "declined"].includes(String(cleanText(result.data.invitation_status) || "").toLowerCase()) ||
-        cleanText(relationRecord(result.data.rfx_events).status) !== "open"
-      )) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
+      const peekNow = Date.now();
+      const peekScope = { ownerEmail: cleanText(relationRecord(invitation.rfx_events).owner_email) || "",
+        vendorId: cleanText(invitation.vendor_id) || "" };
+      let rootDelivery: { sent_at: string; basis: string } | undefined;
+      if (readOnlyPeek) {
+        if (!activePrivateInvitation(invitation, peekScope, BID_DEADLINE_UTC_OFFSET, peekNow)) {
+          const response = invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+          return response;
+        }
+        try {
+          rootDelivery = (await loadPrivateDeliveryEvidence(supabase, [invitation], peekScope, peekNow)).get(invitation.id);
+        } catch {
+          const response = invitationResponse({ error: "Private invitation evidence is unavailable.", code: "PRIVATE_DELIVERY_EVIDENCE_UNAVAILABLE" }, 503);
+          return response;
+        }
+        if (!rootDelivery) {
+          const response = invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+          return response;
+        }
+      }
+      const peekProjection = (row: Record<string, unknown>, proof = rootDelivery) =>
+        invitationWithoutToken(privateInvitationProjection(row, proof!, BID_DEADLINE_UTC_OFFSET));
 
       if (!readOnlyPeek && !result.data.viewed_at) {
         await supabase
@@ -4976,9 +5231,11 @@ Deno.serve(async (request) => {
         const currentRow = currentBook.invited[0] || null;
         const liveBoard = liveBoardFromRows(result.data, peersResult.data || []);
         const response = jsonResponse({
-          invitation: readOnlyPeek ? invitationWithoutToken(carrierInvitation(result.data)) : carrierInvitation(result.data),
+          invitation: readOnlyPeek ? peekProjection(carrierInvitation(result.data)) : carrierInvitation(result.data),
           live_board: readOnlyPeek ? { ...liveBoard, current_invitation_token: undefined } : liveBoard,
-          current_book_row: readOnlyPeek && currentRow ? invitationWithoutToken(currentRow) : currentRow,
+          current_book_row: readOnlyPeek && currentRow ? { ...invitationWithoutToken(currentRow),
+            expires_at: peekProjection(result.data).expires_at, delivery_receipt: rootDelivery } : currentRow,
+          ...(readOnlyPeek ? { delivery_evidence: PRIVATE_DELIVERY_CONTRACT } : {}),
           ...(!readOnlyPeek && body.include_history === true ? { bid_history: bidHistory } : {})
         });
         if (readOnlyPeek) response.headers.set("Cache-Control", "private, no-store, max-age=0");
@@ -5042,7 +5299,28 @@ Deno.serve(async (request) => {
       // A peek never returns invitation tokens, so it must not depend on the
       // encryption key merely to include a carrier's encrypted-token rows.
       // Keep the ordinary Bid Room path's token hydration unchanged.
-      const hydratedInvitedRows = readOnlyPeek ? invitedRows
+      let peekProofs = new Map<string, { sent_at: string; basis: string }>();
+      if (readOnlyPeek) {
+        try {
+          peekProofs = await loadPrivateDeliveryEvidence(supabase, invitedRows, peekScope, peekNow);
+        } catch {
+          const response = invitationResponse({ error: "Private invitation evidence is unavailable.", code: "PRIVATE_DELIVERY_EVIDENCE_UNAVAILABLE" }, 503);
+          return response;
+        }
+        // Recheck the root in the book read: do not return a prior receipt after
+        // evidence disappears, or claim a complete root projection outside the cap.
+        const bookRoot = invitedRows.find((row) => row.id === invitation.id);
+        if (!bookRoot || !peekProofs.has(String(invitation.id))) {
+          const response = invitationResponse({ error: "Private invitation evidence is unavailable.", code: "PRIVATE_DELIVERY_EVIDENCE_UNAVAILABLE" }, 503);
+          return response;
+        }
+        if (!activePrivateInvitation(bookRoot, peekScope, BID_DEADLINE_UTC_OFFSET, peekNow)) {
+          const response = invitationResponse({ error: "Invitation link is invalid or has expired." }, 404);
+          return response;
+        }
+      }
+      const hydratedInvitedRows = readOnlyPeek ? invitedRows.filter((row) =>
+        activePrivateInvitation(row, peekScope, BID_DEADLINE_UTC_OFFSET, peekNow) && peekProofs.has(String(row.id)))
         : await hydrateInvitationTokens(supabase, invitedRows);
 
       // A Loads peek is strictly vendor-bound: unrelated open lanes from the
@@ -5098,17 +5376,20 @@ Deno.serve(async (request) => {
 
       const book = carrierBusinessBook(result.data, hydratedInvitedRows, openLanesResult.data || []);
       const liveBoard = liveBoardFromRows(result.data, peersResult.data || []);
+      const peekBookRow = (row: Record<string, unknown>) => {
+        const original = hydratedInvitedRows.find((candidate) => candidate.id === row.invitation_id)!;
+        const projection = peekProjection(original, peekProofs.get(String(original.id)));
+        return { ...invitationWithoutToken(row), expires_at: projection.expires_at,
+          delivery_receipt: projection.delivery_receipt };
+      };
       const response = jsonResponse({
-        invitation: readOnlyPeek ? invitationWithoutToken(carrierInvitation(result.data)) : carrierInvitation(result.data),
+        invitation: readOnlyPeek ? peekProjection(carrierInvitation(result.data)) : carrierInvitation(result.data),
         live_board: readOnlyPeek ? { ...liveBoard, current_invitation_token: undefined } : liveBoard,
-        carrier_book: readOnlyPeek ? { ...book, invited: book.invited.map(invitationWithoutToken),
-          quoted: book.quoted.map(invitationWithoutToken) } : book,
-        ...(!readOnlyPeek ? {
-          bid_history: bidHistory,
-          segment_confirmations: segmentConfirmations,
-          // The route conditions of this invitation's lane, as the carrier answers them.
-          lane_conditions: (await listLaneConditions(supabase, result.data.rfx_lane_id)).map(publicLaneCondition).filter(Boolean)
-        } : {})
+        carrier_book: readOnlyPeek ? { ...book, invited: book.invited.map(peekBookRow),
+          quoted: book.quoted.map(peekBookRow) } : book,
+        ...(readOnlyPeek ? { delivery_evidence: PRIVATE_DELIVERY_CONTRACT } : {}),
+        ...(!readOnlyPeek ? { bid_history: bidHistory, segment_confirmations: segmentConfirmations,
+          lane_conditions: (await listLaneConditions(supabase, result.data.rfx_lane_id)).map(publicLaneCondition).filter(Boolean) } : {})
       });
       if (readOnlyPeek) response.headers.set("Cache-Control", "private, no-store, max-age=0");
       return response;
@@ -5403,9 +5684,9 @@ Deno.serve(async (request) => {
       // Route fit answers are advisory context; invitation access is the quote gate.
       const previousBidRate = cleanNumber(invitationResult.data.bid_rate);
       const revisionType = bestFinal ? "best_final" : previousBidRate !== null ? "revision" : "initial";
-      const commercialModel = normalizeCommercialModelForUpdate(body.commercial_model, invitationResult.data.commercial_model) || "cost_plus";
+      const commercialModel = lockedPolicy ? "brokerage" : normalizeCommercialModelForUpdate(body.commercial_model, invitationResult.data.commercial_model) || "cost_plus";
       const legacyModel = legacyCommercialModel(commercialModel) || "direct_cost_plus";
-      const marksmanMarginPct = legacyModel === "direct_cost_plus"
+      const marksmanMarginPct = lockedPolicy ? cleanNumber(invitationResult.data.marksman_margin_pct) : legacyModel === "direct_cost_plus"
         ? strictOptionalPercentWithDefault(body.marksman_margin_pct, "Suggested margin to share", 2, 5, DEFAULT_COMMERCIAL_SHARE_PCT)
         : legacyModel === "xbf_buy_sell"
           ? strictOptionalPercentWithDefault(body.marksman_margin_pct, "Suggested XBF buy-sell margin", XBF_BUY_SELL_MIN_MARKUP_PCT, XBF_BUY_SELL_MAX_MARKUP_PCT, XBF_BUY_SELL_DEFAULT_MARKUP_PCT)

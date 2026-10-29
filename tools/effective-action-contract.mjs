@@ -1,5 +1,6 @@
 import { RADAR_RFI_LINK_ACTION_CONTRACT_EXTENSION as radarRfiLinkExtension } from '../supabase/functions/_shared/action-contract-radar-rfi-link.mjs';
 import { RFX_LANE_CONDITIONS_REPLIES_ACTION_CONTRACT_EXTENSION as laneConditionsRepliesExtension } from '../supabase/functions/_shared/action-contract-rfx-lane-conditions-replies.mjs';
+import { RFX_BID_API_V347_ACTION_CONTRACT_EXTENSION as rfxBidApiV347Extension } from '../supabase/functions/_shared/action-contract-rfx-bid-api-v347.mjs';
 import { SPOT_CONVERSION_ACTION_CONTRACT_EXTENSION as spotConversionExtension } from '../supabase/functions/_shared/action-contract-spot-conversion.mjs';
 import { RFX_SEGMENT_CONFIRMATIONS_ACTION_CONTRACT_EXTENSION as segmentConfirmationsExtension } from '../supabase/functions/_shared/action-contract-rfx-segment-confirmations.mjs';
 import { RFX_CARRIER_QUESTION_DRAFT_ACTION_CONTRACT_EXTENSION as carrierQuestionDraftExtension } from '../supabase/functions/_shared/action-contract-rfx-carrier-question-drafts.mjs';
@@ -619,3 +620,20 @@ for(const [key,delta] of Object.entries(laneConditionsRepliesExtension.expectedC
 Object.assign(ACTION_CONTRACT.reviewedMetadataFingerprints,laneConditionsRepliesExtension.reviewedMetadataFingerprints);
 Object.assign(ACTION_CONTRACT.reviewedAuthorizationFingerprints,laneConditionsRepliesExtension.reviewedAuthorizationFingerprints);
 ACTION_CONTRACT.surfaces.push(...laneConditionsRepliesExtension.surfaces);
+
+// rfx-bid-api v347 (producción desde 2026-10-28; Fase 0 «producción = git»): registra las 8
+// acciones de oferta nativa B2 y el trigger del Demand Radar, refresca las huellas de fuente
+// que v347 cambió y acepta el sobre de autorización de v347 (además del anterior) para toda
+// la función. Las decisiones de las acciones nuevas quedan pendientes de aprobación humana.
+for(const [key,delta] of Object.entries(rfxBidApiV347Extension.expectedCountsDelta)) ACTION_CONTRACT.expectedCounts[key]+=delta;
+Object.assign(ACTION_CONTRACT.reviewedMetadataFingerprints,rfxBidApiV347Extension.reviewedMetadataFingerprints);
+Object.assign(ACTION_CONTRACT.reviewedAuthorizationFingerprints,rfxBidApiV347Extension.reviewedAuthorizationFingerprints);
+ACTION_CONTRACT.surfaces = ACTION_CONTRACT.surfaces.map(entry => {
+  if (!entry.canonicalId.startsWith('edge.rfx-bid-api.')) return entry;
+  const previous = ACTION_CONTRACT.reviewedAuthorizationFingerprints[entry.canonicalId];
+  const accepted = new Set([...(Array.isArray(previous) ? previous : previous ? [previous] : []), rfxBidApiV347Extension.v347AuthorizationEnvelope]);
+  ACTION_CONTRACT.reviewedAuthorizationFingerprints[entry.canonicalId] = [...accepted];
+  const sourceFingerprint = rfxBidApiV347Extension.sourceFingerprintOverrides[entry.canonicalId];
+  return { ...entry, ...(sourceFingerprint ? { sourceFingerprint } : {}), dependencyFiles: rfxBidApiV347Extension.rfxBidDependencyFiles };
+});
+ACTION_CONTRACT.surfaces.push(...rfxBidApiV347Extension.surfaces);
