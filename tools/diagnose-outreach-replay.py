@@ -38,7 +38,8 @@ def main():
                 target = Path(tmp) / p.name
                 p.rename(target)
                 moved.append((p, target))
-            run("supabase", "start")
+            # Success output contains throwaway local keys; do not print them.
+            run("supabase", "start", stdout=subprocess.DEVNULL)
             query = """
               SELECT version();
               SELECT jsonb_pretty(jsonb_build_object(
