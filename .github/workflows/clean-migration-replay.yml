@@ -75,7 +75,7 @@ jobs:
         run: node tools/validate-action-contract-no-regression.mjs --baseline-root /tmp/rateware-main
 
       - name: Test Rateware handler attribution and workspace scope
-        run: node --test tests/rateware-handler-attribution.test.mjs tests/rateware-memory-scope.test.mjs
+        run: node --test tests/rateware-handler-attribution.test.mjs tests/rateware-memory-scope.test.mjs tests/rfx-project-owner-contract.test.mjs
 
       # Main was re-signed with zero errors on 2026-09-25; from here on any
       # unreviewed drift fails, not only drift that is new against main.

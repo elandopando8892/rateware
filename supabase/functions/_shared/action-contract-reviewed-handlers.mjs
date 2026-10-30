@@ -1,4 +1,4 @@
-// Static reviewed handler attribution and owner-filter correction. No permission decisions change.
+// Static reviewed attribution, owner-filter correction and project/SQL projections. No permission decisions change.
 export const REVIEWED_HANDLER_ATTRIBUTION = {
   "overrides": {
     "edge.rateware-api.shipper_commercial_work": {
@@ -24,6 +24,30 @@ export const REVIEWED_HANDLER_ATTRIBUTION = {
     "edge.rateware-api.simulate_interpretation_memory": {
       "handler": "handleSimulateInterpretationMemory",
       "sourceFingerprint": "a8fcf9aa1fd2a47303112dee779a47d62d423666fc232a1262b6e9a0f1646823"
+    },
+    "edge.rateware-api.create_rfx_process_project": {
+      "handler": "createRfxProjectOnce",
+      "sourceFingerprint": "a9d3f3e876e165e17b26f2055371fa68bbc5fb6525fded20caa885205d7cf081"
+    },
+    "edge.rateware-api.get_rfx_process_project": {
+      "handler": "readRfxProjectCreationReceipt",
+      "sourceFingerprint": "7d3e8fdda1e7bf7349c82399a8606f13f1988819fdd137529f1016442361a3d3"
+    },
+    "rpc.public.rateware_outreach_tracking_page(text,uuid,text[],text,text[],boolean,boolean,integer,integer)": {
+      "handler": "public.rateware_outreach_tracking_page(text,uuid,text[],text,text[],boolean,boolean,integer,integer)",
+      "sourceFingerprint": "a8c6a5fc81dd36daf48310a0c693fc2453697a2ca0b30e2e2d67583c2452b274",
+      "sourceFile": "supabase/migrations/20261007204842_outreach_pending_delivery_projection.sql",
+      "dependencyFiles": [
+        "supabase/migrations/20261007204842_outreach_pending_delivery_projection.sql"
+      ]
+    },
+    "rpc.public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)": {
+      "handler": "public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)",
+      "sourceFingerprint": "a9fdb9a26f0ab029f3773c206b748d66ee9fea31aaa7e7dc99348c9ae3ca67f7",
+      "sourceFile": "supabase/migrations/20261007204842_outreach_pending_delivery_projection.sql",
+      "dependencyFiles": [
+        "supabase/migrations/20261007204842_outreach_pending_delivery_projection.sql"
+      ]
     }
   },
   "reviewedMetadataFingerprints": {
@@ -32,7 +56,11 @@ export const REVIEWED_HANDLER_ATTRIBUTION = {
     "edge.rateware-api.set_rfx_lane_no_award": "29aba1ef14968dab0ee51f53c6eb6b68cdcb4c23039f3db66da5934b84d8308b",
     "edge.rateware-api.list_outreach_campaigns": "09247049e6378dd72edd3decc57f33c860642022d09b12535bd071c4fe2d6416",
     "edge.rateware-api.list_vendor_unmatched_ids": "4918234d072459420af7a38aee05b720ffda48b4f1045fa6ff674b2dbfd2e488",
-    "edge.rateware-api.simulate_interpretation_memory": "bc21a2f7451bae80019c16fb54673a5609d8747ce7a6c5d0dacac9b247eb3349"
+    "edge.rateware-api.simulate_interpretation_memory": "bc21a2f7451bae80019c16fb54673a5609d8747ce7a6c5d0dacac9b247eb3349",
+    "edge.rateware-api.create_rfx_process_project": "1dbc553728c2de7dfd62a177b2e31440f8d6a7a1ce18aaf10c732926b0da5276",
+    "edge.rateware-api.get_rfx_process_project": "817ad7a4053c508bfd220aa1a45d53a36808889431c630d25f966983c853b5a2",
+    "rpc.public.rateware_outreach_tracking_page(text,uuid,text[],text,text[],boolean,boolean,integer,integer)": "690277e87497a53471f943b03d8d036b581eda415ddcfb11c6eadd20bef8cd18",
+    "rpc.public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)": "a557949d6ccdf3dcac251790a14ccf12119554ffc9575a002a91c2ff8120d2d1"
   },
   "reviewedAuthorizationFingerprints": {
     "edge.rateware-api.associate_whatsapp_reply": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507",
@@ -41,6 +69,8 @@ export const REVIEWED_HANDLER_ATTRIBUTION = {
     "edge.rateware-api.get_markos_bid_room_snapshot": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507",
     "edge.rateware-api.get_published_carrier_classification": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507",
     "edge.rateware-api.review_whatsapp_reply_association": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507",
-    "edge.rateware-api.verify_outreach_gmail_message": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507"
+    "edge.rateware-api.verify_outreach_gmail_message": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507",
+    "rpc.public.rateware_outreach_tracking_page(text,uuid,text[],text,text[],boolean,boolean,integer,integer)": "a8c6a5fc81dd36daf48310a0c693fc2453697a2ca0b30e2e2d67583c2452b274",
+    "rpc.public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)": "a9fdb9a26f0ab029f3773c206b748d66ee9fea31aaa7e7dc99348c9ae3ca67f7"
   }
 };
