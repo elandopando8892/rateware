@@ -58,7 +58,7 @@ as $$
         event.rfx_id,
         event.name,
         linked.invitation_status
-      ), 'ÁÉÍÓÚÜÑáéíóúüñ', 'AEIOUUNaeiouun')) as search_text
+      ), 'ÃÃ‰ÃÃ“ÃšÃœÃ‘Ã¡Ã©Ã­Ã³ÃºÃ¼Ã±', 'AEIOUUNaeiouun')) as search_text
     from public.outreach_messages om
     left join public.rfx_lane_vendors linked on linked.id = om.rfx_lane_vendor_id
     left join public.vendors vendor on vendor.id = om.vendor_id
@@ -102,7 +102,7 @@ as $$
         or not exists (
           select 1
           from unnest(p_search_terms) term
-          where search_text not like '%' || lower(translate(term, 'ÁÉÍÓÚÜÑáéíóúüñ', 'AEIOUUNaeiouun')) || '%'
+          where search_text not like '%' || lower(translate(term, 'ÃÃ‰ÃÃ“ÃšÃœÃ‘Ã¡Ã©Ã­Ã³ÃºÃ¼Ã±', 'AEIOUUNaeiouun')) || '%'
         )
       )
   ),
