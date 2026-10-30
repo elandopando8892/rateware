@@ -17929,15 +17929,12 @@ function publicRfxParticipantRow<T>(row: T): T {
 // instead of hiding the carrier or failing the whole event load. Encrypted
 // columns are stripped here as well so they never reach the browser.
 async function hydrateRfxBoardInvitationTokens(
-  supabase: RatewareSupabaseClient,
   rows: Record<string, unknown>[]
-) {
+): Promise<Record<string, unknown>[]> {
   return await mapWithConcurrency(rows, 24, async (row) => {
-    const legacyToken = cleanText(row.invitation_token);
-    let token = legacyToken;
-    if (legacyToken) {
-      await migrateLegacyRfxInvitationToken(supabase, row, legacyToken);
-    } else {
+    // Board reads resolve stored links without migrating legacy credentials.
+    let token = cleanText(row.invitation_token);
+    if (!token) {
       try {
         token = await decryptRfxInvitationToken(row.invitation_token_encrypted);
       } catch (error) {
@@ -17966,7 +17963,8 @@ async function requireHydratedRfxInvitationTokens(
 
 async function hydrateOutreachInvitationTokens(
   supabase: RatewareSupabaseClient,
-  rows: Record<string, unknown>[]
+  rows: Record<string, unknown>[],
+  options: { migrateLegacyTokens?: boolean } = {}
 ) {
   const hydrated: Record<string, unknown>[] = [];
   for (const row of rows) {
@@ -17982,7 +17980,7 @@ async function hydrateOutreachInvitationTokens(
       hydrated.push({ ...row, rfx_lane_vendors: safeInvitation });
       continue;
     }
-    if (legacyToken) await migrateLegacyRfxInvitationToken(supabase, invitation, token);
+    if (legacyToken && options.migrateLegacyTokens !== false) await migrateLegacyRfxInvitationToken(supabase, invitation, token);
     const { invitation_token_encrypted: _encrypted, ...safeInvitation } = invitation;
     hydrated.push({ ...row, rfx_lane_vendors: { ...safeInvitation, invitation_token: token } });
   }
@@ -29101,40 +29099,10 @@ export function createRatewareApiHandler(
             warning: null as string | null
           };
 
-      let invitationRows = loadedInvitationRows;
-      const activeVendorIds = [...new Set(
-        invitationRows
-          .filter((invitation) => (cleanText(invitation.invitation_status) || "").toLowerCase() !== "archived")
-          .map((invitation) => cleanText(invitation.vendor_id))
-          .filter((vendorId): vendorId is string => Boolean(vendorId))
-      )];
-      let coverageInserted = 0;
-      let coverageWarning = null as string | null;
-
-      // Older active RFx events may have created only the lane that first
-      // generated an invitation. Repair the complete business book before it
-      // is rendered so every active participant sees every event lane.
-      if ((cleanText(event.status) || "").toLowerCase() === "open" && activeVendorIds.length && eventLanes.length) {
-        try {
-          const coverage = await ensureRfxEventVendorCoverage(
-            supabase,
-            event.id,
-            activeVendorIds,
-            eventLanes,
-            loadedInvitationRows
-          );
-          coverageInserted = coverage.inserted;
-          if (coverageInserted) {
-            invitationRows = await fetchAllRfxLaneVendorRows(supabase, event.id, invitationColumns);
-          }
-        } catch (error) {
-          coverageWarning = safeOperationalError(error);
-        }
-      }
-
-      // Resolve each carrier's private bid link and strip the stored ciphertext.
-      // Without this the board renders every "Open room" action disabled.
-      invitationRows = await hydrateRfxBoardInvitationTokens(supabase, invitationRows);
+      // A detail query never fills missing carrier/lane pairs. Coverage changes
+      // remain in the existing explicit invitation/preparation commands.
+      // Resolve stored links without writes and strip ciphertext from the board.
+      const invitationRows = await hydrateRfxBoardInvitationTokens(loadedInvitationRows);
 
       // One carrier can participate in dozens of lanes. Compact responses keep
       // one CRM profile per carrier instead of repeating it in every lane row.
@@ -29181,8 +29149,8 @@ export function createRatewareApiHandler(
       return jsonResponse({
         event,
         lanes,
-        coverage_sync: { inserted: coverageInserted },
-        coverage_warning: coverageWarning,
+        coverage_sync: { inserted: 0 },
+        coverage_warning: null,
         rateware_benchmark: ratewareBenchmark,
         comparison_fx: comparisonFx,
         outreach_sends: sentLoad.error
@@ -30102,7 +30070,7 @@ export function createRatewareApiHandler(
         if (event.organization_id != null && event.organization_id !== user.organization_id) {
           return jsonResponse({ error: "RFx event not found." }, 404);
         }
-        const rows = await fetchStableRfxCampaignRows(async ({ afterId, limit }) => {
+        const rows = await fetchStableRfxCampaignRows(async ({ afterId, limit }: { afterId: string; limit: number }) => {
           let query = supabase.from("outreach_campaigns")
             .select("id,organization_id,owner_email,rfx_event_id,template_id,name,status,audience_policy,created_at,updated_at", afterId ? {} : { count: "exact" })
             .eq("owner_email", user.owner_email)
@@ -31277,7 +31245,7 @@ export function createRatewareApiHandler(
         const order = new Map(ids.map((id, index) => [id, index]));
         const orderedRows = ((pageResult.data || []) as unknown as Record<string, unknown>[])
           .sort((left, right) => (order.get(cleanText(left.id)) ?? ids.length) - (order.get(cleanText(right.id)) ?? ids.length));
-        const pageRows = await hydrateOutreachInvitationTokens(supabase, orderedRows);
+        const pageRows = await hydrateOutreachInvitationTokens(supabase, orderedRows, { migrateLegacyTokens: false });
         return jsonResponse({
           rows: pageRows.map(enrichOutreachMessage),
           total,
@@ -31325,7 +31293,7 @@ export function createRatewareApiHandler(
       const result = await query;
       if (result.error) throw result.error;
       const total = Number(result.count || 0);
-      const rows = await hydrateOutreachInvitationTokens(supabase, (result.data || []) as Record<string, unknown>[]);
+      const rows = await hydrateOutreachInvitationTokens(supabase, (result.data || []) as Record<string, unknown>[], { migrateLegacyTokens: false });
       return jsonResponse({
         rows: rows.map(enrichOutreachMessage),
         total,
