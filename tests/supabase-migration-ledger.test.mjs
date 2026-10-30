@@ -12,6 +12,10 @@ const repoRoot = path.resolve(
 
 const productionOnlyMigrations = new Map([
   [
+    "20261007212343_demand_radar_spot_jobs.sql",
+    "3bc484032d5fda441df08385805a480edfc26d137316c05b153f98fce2c363c3",
+  ],
+  [
     "20260815071846_grant_provider_document_processor_service_role.sql",
     "ac4d4da865f08ee792c614017aab2376f45c01b3c723e8159bbc6c35793bbf8e",
   ],

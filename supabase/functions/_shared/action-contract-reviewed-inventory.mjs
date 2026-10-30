@@ -3,9 +3,9 @@
 export const REVIEWED_INVENTORY_RECONCILIATION = {
   "contractVersion": "1.3.0",
   "expectedCountsDelta": {
-    "governable": 21,
+    "governable": 23,
     "edge": 7,
-    "postgres": 14,
+    "postgres": 16,
     "ratewareApi": 7
   },
   "reviewedMetadataFingerprints": {
@@ -17,6 +17,8 @@ export const REVIEWED_INVENTORY_RECONCILIATION = {
     "edge.rateware-api.review_whatsapp_reply_association": "2d3b3216dc21fe075d4ba204431068d6f1bcb7e80f1381930fd0297f961e5ef4",
     "edge.rateware-api.verify_outreach_gmail_message": "98e3d9b9d6e4b78ccf9d29bbb48ff2f7fc81c20cd3cd2ed4d68717ff86ffb7c6",
     "rpc.public.associate_whatsapp_reply(text,text,uuid,uuid,text,text,uuid)": "a3b9a85da030a6342edecdeaec7575ac44daef43fe33a1b814e3faa75a280099",
+    "rpc.public.demand_radar_guard_spot_job()": "dcef6e0e10a5b0b481de491a7ae2465b404163e154a4c663f3ba7f5100cbe9b4",
+    "rpc.public.demand_radar_record_spot_job_version()": "38189c6155e5609aeee7d948fd2174b935252b843944450fb8f25261a79bf3f7",
     "rpc.public.rateware_outreach_approval_guard()": "96875b674a26c493975723cc8f34261c5b84bb45ae527fb4cb17b116e4c69e62",
     "rpc.public.rateware_outreach_delivery_state_sql(text,text,text,jsonb,text,numeric,timestampwithtimezone,boolean)": "1ab8fc4eeb938361577bf262824608c657ed79281908029e6c90838f446a4060",
     "rpc.public.rateware_whatsapp_approval_evidence_guard()": "d958b8465ca277c6d9533835e11eb6861f6eddf51e25f7ed91a000928b160d86",
@@ -41,6 +43,8 @@ export const REVIEWED_INVENTORY_RECONCILIATION = {
     "edge.rateware-api.review_whatsapp_reply_association": "841d431197b0d68a4808983949bd0132cec43bb9811f2a68c23e3a5c309355c8",
     "edge.rateware-api.verify_outreach_gmail_message": "841d431197b0d68a4808983949bd0132cec43bb9811f2a68c23e3a5c309355c8",
     "rpc.public.associate_whatsapp_reply(text,text,uuid,uuid,text,text,uuid)": "66aab195c03f9205a9b3380d3c62b9da8f722fa2e2a147a54b7c10d9a44a01b6",
+    "rpc.public.demand_radar_guard_spot_job()": "bfc4b6e12e76e533d703501df8e13165ceee4b949106247acb5fe76c2d5c1197",
+    "rpc.public.demand_radar_record_spot_job_version()": "effe30aebcc7028ed943a21f1bce98ae7b86fa2870fcbed0043da8e62f143f98",
     "rpc.public.rateware_outreach_approval_guard()": "e3f03e9ac67298e886ae22abd72de2e6e34a5b4e9368ac46e480ec1d10e17ed6",
     "rpc.public.rateware_outreach_delivery_state_sql(text,text,text,jsonb,text,numeric,timestampwithtimezone,boolean)": "57b8f10f51cbd978390009b4a94f1ba661e9b132bfc9d3b8d23eb18fb5bc968f",
     "rpc.public.rateware_whatsapp_approval_evidence_guard()": "1d8f40c8e9ec25e7cfbe6c62cab4ded19c4aa770aea856314c2424d4664af238",
@@ -592,6 +596,68 @@ export const REVIEWED_INVENTORY_RECONCILIATION = {
       "functionalOwner": "Commercial",
       "decisionStatus": "internal_only",
       "notes": "Service-role entry; owner-scoped receipt/message/event/vendor locks, matching review evidence and idempotent association; writes contact/outreach/audit. Existing catalog ACL checked read-only; no GRANT changes."
+    },
+    {
+      "contractVersion": "1.3.0",
+      "canonicalId": "rpc.public.demand_radar_guard_spot_job()",
+      "actionName": "public.demand_radar_guard_spot_job",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20261007212343_demand_radar_spot_jobs.sql",
+      "handler": "public.demand_radar_guard_spot_job()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.demand_radar_guard_spot_job()",
+      "sourceFingerprint": "bfc4b6e12e76e533d703501df8e13165ceee4b949106247acb5fe76c2d5c1197",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20261007212343_demand_radar_spot_jobs.sql"
+      ],
+      "coverageSignals": [
+        "direct"
+      ],
+      "exposure": "internal/service-role",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "rpcSignature": "",
+      "businessModule": "Commercial",
+      "operation": "execute",
+      "resource": "internal-demand_radar_guard_spot_job",
+      "access": "write",
+      "sensitivity": "high",
+      "tenantRelevance": "record-derived",
+      "proposedPermissionKey": "internal.rpc.demand_radar_guard_spot_job",
+      "functionalOwner": "Commercial",
+      "decisionStatus": "internal_only",
+      "notes": "Existing service-role-only invoker trigger; preserves owner/job identity, immutable completed receipts, valid state transitions and revision ordering; RLS enabled and browser table privileges revoked. Existing catalog ACL checked read-only; no GRANT changes."
+    },
+    {
+      "contractVersion": "1.3.0",
+      "canonicalId": "rpc.public.demand_radar_record_spot_job_version()",
+      "actionName": "public.demand_radar_record_spot_job_version",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20261007212343_demand_radar_spot_jobs.sql",
+      "handler": "public.demand_radar_record_spot_job_version()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.demand_radar_record_spot_job_version()",
+      "sourceFingerprint": "effe30aebcc7028ed943a21f1bce98ae7b86fa2870fcbed0043da8e62f143f98",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20261007212343_demand_radar_spot_jobs.sql"
+      ],
+      "coverageSignals": [
+        "direct"
+      ],
+      "exposure": "internal/service-role",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "rpcSignature": "",
+      "businessModule": "Commercial",
+      "operation": "execute",
+      "resource": "internal-demand_radar_record_spot_job_version",
+      "access": "write",
+      "sensitivity": "high",
+      "tenantRelevance": "record-derived",
+      "proposedPermissionKey": "internal.rpc.demand_radar_record_spot_job_version",
+      "functionalOwner": "Commercial",
+      "decisionStatus": "internal_only",
+      "notes": "Existing service-role-only invoker trigger; appends the new row's same-owner/job/revision receipt to the private version ledger; composite foreign key and RLS preserved. Existing catalog ACL checked read-only; no GRANT changes."
     },
     {
       "contractVersion": "1.3.0",

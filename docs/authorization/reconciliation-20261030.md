@@ -119,6 +119,27 @@ restricted to ephemeral GitHub Actions runners and prints no local stack keys.
 
 ## Verification and restoration
 
+The next fresh replay passed the October drift guard and reached migration
+`20261026035705`, where it failed because `public.demand_radar_spot_jobs` was
+absent. Its existing foundation was recovered from the production migration
+ledger: version `20261007212343`, name `demand_radar_spot_jobs`, one statement.
+The recorded 5,081-character SQL is versioned verbatim, with its original
+timestamp. It creates the private jobs/version tables, their RLS, existing
+service-role-only grants and two invoker triggers. Production catalog reads
+confirmed the same RLS/ACL boundaries. No SQL was executed in production.
+
+The two restored triggers are statically registered as `internal_only` with
+record-derived scope and write access. The increment therefore ends at 23 new
+records (seven human pending, sixteen internal): 495 active surfaces, 497 rows
+including the two historical retirements. The clean replay ledger changes from
+416 to 417 committed migrations, preserving max version `20261027031059`.
+No browser privileges or human permission decisions change.
+
+This restores only the direct dependency evidenced by the failing replay.
+Metadata comparison also identified missing OSP migration versions; those belong
+to a separate workstream and were not imported, executed or declared reconciled.
+This PR does not claim complete production/main schema parity.
+
 Local validation against the captured unchanged source inventory finds all 21
 new rows, matching count deltas and compatible permission metadata. Remaining
 source/envelope/handler errors stay blocking. Full fresh CI must still run.
