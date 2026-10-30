@@ -31444,7 +31444,7 @@ export function createRatewareApiHandler(
       // WhatsApp review uses the persisted draft parameters, without migrating
       // legacy invitation tokens or refreshing/provider-publishing a template.
       const rows = result.data.channel === "whatsapp" ? [result.data as Record<string, unknown>]
-        : await hydrateOutreachInvitationTokens(supabase, [result.data as Record<string, unknown>]);
+        : await hydrateOutreachInvitationTokens(supabase, [result.data as Record<string, unknown>], { migrateLegacyTokens: false });
       const diagnostic = rows[0] ? await readLatestOutreachIssue(supabase, user.owner_email, rows[0]) : {};
       const whatsapp = rows[0]?.channel === "whatsapp"
         ? await whatsappApprovalHandlers.review(supabase, user, rows[0], cleanText(claims.sub) || "") : {};

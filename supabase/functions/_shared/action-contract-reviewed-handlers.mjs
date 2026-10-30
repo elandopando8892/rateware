@@ -1,4 +1,4 @@
-// Static reviewed attribution, owner-filter correction and project/SQL projections. No permission decisions change.
+// Static reviewed attribution and no-write corrections. No permission decisions change.
 export const REVIEWED_HANDLER_ATTRIBUTION = {
   "overrides": {
     "edge.rateware-api.shipper_commercial_work": {
@@ -48,6 +48,9 @@ export const REVIEWED_HANDLER_ATTRIBUTION = {
       "dependencyFiles": [
         "supabase/migrations/20261007204842_outreach_pending_delivery_projection.sql"
       ]
+    },
+    "edge.rateware-api.get_outreach_message": {
+      "sourceFingerprint": "6dec27869931ff4d82c7de3473e6c35fd4887cfca97c6f93408d104b6bb5b425"
     }
   },
   "reviewedMetadataFingerprints": {
@@ -63,13 +66,13 @@ export const REVIEWED_HANDLER_ATTRIBUTION = {
     "rpc.public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)": "a557949d6ccdf3dcac251790a14ccf12119554ffc9575a002a91c2ff8120d2d1"
   },
   "reviewedAuthorizationFingerprints": {
-    "edge.rateware-api.associate_whatsapp_reply": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507",
-    "edge.rateware-api.check_gmail_connection": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507",
-    "edge.rateware-api.get_carrier_provider_advisory": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507",
-    "edge.rateware-api.get_markos_bid_room_snapshot": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507",
-    "edge.rateware-api.get_published_carrier_classification": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507",
-    "edge.rateware-api.review_whatsapp_reply_association": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507",
-    "edge.rateware-api.verify_outreach_gmail_message": "55b8edd13513b0672f8ff9bca619c096194aec24246979af195117315c49f507",
+    "edge.rateware-api.associate_whatsapp_reply": "1b31b23fd6d139a1296ebd4f022237c88f3911bbd1a0c9c509ba693abe9bfaf6",
+    "edge.rateware-api.check_gmail_connection": "1b31b23fd6d139a1296ebd4f022237c88f3911bbd1a0c9c509ba693abe9bfaf6",
+    "edge.rateware-api.get_carrier_provider_advisory": "1b31b23fd6d139a1296ebd4f022237c88f3911bbd1a0c9c509ba693abe9bfaf6",
+    "edge.rateware-api.get_markos_bid_room_snapshot": "1b31b23fd6d139a1296ebd4f022237c88f3911bbd1a0c9c509ba693abe9bfaf6",
+    "edge.rateware-api.get_published_carrier_classification": "1b31b23fd6d139a1296ebd4f022237c88f3911bbd1a0c9c509ba693abe9bfaf6",
+    "edge.rateware-api.review_whatsapp_reply_association": "1b31b23fd6d139a1296ebd4f022237c88f3911bbd1a0c9c509ba693abe9bfaf6",
+    "edge.rateware-api.verify_outreach_gmail_message": "1b31b23fd6d139a1296ebd4f022237c88f3911bbd1a0c9c509ba693abe9bfaf6",
     "rpc.public.rateware_outreach_tracking_page(text,uuid,text[],text,text[],boolean,boolean,integer,integer)": "a8c6a5fc81dd36daf48310a0c693fc2453697a2ca0b30e2e2d67583c2452b274",
     "rpc.public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)": "a9fdb9a26f0ab029f3773c206b748d66ee9fea31aaa7e7dc99348c9ae3ca67f7"
   }
