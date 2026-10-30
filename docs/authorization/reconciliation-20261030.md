@@ -92,11 +92,26 @@ of every temporarily held migration. It did not connect to production or use loc
 
 The page definition exactly reconstructs from the committed August-3 scope-array
 migration, including its PostgreSQL canonical header. Tested CRLF variants do not
-explain the expected guard hash. This proves a missing/different page precondition;
-it does not establish the contents or semantics of the `90b7...` definition.
-Recover the reviewed historical definition or migration receipt before changing
-an applied migration or accepting another precondition. The original drift guard
-and all historical SQL remain unchanged in this increment.
+explain the expected guard hash.
+
+A subsequent bounded, read-only query of the production migration ledger recovered
+the exact recorded statement for version `20260803013648`,
+`optimize_outreach_tracking_scope_arrays`. Its function body reconstructs the
+expected `90b7e462d575e17a75b3274e46ca0e83` definition exactly. Two `translate`
+string literals had been normalized in Git but retain their historical encoding
+in the recorded migration. This is a recorded-source mismatch, not evidence that
+PostgreSQL changed its parser or that an unknown state should be accepted.
+
+The correction restores only those two string literals in the August migration
+to the exact recorded values, preserving the file's other bytes and timestamp.
+The October guard, its accepted MD5, all SQL grants and the final function
+definitions remain unchanged. This intentionally reproduces historical source;
+it is not an accent-search improvement or a production migration execution.
+No migration is added, removed, renamed, reapplied or marked as applied.
+
+`tests/outreach-replay-precondition.test.mjs` locks the reconstructed PostgreSQL
+17.6 precondition to the unchanged guard and rejects modified function bodies.
+The real isolated integration replay must still certify the complete chain.
 
 The temporary diagnostic workflow is removed after collecting this evidence to
 avoid running another stack on every PR synchronization. The diagnostic tool stays
@@ -111,5 +126,7 @@ Negative checks must reject an unknown surface, a source-fingerprint change and
 an unreviewed permission-decision change.
 
 Revert the inventory reconciliation commit to restore the previous contract;
-it changes no runtime state, customer data or SQL grants. The two runtime fixes
-from the earlier PR commit remain separately reviewable and revertible.
+it changes no runtime state, customer data or SQL grants. The historical-source
+correction is a separate commit: reverting it restores the two Git literals and
+the previously failing clean-replay precondition. Neither revert executes SQL.
+The two runtime fixes from the earlier PR commit remain separately reviewable.
