@@ -1,4 +1,4 @@
-// Static reviewed attribution and no-write corrections. No permission decisions change.
+// Static reviewed attribution, no-write corrections and bounded read projections. No permission decisions change.
 export const REVIEWED_HANDLER_ATTRIBUTION = {
   "overrides": {
     "edge.rateware-api.shipper_commercial_work": {
@@ -51,6 +51,18 @@ export const REVIEWED_HANDLER_ATTRIBUTION = {
     },
     "edge.rateware-api.get_outreach_message": {
       "sourceFingerprint": "6dec27869931ff4d82c7de3473e6c35fd4887cfca97c6f93408d104b6bb5b425"
+    },
+    "edge.rateware-api.get_rate_row_detail": {
+      "sourceFingerprint": "6473f25e2e2e522ba81a65576acb36f3ec6cf48d5e5ea2309d4f398cc669a9cf"
+    },
+    "edge.rateware-api.get_upload_source_url": {
+      "sourceFingerprint": "55b4b8465b735b3290dd61b4518d3aa70875c3cb8abaec1d83025edde2e861df"
+    },
+    "edge.rateware-api.list_contact_history": {
+      "sourceFingerprint": "57cb2c0637977cd8b1b8421a9c1852cb5dda0f2713a9e5d75cac7ac9bd523b38"
+    },
+    "edge.rateware-api.list_rfx_invitation_wave_reviews": {
+      "sourceFingerprint": "113c806aa4560781b3d6b60901740bf5aa97d5522bca15ec2af127e93d426f3d"
     }
   },
   "reviewedMetadataFingerprints": {

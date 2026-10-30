@@ -2512,7 +2512,7 @@ Deno.serve(async (request) => {
       rawUpload.storage_path,
     );
 
-    const interpretation = await interpretWithModel(rawUpload, sourceFile, correctionNote, memoryRules);
+    const interpretation: Record<string, unknown> = await interpretWithModel(rawUpload, sourceFile, correctionNote, memoryRules);
     let manualVendorQuery = rawUpload.vendor_id
       ? supabase
           .from("vendors")
