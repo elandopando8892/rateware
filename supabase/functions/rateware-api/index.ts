@@ -25753,6 +25753,424 @@ function correlatedPreflightResponse(request: Request, requestId: string) {
   return new Response("ok", { headers });
 }
 
+type RatewareReviewedActionContext = {
+  supabase: RatewareSupabaseClient;
+  user: RuntimeWorkspaceUser;
+  claims: Record<string, unknown>;
+  body: Record<string, unknown>;
+  jsonResponse: (body: unknown, status?: number) => Response;
+};
+
+async function handleShipperCommercialWork(context: RatewareReviewedActionContext) {
+  const { body, jsonResponse, supabase, user } = context;
+      const search = safeShipperSearch(body.search);
+      const focus = cleanText(body.focus)?.toLowerCase() || "all";
+      const allowedFocus = new Set(["all", "needs_rfi", "rfi_due", "deal_due", "won", "lost"]);
+      if (!allowedFocus.has(focus)) return jsonResponse({ error: "Unknown commercial work focus." }, 400);
+      const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 1000);
+      const shipperResult = await supabase.from("shippers")
+        .select("id,shipper_name,domain,relationship_stage,status")
+        .eq("owner_email", user.owner_email)
+        .neq("status", "archived")
+        .order("updated_at", { ascending: false })
+        .range(0, limit - 1);
+      if (shipperResult.error) throw shipperResult.error;
+      const shippers = shipperResult.data || [];
+      const shipperIds = shippers.map((row) => cleanText(row.id)).filter(Boolean) as string[];
+      if (!shipperIds.length) return jsonResponse({ rfis: [], opportunities: [], counts: { open_rfis: 0, unlinked_rfis: 0, open_opportunities: 0, due_soon: 0 }, loaded: 0 });
+      const [rfiResult, opportunityResult] = await Promise.all([
+        supabase.from("shipper_rfis")
+          .select("id,shipper_id,rfi_name,external_reference,status,due_date,updated_at")
+          .eq("owner_email", user.owner_email)
+          .in("shipper_id", shipperIds)
+          .neq("status", "archived")
+          .order("due_date", { ascending: true, nullsFirst: false }),
+        supabase.from("shipper_opportunities")
+          .select("id,shipper_id,rfi_id,rfx_project_id,opportunity_name,stage,probability,estimated_value,currency,estimated_weekly_volume,due_date,next_action,updated_at")
+          .eq("owner_email", user.owner_email)
+          .in("shipper_id", shipperIds)
+          .neq("stage", "archived")
+          .order("due_date", { ascending: true, nullsFirst: false })
+      ]);
+      if (rfiResult.error) throw rfiResult.error;
+      if (opportunityResult.error) throw opportunityResult.error;
+      const shipperById = new Map<string, Record<string, unknown>>();
+      shippers.forEach((shipper) => {
+        const shipperId = cleanText(shipper.id);
+        if (shipperId) shipperById.set(shipperId, shipper);
+      });
+      const rfxProjectIds = Array.from(new Set((opportunityResult.data || [])
+        .map((row) => cleanText(row.rfx_project_id))
+        .filter((id): id is string => Boolean(id))));
+      const rfxProjectResult = rfxProjectIds.length
+        ? await supabase.from("rfx_projects")
+          .select("id,title,status,linked_rfx_event_id,due_date,updated_at")
+          .eq("owner_email", user.owner_email)
+          .in("id", rfxProjectIds)
+        : { data: [], error: null };
+      if (rfxProjectResult.error) throw rfxProjectResult.error;
+      const rfxProjectById = new Map<string, Record<string, unknown>>();
+      ((rfxProjectResult.data || []) as Record<string, unknown>[]).forEach((project) => {
+        const projectId = cleanText(project.id);
+        if (projectId) rfxProjectById.set(projectId, project);
+      });
+      const allOpportunities = (opportunityResult.data || []).map((row) => ({
+        ...row,
+        shipper_name: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.shipper_name),
+        shipper_domain: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.domain),
+        relationship_stage: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.relationship_stage),
+        rfx_project: rfxProjectById.get(mapLookupKey(row.rfx_project_id)) || null
+      }));
+      const opportunityByRfiId = new Map<string, Record<string, unknown>>();
+      allOpportunities.forEach((opportunity) => {
+        const rfiId = cleanText(opportunity.rfi_id);
+        if (rfiId) opportunityByRfiId.set(rfiId, opportunity);
+      });
+      const rfis = (rfiResult.data || []).map((row) => ({
+        ...row,
+        shipper_name: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.shipper_name),
+        shipper_domain: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.domain),
+        linked_opportunity: opportunityByRfiId.get(mapLookupKey(row.id)) || null
+      }));
+      const matchesSearch = (row: Record<string, unknown>, fields: string[]) => !search || fields.some((field) => String(row[field] || "").toLowerCase().includes(search.toLowerCase()));
+      const now = new Date();
+      const dueSoon = new Date(now);
+      dueSoon.setDate(dueSoon.getDate() + 14);
+      const dueBy = (value: unknown) => {
+        const date = value ? new Date(String(value)) : null;
+        return Boolean(date && !Number.isNaN(date.getTime()) && date <= dueSoon);
+      };
+      const openOpportunityStages = new Set(["identified", "discovery", "rfi", "rfx", "proposal", "negotiation"]);
+      const openOpportunities = allOpportunities.filter((row) => openOpportunityStages.has(cleanText(row.stage)?.toLowerCase() || ""));
+      const wonOpportunities = allOpportunities.filter((row) => cleanText(row.stage)?.toLowerCase() === "won");
+      const lostOpportunities = allOpportunities.filter((row) => cleanText(row.stage)?.toLowerCase() === "lost");
+      let filteredRfis = rfis.filter((row) => matchesSearch(row, ["shipper_name", "shipper_domain", "rfi_name", "external_reference", "status"]));
+      let filteredOpportunities = openOpportunities.filter((row) => matchesSearch(row, ["shipper_name", "shipper_domain", "opportunity_name", "stage", "next_action"]));
+      if (focus === "needs_rfi") filteredRfis = filteredRfis.filter((row) => !row.linked_opportunity);
+      if (focus === "rfi_due") filteredRfis = filteredRfis.filter((row) => dueBy(row.due_date));
+      if (focus === "deal_due") filteredOpportunities = filteredOpportunities.filter((row) => dueBy(row.due_date));
+      if (focus === "won") {
+        filteredRfis = [];
+        filteredOpportunities = wonOpportunities.filter((row) => matchesSearch(row, ["shipper_name", "shipper_domain", "opportunity_name", "next_action"]));
+      }
+      if (focus === "lost") {
+        filteredRfis = [];
+        filteredOpportunities = lostOpportunities.filter((row) => matchesSearch(row, ["shipper_name", "shipper_domain", "opportunity_name", "next_action"]));
+      }
+      const allRfis = rfis;
+      const totalDueSoon = [...allRfis, ...openOpportunities].filter((row) => dueBy(row.due_date)).length;
+      return jsonResponse({
+        rfis: filteredRfis,
+        opportunities: filteredOpportunities,
+        counts: {
+          open_rfis: allRfis.length,
+          unlinked_rfis: allRfis.filter((row) => !row.linked_opportunity).length,
+          open_opportunities: openOpportunities.length,
+          won_opportunities: wonOpportunities.length,
+          lost_opportunities: lostOpportunities.length,
+          due_soon: totalDueSoon
+        },
+        loaded: shippers.length
+      });
+    }
+
+async function handleReplaceBouncedVendorEmail(context: RatewareReviewedActionContext) {
+  const { body, jsonResponse, supabase, user } = context;
+      const vendorId = cleanText(body.id || body.vendor_id);
+      const rawBouncedEmail = cleanText(body.bounced_email)?.toLowerCase() || "";
+      const rawReplacementEmail = cleanText(body.replacement_email)?.toLowerCase() || "";
+      const bouncedEmail = normalizeEmail(rawBouncedEmail);
+      const replacementEmail = normalizeEmail(rawReplacementEmail);
+      if (!vendorId) return jsonResponse({ error: "Vendor id is required." }, 400);
+      if (!bouncedEmail || !replacementEmail || bouncedEmail !== rawBouncedEmail || replacementEmail !== rawReplacementEmail) {
+        return jsonResponse({ error: "Enter a valid bounced email and replacement email." }, 400);
+      }
+      if (bouncedEmail === replacementEmail) {
+        return jsonResponse({ error: "The replacement email must be different from the bounced email." }, 400);
+      }
+
+      const suppliedOperationId = cleanText(body.operation_id);
+      if (suppliedOperationId && !UUID_PATTERN.test(suppliedOperationId)) {
+        return jsonResponse({ error: "A valid operation id is required.", code: "bounce_resolution_invalid_input" }, 400);
+      }
+      const bounceOperationId = suppliedOperationId?.toLowerCase() || crypto.randomUUID();
+      const result = await supabase.rpc("resolve_vendor_email_bounce", {
+        p_owner_email: user.owner_email,
+        p_vendor_id: vendorId,
+        p_bounced_email: bouncedEmail,
+        p_replacement_email: replacementEmail,
+        p_operation_id: bounceOperationId
+      });
+      if (result.error) {
+        const rpcError = objectRecord(result.error);
+        if (rpcError.code === "PGRST202" || rpcError.code === "42883") {
+          return jsonResponse({ error: "Bounce resolution is temporarily unavailable. No replacement was confirmed.", code: "bounce_resolution_unavailable" }, 503);
+        }
+        const failures: Record<string, { status: number; message: string }> = {
+          bounce_resolution_invalid_input: { status: 400, message: "Enter valid contact and operation details." },
+          bounce_vendor_not_found: { status: 404, message: "Vendor not found." },
+          bounce_not_unresolved: { status: 400, message: "This vendor does not have an unresolved delivery failure for that email." },
+          bounce_replacement_blocked: { status: 400, message: "That replacement email is blocked. Use a different address." },
+          bounce_operation_conflict: { status: 409, message: "This operation id belongs to another replacement." },
+          bounce_resolution_state_changed: { status: 409, message: "The contact or its delivery block changed. Reload before making a new decision." }
+        };
+        const code = String(rpcError.message || "");
+        const failure = failures[code];
+        if (failure) return jsonResponse({ error: failure.message, code }, failure.status);
+        throw result.error;
+      }
+      const resolution = objectRecord(result.data);
+      if (!resolution.row) throw new Error("Bounce resolution returned no confirmed vendor.");
+      if (!resolution.replayed) {
+        await tryWriteAuditLog(
+          supabase, user, "vendor.email_bounce.resolve", "vendors", vendorId,
+          `Replaced bounced email for ${objectRecord(resolution.row).vendor_name || "vendor"}`,
+          { bounced_email: bouncedEmail, replacement_email: replacementEmail, operation_id: bounceOperationId }
+        );
+      }
+      return jsonResponse(resolution);
+    }
+
+async function handleSetRfxLaneNoAward(context: RatewareReviewedActionContext) {
+  const { body, claims, jsonResponse, supabase, user } = context;
+      // Declares lanes void ("desierto": the event closes without awarding them)
+      // or reopens them. An Administrador's decision, like awarding (decided 2026-09-29).
+      const eventId = cleanText(body.rfx_event_id || body.event_id);
+      if (!eventId || !UUID_PATTERN.test(eventId)) return jsonResponse({ error: "A valid RFx event id is required." }, 400);
+      const laneIds = uniqueCleanValues(Array.isArray(body.lane_ids) ? body.lane_ids : [body.lane_id]);
+      if (!laneIds.length || laneIds.length > 500 || laneIds.some((id) => !UUID_PATTERN.test(id))) {
+        return jsonResponse({ error: "Indica entre 1 y 500 lanes válidos." }, 400);
+      }
+      const event = await requireOwnedRfxEvent(supabase, user, eventId);
+      if (["closed", "archived"].includes(String(event.status || "").toLowerCase())) {
+        return jsonResponse({ error: "El evento ya está cerrado; sus lanes ya no cambian." }, 409);
+      }
+      const declare = body.no_award !== false;
+      const lanesResult = await supabase
+        .from("rfx_lanes")
+        .select("id,lane_number,no_award_at")
+        .eq("rfx_event_id", event.id)
+        .in("id", laneIds);
+      if (lanesResult.error) throw lanesResult.error;
+      const lanes = (lanesResult.data || []) as Record<string, unknown>[];
+      if (lanes.length !== laneIds.length) return jsonResponse({ error: "Algún lane no pertenece a este evento." }, 404);
+      if (declare) {
+        // A lane with a primary or a backup is decided already: that award is removed first.
+        const awards = await supabase
+          .from("rfx_lane_vendors")
+          .select("rfx_lane_id,award_role,invitation_status")
+          .eq("rfx_event_id", event.id)
+          .in("rfx_lane_id", laneIds)
+          .not("award_role", "is", null);
+        if (awards.error) throw awards.error;
+        const awardedLaneIds = new Set(((awards.data || []) as Record<string, unknown>[])
+          .filter((row) => cleanText(row.award_role) && cleanText(row.invitation_status)?.toLowerCase() !== "archived")
+          .map((row) => cleanText(row.rfx_lane_id)));
+        const blocked = lanes.filter((lane) => awardedLaneIds.has(cleanText(lane.id)));
+        if (blocked.length) {
+          return jsonResponse({
+            error: `Quita primero el primario y los respaldos de ${blocked.map((lane) => `#${cleanText(lane.lane_number) || "?"}`).join(", ")} para declararlo desierto.`,
+            code: "lane_has_award",
+            lane_ids: blocked.map((lane) => lane.id)
+          }, 409);
+        }
+      }
+      const changing = lanes.filter((lane) => Boolean(cleanText(lane.no_award_at)) !== declare);
+      let rows: Record<string, unknown>[] = [];
+      if (changing.length) {
+        const now = new Date().toISOString();
+        const claimed = claims as Record<string, unknown>;
+        const actor = (cleanText(claimed.email || claimed.preferred_email || claimed["https://kinde.com/email"]) || cleanText(user.owner_email) || "").toLowerCase() || null;
+        const reason = declare ? cleanText(body.reason) : null;
+        const result = await supabase
+          .from("rfx_lanes")
+          .update(declare
+            ? { no_award_at: now, no_award_reason: reason, no_award_by: actor, updated_at: now }
+            : { no_award_at: null, no_award_reason: null, no_award_by: null, updated_at: now })
+          .eq("rfx_event_id", event.id)
+          .in("id", changing.map((lane) => lane.id))
+          .select("id,lane_number,no_award_at,no_award_reason,no_award_by");
+        if (result.error) throw result.error;
+        rows = (result.data || []) as Record<string, unknown>[];
+        await writeAuditLog(
+          supabase,
+          user,
+          declare ? "rfx.lane.no_award" : "rfx.lane.no_award.clear",
+          "rfx_events",
+          event.id,
+          declare ? `Declared ${rows.length} RFx lane(s) void` : `Reopened ${rows.length} void RFx lane(s)`,
+          { rfx_event_id: event.id, lane_ids: rows.map((row) => row.id), reason, actor }
+        );
+      }
+      return jsonResponse({ no_award: declare, updated: rows.length, unchanged: lanes.length - changing.length, rows });
+    }
+
+async function handleListOutreachCampaigns(context: RatewareReviewedActionContext) {
+  const { body, jsonResponse, supabase, user } = context;
+      // Opt-in complete, event-scoped read. Keep legacy callers and their counters unchanged.
+      if (Object.prototype.hasOwnProperty.call(body, "rfx_event_id")) {
+        const eventId = typeof body.rfx_event_id === "string" ? body.rfx_event_id.trim() : "";
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) {
+          return jsonResponse({ error: "A valid RFx event id is required." }, 400);
+        }
+        if (!user.organization_id) return jsonResponse({ error: "A verified organization is required." }, 403);
+        const event = await requireOwnedRfxEvent(supabase, user, eventId);
+        if (event.organization_id != null && event.organization_id !== user.organization_id) {
+          return jsonResponse({ error: "RFx event not found." }, 404);
+        }
+        const rows = await fetchStableRfxCampaignRows(async ({ afterId, limit }: { afterId: string; limit: number }) => {
+          let query = supabase.from("outreach_campaigns")
+            .select("id,organization_id,owner_email,rfx_event_id,template_id,name,status,audience_policy,created_at,updated_at", afterId ? {} : { count: "exact" })
+            .eq("owner_email", user.owner_email)
+            .eq("rfx_event_id", event.id)
+            .neq("status", "archived")
+            .order("id", { ascending: true })
+            .limit(limit);
+          if (afterId) query = query.gt("id", afterId);
+          const result = await query;
+          if (result.error) throw result.error;
+          // Do not silently hide inconsistent rows as an empty first campaign.
+          for (const row of result.data || []) {
+            if (row.organization_id !== user.organization_id || row.rfx_event_id !== event.id) {
+              throw new Error("RFx campaign scope could not be verified.");
+            }
+          }
+          return result;
+        });
+        rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))
+          || String(b.id).localeCompare(String(a.id)));
+        return jsonResponse({ rows, total: rows.length, complete: true, campaign_read_version: 1,
+          rfx_event_id: event.id, organization_id: user.organization_id });
+      }
+      const campaignsResult = await supabase
+        .from("outreach_campaigns")
+        .select("*, rfx_events(rfx_id,name,customer,status), outreach_templates(name,channel)")
+        .eq("owner_email", user.owner_email)
+        .neq("status", "archived")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (campaignsResult.error) throw campaignsResult.error;
+      const campaignIds = (campaignsResult.data || []).map((campaign) => campaign.id);
+      const messagesResult = campaignIds.length
+        ? await supabase
+            .from("outreach_messages")
+            .select("id,campaign_id,status,channel")
+            .in("campaign_id", campaignIds)
+        : { data: [], error: null };
+      if (messagesResult.error) throw messagesResult.error;
+      const counts = new Map<string, { messages: number; sent: number; email: number; whatsapp: number }>();
+      for (const message of messagesResult.data || []) {
+        const bucket = counts.get(message.campaign_id) || { messages: 0, sent: 0, email: 0, whatsapp: 0 };
+        bucket.messages += 1;
+        if (message.status === "sent") bucket.sent += 1;
+        if (message.channel === "email") bucket.email += 1;
+        if (message.channel === "whatsapp") bucket.whatsapp += 1;
+        counts.set(message.campaign_id, bucket);
+      }
+      return jsonResponse({
+        rows: (campaignsResult.data || []).map((campaign) => ({
+          ...campaign,
+          message_count: counts.get(campaign.id)?.messages || 0,
+          sent_count: counts.get(campaign.id)?.sent || 0,
+          email_count: counts.get(campaign.id)?.email || 0,
+          whatsapp_count: counts.get(campaign.id)?.whatsapp || 0
+        }))
+      });
+    }
+
+async function handleListVendorUnmatchedIds(context: RatewareReviewedActionContext) {
+  const { body, jsonResponse, supabase, user } = context;
+      // Cursor-paged ids of approved rows without a linked vendor, for
+      // driving match_rate_vendors in id batches (the filter RPC variant
+      // exceeds statement timeouts on large books).
+      const unmatchedCursor = cleanText(body.cursor) || "";
+      const pageLimit = Math.min(Math.max(Number(body.limit) || 5000, 100), 10000);
+        let unmatchedQuery = supabase
+          .from("rate_staging")
+          .select("id")
+          .eq("owner_email", user.owner_email)
+          .eq("status", "approved")
+        .is("vendor_id", null)
+        .order("id", { ascending: true })
+        .limit(pageLimit);
+      if (unmatchedCursor) unmatchedQuery = unmatchedQuery.gt("id", unmatchedCursor);
+      const unmatchedResult = await unmatchedQuery;
+      if (unmatchedResult.error) throw unmatchedResult.error;
+      const unmatchedRows = unmatchedResult.data || [];
+      return jsonResponse({
+        ids: unmatchedRows.map((row) => String(row.id)),
+        cursor: unmatchedRows.length ? String(unmatchedRows[unmatchedRows.length - 1].id) : unmatchedCursor,
+        done: unmatchedRows.length < pageLimit
+      });
+    }
+
+async function handleSimulateInterpretationMemory(context: RatewareReviewedActionContext) {
+  const { body, jsonResponse, supabase, user } = context;
+      let rule: Record<string, unknown> | null = null;
+      if (body.id) {
+        const result = await supabase
+          .from("interpretation_memory")
+          .select("*")
+          .eq("id", body.id)
+          .or(`owner_email.eq.${user.owner_email},owner_email.is.null`)
+          .maybeSingle();
+        if (result.error) throw result.error;
+        rule = result.data || null;
+      } else {
+        rule = {
+          scope: ["global", "vendor", "rfx", "upload"].includes(String(body.scope || "")) ? String(body.scope) : "global",
+          vendor_domain: normalizeDomain(body.vendor_domain),
+          rfx_hint: cleanText(body.rfx_hint),
+          raw_upload_id: cleanText(body.raw_upload_id),
+          title: cleanText(body.title) || "Draft rule",
+          instruction: cleanText(body.instruction) || ""
+        };
+      }
+      if (!rule) return jsonResponse({ error: "Memory rule not found." }, 404);
+
+      const uploadsResult = await supabase
+        .from("raw_uploads")
+        .select("id,original_filename,status,created_at,interpreted_at,vendor_id,vendor_hint,rfx_hint,document_type,interpreted_rate_rows,expected_rate_rows,audit_status,audit_warnings,vendors(vendor_name,domain)")
+        .eq("owner_email", user.owner_email)
+        .neq("status", "archived")
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (uploadsResult.error) throw uploadsResult.error;
+
+      const matches = (uploadsResult.data || []).filter((upload) => memoryRuleMatchesUpload(rule!, upload));
+      const warningCount = matches.reduce((sum, upload) => sum + (Array.isArray(upload.audit_warnings) ? upload.audit_warnings.length : 0), 0);
+      const stagedRows = matches.reduce((sum, upload) => sum + (Number(upload.interpreted_rate_rows || 0) || 0), 0);
+      const expectedRows = matches.reduce((sum, upload) => sum + (Number(upload.expected_rate_rows || upload.interpreted_rate_rows || 0) || 0), 0);
+      return jsonResponse({
+        rule,
+        impact: {
+          upload_count: matches.length,
+          staged_rows: stagedRows,
+          expected_rows: expectedRows,
+          warning_count: warningCount,
+          failed_count: matches.filter((upload) => upload.status === "failed" || upload.audit_status === "failed").length,
+          current_scope: rule.scope
+        },
+        rows: matches.slice(0, 25).map((upload) => {
+          const vendorRelation = Array.isArray(upload.vendors) ? upload.vendors[0] : upload.vendors;
+          const vendor = objectRecord(vendorRelation);
+          return {
+            id: upload.id,
+            filename: upload.original_filename,
+            status: upload.status,
+            vendor: vendor.vendor_name || upload.vendor_hint || "",
+            vendor_domain: vendor.domain || upload.vendor_hint || "",
+            rfx_hint: upload.rfx_hint,
+            document_type: upload.document_type,
+            interpreted_rate_rows: upload.interpreted_rate_rows,
+            expected_rate_rows: upload.expected_rate_rows,
+            audit_status: upload.audit_status,
+            created_at: upload.created_at
+          };
+        })
+      });
+    }
+
 export function createRatewareApiHandler(
   dependencies: RatewareApiHandlerDependencies = {}
 ) {
@@ -26595,115 +27013,7 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "shipper_commercial_work") {
-      const search = safeShipperSearch(body.search);
-      const focus = cleanText(body.focus)?.toLowerCase() || "all";
-      const allowedFocus = new Set(["all", "needs_rfi", "rfi_due", "deal_due", "won", "lost"]);
-      if (!allowedFocus.has(focus)) return jsonResponse({ error: "Unknown commercial work focus." }, 400);
-      const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 1000);
-      const shipperResult = await supabase.from("shippers")
-        .select("id,shipper_name,domain,relationship_stage,status")
-        .eq("owner_email", user.owner_email)
-        .neq("status", "archived")
-        .order("updated_at", { ascending: false })
-        .range(0, limit - 1);
-      if (shipperResult.error) throw shipperResult.error;
-      const shippers = shipperResult.data || [];
-      const shipperIds = shippers.map((row) => cleanText(row.id)).filter(Boolean) as string[];
-      if (!shipperIds.length) return jsonResponse({ rfis: [], opportunities: [], counts: { open_rfis: 0, unlinked_rfis: 0, open_opportunities: 0, due_soon: 0 }, loaded: 0 });
-      const [rfiResult, opportunityResult] = await Promise.all([
-        supabase.from("shipper_rfis")
-          .select("id,shipper_id,rfi_name,external_reference,status,due_date,updated_at")
-          .eq("owner_email", user.owner_email)
-          .in("shipper_id", shipperIds)
-          .neq("status", "archived")
-          .order("due_date", { ascending: true, nullsFirst: false }),
-        supabase.from("shipper_opportunities")
-          .select("id,shipper_id,rfi_id,rfx_project_id,opportunity_name,stage,probability,estimated_value,currency,estimated_weekly_volume,due_date,next_action,updated_at")
-          .eq("owner_email", user.owner_email)
-          .in("shipper_id", shipperIds)
-          .neq("stage", "archived")
-          .order("due_date", { ascending: true, nullsFirst: false })
-      ]);
-      if (rfiResult.error) throw rfiResult.error;
-      if (opportunityResult.error) throw opportunityResult.error;
-      const shipperById = new Map<string, Record<string, unknown>>();
-      shippers.forEach((shipper) => {
-        const shipperId = cleanText(shipper.id);
-        if (shipperId) shipperById.set(shipperId, shipper);
-      });
-      const rfxProjectIds = Array.from(new Set((opportunityResult.data || [])
-        .map((row) => cleanText(row.rfx_project_id))
-        .filter((id): id is string => Boolean(id))));
-      const rfxProjectResult = rfxProjectIds.length
-        ? await supabase.from("rfx_projects")
-          .select("id,title,status,linked_rfx_event_id,due_date,updated_at")
-          .eq("owner_email", user.owner_email)
-          .in("id", rfxProjectIds)
-        : { data: [], error: null };
-      if (rfxProjectResult.error) throw rfxProjectResult.error;
-      const rfxProjectById = new Map<string, Record<string, unknown>>();
-      ((rfxProjectResult.data || []) as Record<string, unknown>[]).forEach((project) => {
-        const projectId = cleanText(project.id);
-        if (projectId) rfxProjectById.set(projectId, project);
-      });
-      const allOpportunities = (opportunityResult.data || []).map((row) => ({
-        ...row,
-        shipper_name: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.shipper_name),
-        shipper_domain: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.domain),
-        relationship_stage: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.relationship_stage),
-        rfx_project: rfxProjectById.get(mapLookupKey(row.rfx_project_id)) || null
-      }));
-      const opportunityByRfiId = new Map<string, Record<string, unknown>>();
-      allOpportunities.forEach((opportunity) => {
-        const rfiId = cleanText(opportunity.rfi_id);
-        if (rfiId) opportunityByRfiId.set(rfiId, opportunity);
-      });
-      const rfis = (rfiResult.data || []).map((row) => ({
-        ...row,
-        shipper_name: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.shipper_name),
-        shipper_domain: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.domain),
-        linked_opportunity: opportunityByRfiId.get(mapLookupKey(row.id)) || null
-      }));
-      const matchesSearch = (row: Record<string, unknown>, fields: string[]) => !search || fields.some((field) => String(row[field] || "").toLowerCase().includes(search.toLowerCase()));
-      const now = new Date();
-      const dueSoon = new Date(now);
-      dueSoon.setDate(dueSoon.getDate() + 14);
-      const dueBy = (value: unknown) => {
-        const date = value ? new Date(String(value)) : null;
-        return Boolean(date && !Number.isNaN(date.getTime()) && date <= dueSoon);
-      };
-      const openOpportunityStages = new Set(["identified", "discovery", "rfi", "rfx", "proposal", "negotiation"]);
-      const openOpportunities = allOpportunities.filter((row) => openOpportunityStages.has(cleanText(row.stage)?.toLowerCase() || ""));
-      const wonOpportunities = allOpportunities.filter((row) => cleanText(row.stage)?.toLowerCase() === "won");
-      const lostOpportunities = allOpportunities.filter((row) => cleanText(row.stage)?.toLowerCase() === "lost");
-      let filteredRfis = rfis.filter((row) => matchesSearch(row, ["shipper_name", "shipper_domain", "rfi_name", "external_reference", "status"]));
-      let filteredOpportunities = openOpportunities.filter((row) => matchesSearch(row, ["shipper_name", "shipper_domain", "opportunity_name", "stage", "next_action"]));
-      if (focus === "needs_rfi") filteredRfis = filteredRfis.filter((row) => !row.linked_opportunity);
-      if (focus === "rfi_due") filteredRfis = filteredRfis.filter((row) => dueBy(row.due_date));
-      if (focus === "deal_due") filteredOpportunities = filteredOpportunities.filter((row) => dueBy(row.due_date));
-      if (focus === "won") {
-        filteredRfis = [];
-        filteredOpportunities = wonOpportunities.filter((row) => matchesSearch(row, ["shipper_name", "shipper_domain", "opportunity_name", "next_action"]));
-      }
-      if (focus === "lost") {
-        filteredRfis = [];
-        filteredOpportunities = lostOpportunities.filter((row) => matchesSearch(row, ["shipper_name", "shipper_domain", "opportunity_name", "next_action"]));
-      }
-      const allRfis = rfis;
-      const totalDueSoon = [...allRfis, ...openOpportunities].filter((row) => dueBy(row.due_date)).length;
-      return jsonResponse({
-        rfis: filteredRfis,
-        opportunities: filteredOpportunities,
-        counts: {
-          open_rfis: allRfis.length,
-          unlinked_rfis: allRfis.filter((row) => !row.linked_opportunity).length,
-          open_opportunities: openOpportunities.length,
-          won_opportunities: wonOpportunities.length,
-          lost_opportunities: lostOpportunities.length,
-          due_soon: totalDueSoon
-        },
-        loaded: shippers.length
-      });
+      return await handleShipperCommercialWork({ supabase, user, claims, body, jsonResponse });
     }
 
     if (body.action === "launch_shipper_opportunity_rfx") {
@@ -28290,59 +28600,7 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "replace_bounced_vendor_email") {
-      const vendorId = cleanText(body.id || body.vendor_id);
-      const rawBouncedEmail = cleanText(body.bounced_email)?.toLowerCase() || "";
-      const rawReplacementEmail = cleanText(body.replacement_email)?.toLowerCase() || "";
-      const bouncedEmail = normalizeEmail(rawBouncedEmail);
-      const replacementEmail = normalizeEmail(rawReplacementEmail);
-      if (!vendorId) return jsonResponse({ error: "Vendor id is required." }, 400);
-      if (!bouncedEmail || !replacementEmail || bouncedEmail !== rawBouncedEmail || replacementEmail !== rawReplacementEmail) {
-        return jsonResponse({ error: "Enter a valid bounced email and replacement email." }, 400);
-      }
-      if (bouncedEmail === replacementEmail) {
-        return jsonResponse({ error: "The replacement email must be different from the bounced email." }, 400);
-      }
-
-      const suppliedOperationId = cleanText(body.operation_id);
-      if (suppliedOperationId && !UUID_PATTERN.test(suppliedOperationId)) {
-        return jsonResponse({ error: "A valid operation id is required.", code: "bounce_resolution_invalid_input" }, 400);
-      }
-      const bounceOperationId = suppliedOperationId?.toLowerCase() || crypto.randomUUID();
-      const result = await supabase.rpc("resolve_vendor_email_bounce", {
-        p_owner_email: user.owner_email,
-        p_vendor_id: vendorId,
-        p_bounced_email: bouncedEmail,
-        p_replacement_email: replacementEmail,
-        p_operation_id: bounceOperationId
-      });
-      if (result.error) {
-        const rpcError = objectRecord(result.error);
-        if (rpcError.code === "PGRST202" || rpcError.code === "42883") {
-          return jsonResponse({ error: "Bounce resolution is temporarily unavailable. No replacement was confirmed.", code: "bounce_resolution_unavailable" }, 503);
-        }
-        const failures: Record<string, { status: number; message: string }> = {
-          bounce_resolution_invalid_input: { status: 400, message: "Enter valid contact and operation details." },
-          bounce_vendor_not_found: { status: 404, message: "Vendor not found." },
-          bounce_not_unresolved: { status: 400, message: "This vendor does not have an unresolved delivery failure for that email." },
-          bounce_replacement_blocked: { status: 400, message: "That replacement email is blocked. Use a different address." },
-          bounce_operation_conflict: { status: 409, message: "This operation id belongs to another replacement." },
-          bounce_resolution_state_changed: { status: 409, message: "The contact or its delivery block changed. Reload before making a new decision." }
-        };
-        const code = String(rpcError.message || "");
-        const failure = failures[code];
-        if (failure) return jsonResponse({ error: failure.message, code }, failure.status);
-        throw result.error;
-      }
-      const resolution = objectRecord(result.data);
-      if (!resolution.row) throw new Error("Bounce resolution returned no confirmed vendor.");
-      if (!resolution.replayed) {
-        await tryWriteAuditLog(
-          supabase, user, "vendor.email_bounce.resolve", "vendors", vendorId,
-          `Replaced bounced email for ${objectRecord(resolution.row).vendor_name || "vendor"}`,
-          { bounced_email: bouncedEmail, replacement_email: replacementEmail, operation_id: bounceOperationId }
-        );
-      }
-      return jsonResponse(resolution);
+      return await handleReplaceBouncedVendorEmail({ supabase, user, claims, body, jsonResponse });
     }
 
     if (body.action === "create_vendor_profile_request") {
@@ -28900,76 +29158,7 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "set_rfx_lane_no_award") {
-      // Declares lanes void ("desierto": the event closes without awarding them)
-      // or reopens them. An Administrador's decision, like awarding (decided 2026-09-29).
-      const eventId = cleanText(body.rfx_event_id || body.event_id);
-      if (!eventId || !UUID_PATTERN.test(eventId)) return jsonResponse({ error: "A valid RFx event id is required." }, 400);
-      const laneIds = uniqueCleanValues(Array.isArray(body.lane_ids) ? body.lane_ids : [body.lane_id]);
-      if (!laneIds.length || laneIds.length > 500 || laneIds.some((id) => !UUID_PATTERN.test(id))) {
-        return jsonResponse({ error: "Indica entre 1 y 500 lanes válidos." }, 400);
-      }
-      const event = await requireOwnedRfxEvent(supabase, user, eventId);
-      if (["closed", "archived"].includes(String(event.status || "").toLowerCase())) {
-        return jsonResponse({ error: "El evento ya está cerrado; sus lanes ya no cambian." }, 409);
-      }
-      const declare = body.no_award !== false;
-      const lanesResult = await supabase
-        .from("rfx_lanes")
-        .select("id,lane_number,no_award_at")
-        .eq("rfx_event_id", event.id)
-        .in("id", laneIds);
-      if (lanesResult.error) throw lanesResult.error;
-      const lanes = (lanesResult.data || []) as Record<string, unknown>[];
-      if (lanes.length !== laneIds.length) return jsonResponse({ error: "Algún lane no pertenece a este evento." }, 404);
-      if (declare) {
-        // A lane with a primary or a backup is decided already: that award is removed first.
-        const awards = await supabase
-          .from("rfx_lane_vendors")
-          .select("rfx_lane_id,award_role,invitation_status")
-          .eq("rfx_event_id", event.id)
-          .in("rfx_lane_id", laneIds)
-          .not("award_role", "is", null);
-        if (awards.error) throw awards.error;
-        const awardedLaneIds = new Set(((awards.data || []) as Record<string, unknown>[])
-          .filter((row) => cleanText(row.award_role) && cleanText(row.invitation_status)?.toLowerCase() !== "archived")
-          .map((row) => cleanText(row.rfx_lane_id)));
-        const blocked = lanes.filter((lane) => awardedLaneIds.has(cleanText(lane.id)));
-        if (blocked.length) {
-          return jsonResponse({
-            error: `Quita primero el primario y los respaldos de ${blocked.map((lane) => `#${cleanText(lane.lane_number) || "?"}`).join(", ")} para declararlo desierto.`,
-            code: "lane_has_award",
-            lane_ids: blocked.map((lane) => lane.id)
-          }, 409);
-        }
-      }
-      const changing = lanes.filter((lane) => Boolean(cleanText(lane.no_award_at)) !== declare);
-      let rows: Record<string, unknown>[] = [];
-      if (changing.length) {
-        const now = new Date().toISOString();
-        const claimed = claims as Record<string, unknown>;
-        const actor = (cleanText(claimed.email || claimed.preferred_email || claimed["https://kinde.com/email"]) || cleanText(user.owner_email) || "").toLowerCase() || null;
-        const reason = declare ? cleanText(body.reason) : null;
-        const result = await supabase
-          .from("rfx_lanes")
-          .update(declare
-            ? { no_award_at: now, no_award_reason: reason, no_award_by: actor, updated_at: now }
-            : { no_award_at: null, no_award_reason: null, no_award_by: null, updated_at: now })
-          .eq("rfx_event_id", event.id)
-          .in("id", changing.map((lane) => lane.id))
-          .select("id,lane_number,no_award_at,no_award_reason,no_award_by");
-        if (result.error) throw result.error;
-        rows = (result.data || []) as Record<string, unknown>[];
-        await writeAuditLog(
-          supabase,
-          user,
-          declare ? "rfx.lane.no_award" : "rfx.lane.no_award.clear",
-          "rfx_events",
-          event.id,
-          declare ? `Declared ${rows.length} RFx lane(s) void` : `Reopened ${rows.length} void RFx lane(s)`,
-          { rfx_event_id: event.id, lane_ids: rows.map((row) => row.id), reason, actor }
-        );
-      }
-      return jsonResponse({ no_award: declare, updated: rows.length, unchanged: lanes.length - changing.length, rows });
+      return await handleSetRfxLaneNoAward({ supabase, user, claims, body, jsonResponse });
     }
 
     if (body.action === "list_rfx_carrier_replies") {
@@ -30059,75 +30248,7 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "list_outreach_campaigns") {
-      // Opt-in complete, event-scoped read. Keep legacy callers and their counters unchanged.
-      if (Object.prototype.hasOwnProperty.call(body, "rfx_event_id")) {
-        const eventId = typeof body.rfx_event_id === "string" ? body.rfx_event_id.trim() : "";
-        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) {
-          return jsonResponse({ error: "A valid RFx event id is required." }, 400);
-        }
-        if (!user.organization_id) return jsonResponse({ error: "A verified organization is required." }, 403);
-        const event = await requireOwnedRfxEvent(supabase, user, eventId);
-        if (event.organization_id != null && event.organization_id !== user.organization_id) {
-          return jsonResponse({ error: "RFx event not found." }, 404);
-        }
-        const rows = await fetchStableRfxCampaignRows(async ({ afterId, limit }: { afterId: string; limit: number }) => {
-          let query = supabase.from("outreach_campaigns")
-            .select("id,organization_id,owner_email,rfx_event_id,template_id,name,status,audience_policy,created_at,updated_at", afterId ? {} : { count: "exact" })
-            .eq("owner_email", user.owner_email)
-            .eq("rfx_event_id", event.id)
-            .neq("status", "archived")
-            .order("id", { ascending: true })
-            .limit(limit);
-          if (afterId) query = query.gt("id", afterId);
-          const result = await query;
-          if (result.error) throw result.error;
-          // Do not silently hide inconsistent rows as an empty first campaign.
-          for (const row of result.data || []) {
-            if (row.organization_id !== user.organization_id || row.rfx_event_id !== event.id) {
-              throw new Error("RFx campaign scope could not be verified.");
-            }
-          }
-          return result;
-        });
-        rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))
-          || String(b.id).localeCompare(String(a.id)));
-        return jsonResponse({ rows, total: rows.length, complete: true, campaign_read_version: 1,
-          rfx_event_id: event.id, organization_id: user.organization_id });
-      }
-      const campaignsResult = await supabase
-        .from("outreach_campaigns")
-        .select("*, rfx_events(rfx_id,name,customer,status), outreach_templates(name,channel)")
-        .eq("owner_email", user.owner_email)
-        .neq("status", "archived")
-        .order("created_at", { ascending: false })
-        .limit(100);
-      if (campaignsResult.error) throw campaignsResult.error;
-      const campaignIds = (campaignsResult.data || []).map((campaign) => campaign.id);
-      const messagesResult = campaignIds.length
-        ? await supabase
-            .from("outreach_messages")
-            .select("id,campaign_id,status,channel")
-            .in("campaign_id", campaignIds)
-        : { data: [], error: null };
-      if (messagesResult.error) throw messagesResult.error;
-      const counts = new Map<string, { messages: number; sent: number; email: number; whatsapp: number }>();
-      for (const message of messagesResult.data || []) {
-        const bucket = counts.get(message.campaign_id) || { messages: 0, sent: 0, email: 0, whatsapp: 0 };
-        bucket.messages += 1;
-        if (message.status === "sent") bucket.sent += 1;
-        if (message.channel === "email") bucket.email += 1;
-        if (message.channel === "whatsapp") bucket.whatsapp += 1;
-        counts.set(message.campaign_id, bucket);
-      }
-      return jsonResponse({
-        rows: (campaignsResult.data || []).map((campaign) => ({
-          ...campaign,
-          message_count: counts.get(campaign.id)?.messages || 0,
-          sent_count: counts.get(campaign.id)?.sent || 0,
-          email_count: counts.get(campaign.id)?.email || 0,
-          whatsapp_count: counts.get(campaign.id)?.whatsapp || 0
-        }))
-      });
+      return await handleListOutreachCampaigns({ supabase, user, claims, body, jsonResponse });
     }
 
     if (body.action === "create_outreach_campaign") {
@@ -32265,28 +32386,7 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "list_vendor_unmatched_ids") {
-      // Cursor-paged ids of approved rows without a linked vendor, for
-      // driving match_rate_vendors in id batches (the filter RPC variant
-      // exceeds statement timeouts on large books).
-      const unmatchedCursor = cleanText(body.cursor) || "";
-      const pageLimit = Math.min(Math.max(Number(body.limit) || 5000, 100), 10000);
-        let unmatchedQuery = supabase
-          .from("rate_staging")
-          .select("id")
-          .eq("owner_email", user.owner_email)
-          .eq("status", "approved")
-        .is("vendor_id", null)
-        .order("id", { ascending: true })
-        .limit(pageLimit);
-      if (unmatchedCursor) unmatchedQuery = unmatchedQuery.gt("id", unmatchedCursor);
-      const unmatchedResult = await unmatchedQuery;
-      if (unmatchedResult.error) throw unmatchedResult.error;
-      const unmatchedRows = unmatchedResult.data || [];
-      return jsonResponse({
-        ids: unmatchedRows.map((row) => String(row.id)),
-        cursor: unmatchedRows.length ? String(unmatchedRows[unmatchedRows.length - 1].id) : unmatchedCursor,
-        done: unmatchedRows.length < pageLimit
-      });
+      return await handleListVendorUnmatchedIds({ supabase, user, claims, body, jsonResponse });
     }
 
     if (body.action === "book_audit_scan") {
@@ -32575,68 +32675,7 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "simulate_interpretation_memory") {
-      let rule: Record<string, unknown> | null = null;
-      if (body.id) {
-        const result = await supabase
-          .from("interpretation_memory")
-          .select("*")
-          .eq("id", body.id)
-          .or(`owner_email.eq.${user.owner_email},owner_email.is.null`)
-          .maybeSingle();
-        if (result.error) throw result.error;
-        rule = result.data || null;
-      } else {
-        rule = {
-          scope: ["global", "vendor", "rfx", "upload"].includes(String(body.scope || "")) ? String(body.scope) : "global",
-          vendor_domain: normalizeDomain(body.vendor_domain),
-          rfx_hint: cleanText(body.rfx_hint),
-          raw_upload_id: cleanText(body.raw_upload_id),
-          title: cleanText(body.title) || "Draft rule",
-          instruction: cleanText(body.instruction) || ""
-        };
-      }
-      if (!rule) return jsonResponse({ error: "Memory rule not found." }, 404);
-
-      const uploadsResult = await supabase
-        .from("raw_uploads")
-        .select("id,original_filename,status,created_at,interpreted_at,vendor_id,vendor_hint,rfx_hint,document_type,interpreted_rate_rows,expected_rate_rows,audit_status,audit_warnings,vendors(vendor_name,domain)")
-        .neq("status", "archived")
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (uploadsResult.error) throw uploadsResult.error;
-
-      const matches = (uploadsResult.data || []).filter((upload) => memoryRuleMatchesUpload(rule!, upload));
-      const warningCount = matches.reduce((sum, upload) => sum + (Array.isArray(upload.audit_warnings) ? upload.audit_warnings.length : 0), 0);
-      const stagedRows = matches.reduce((sum, upload) => sum + (Number(upload.interpreted_rate_rows || 0) || 0), 0);
-      const expectedRows = matches.reduce((sum, upload) => sum + (Number(upload.expected_rate_rows || upload.interpreted_rate_rows || 0) || 0), 0);
-      return jsonResponse({
-        rule,
-        impact: {
-          upload_count: matches.length,
-          staged_rows: stagedRows,
-          expected_rows: expectedRows,
-          warning_count: warningCount,
-          failed_count: matches.filter((upload) => upload.status === "failed" || upload.audit_status === "failed").length,
-          current_scope: rule.scope
-        },
-        rows: matches.slice(0, 25).map((upload) => {
-          const vendorRelation = Array.isArray(upload.vendors) ? upload.vendors[0] : upload.vendors;
-          const vendor = objectRecord(vendorRelation);
-          return {
-            id: upload.id,
-            filename: upload.original_filename,
-            status: upload.status,
-            vendor: vendor.vendor_name || upload.vendor_hint || "",
-            vendor_domain: vendor.domain || upload.vendor_hint || "",
-            rfx_hint: upload.rfx_hint,
-            document_type: upload.document_type,
-            interpreted_rate_rows: upload.interpreted_rate_rows,
-            expected_rate_rows: upload.expected_rate_rows,
-            audit_status: upload.audit_status,
-            created_at: upload.created_at
-          };
-        })
-      });
+      return await handleSimulateInterpretationMemory({ supabase, user, claims, body, jsonResponse });
     }
 
     if (body.action === "update_interpretation_memory") {

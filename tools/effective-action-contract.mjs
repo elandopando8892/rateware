@@ -1,3 +1,4 @@
+import { REVIEWED_HANDLER_ATTRIBUTION as reviewedHandlers } from '../supabase/functions/_shared/action-contract-reviewed-handlers.mjs';
 import { REVIEWED_INVENTORY_RECONCILIATION as inventoryReconciliation } from '../supabase/functions/_shared/action-contract-reviewed-inventory.mjs';
 import { RADAR_RFI_LINK_ACTION_CONTRACT_EXTENSION as radarRfiLinkExtension } from '../supabase/functions/_shared/action-contract-radar-rfi-link.mjs';
 import { RFX_LANE_CONDITIONS_REPLIES_ACTION_CONTRACT_EXTENSION as laneConditionsRepliesExtension } from '../supabase/functions/_shared/action-contract-rfx-lane-conditions-replies.mjs';
@@ -645,3 +646,8 @@ Object.assign(ACTION_CONTRACT.reviewedMetadataFingerprints, inventoryReconciliat
 Object.assign(ACTION_CONTRACT.reviewedAuthorizationFingerprints, inventoryReconciliation.reviewedAuthorizationFingerprints);
 ACTION_CONTRACT.surfaces = ACTION_CONTRACT.surfaces.map(entry => ({ ...entry, ...(inventoryReconciliation.overrides[entry.canonicalId] || {}) }));
 ACTION_CONTRACT.surfaces.push(...inventoryReconciliation.surfaces);
+
+// Deterministic handler attribution; preserve existing decisions and unrelated baseline drift.
+Object.assign(ACTION_CONTRACT.reviewedMetadataFingerprints, reviewedHandlers.reviewedMetadataFingerprints);
+Object.assign(ACTION_CONTRACT.reviewedAuthorizationFingerprints, reviewedHandlers.reviewedAuthorizationFingerprints);
+ACTION_CONTRACT.surfaces = ACTION_CONTRACT.surfaces.map(entry => ({ ...entry, ...(reviewedHandlers.overrides[entry.canonicalId] || {}) }));
