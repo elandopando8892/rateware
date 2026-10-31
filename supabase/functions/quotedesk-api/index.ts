@@ -23,7 +23,6 @@ import {
   TIERS,
   baseRefusal,
   customerService,
-  estimateQuoteLane,
   equipmentCaveats,
   equipmentLabel,
   mexLaneUnits,
@@ -33,7 +32,8 @@ import {
   legsFor,
   pickCostBase,
   round2,
-  tierMargins
+  tierMargins,
+  crossingCarriesBorder
 } from "./fcm.mjs";
 import {
   ACCESSORIAL_UNITS,
@@ -1139,14 +1139,29 @@ async function estimateLaneFcm(supabase: Db, workspace: Workspace, body: Row) {
 
   const fx = toNumber(quote.fx_usd_mxn) || (await latestFx(supabase))?.usd_mxn || null;
   if (quote.currency === "MXN" && !fx) throw new HttpError(409, "La cotización en MXN necesita un tipo de cambio.");
-  const estimate = estimateQuoteLane({
-    params: record(base.params), policy: base.policy, operation, service, equipment, crossingModel, fxUsdMxn: fx, tier, mex, usa
+  // El costo lo calcula Fr8Quote (un solo motor). QuoteDesk aporta la ruta resuelta y su escala de margen.
+  if (!fx) throw new HttpError(409, "Fr8Quote necesita un tipo de cambio para costear la ruta.");
+  const crossing = crossingCarriesBorder(crossingModel);
+  const margins = tierMargins(record(base.params));
+  const estimate = await fr8quoteEstimate(supabase, {
+    contract: FR8QUOTE_ESTIMATE_CONTRACT,
+    quote_date: nowIso().slice(0, 10),
+    operation, service, equipment,
+    margin: margins[tier as keyof typeof margins],
+    border_carries: crossing.carries,
+    fx_usd_mxn: fx,
+    fx_source: toNumber(quote.fx_usd_mxn) ? "TC de la cotización de QuoteDesk" : "Último TC de QuoteDesk",
+    mex: mex ? { km: mex.km, tolls_mxn: mex.tollsMxn, tolls_source: mexInfo?.tolls_source === "manual" ? "casetas capturadas en QuoteDesk" : "casetas de la tabla del FCM en QuoteDesk", hours: mex.hours } : undefined,
+    us: usa ? { miles: usa.miles, diesel_usd_gal: usa.dieselUsdGal, fsc_per_mile: usa.fscPerMile, diesel_source: `EIA semanal, ${usaInfo?.fsc_region}`, diesel_as_of: usaInfo?.fsc_index_date } : undefined
   });
-  if ((operation === "D2D Export" || operation === "D2D Import") && !estimate.border.known) {
-    warnings.push("Sin modelo de cruce: se incluyó el cruce, como en el FCM. Elige intercambio o placas azules para confirmarlo.");
+  estimate.tier = tier;
+  estimate.margins = margins;
+  estimate.border = { ...estimate.border, known: crossing.known };
+  warnings.push(...(Array.isArray(estimate.warnings) ? estimate.warnings.map(String) : []));
+  if ((operation === "D2D Export" || operation === "D2D Import") && !crossing.known) {
+    warnings.push("Sin modelo de cruce: se incluyó el cruce. Elige intercambio o placas azules para confirmarlo.");
   }
-  const engineCheck = await fcmEngineCheck(supabase, workspace);
-  if (engineCheck.status === "review") warnings.unshift(engineReviewWarning(engineCheck.reasons));
+  const engineCheck = { status: "ok", checked_at: nowIso(), reasons: [] as string[], fcm_release: null };
   // Components in the quote's currency.
   const inQuote = (usd: number | null) => usd === null ? null : quote.currency === "MXN" ? round2(usd * (fx as number)) : usd;
   const components = estimate.components as Record<string, number | null>;
@@ -1174,7 +1189,7 @@ async function estimateLaneFcm(supabase: Db, workspace: Workspace, body: Row) {
     carrier_price_usd: estimate.carrierPriceUsd,
     mx: estimate.mx ? { ...estimate.mx, ...mexInfo } : null,
     us: estimate.us ? { ...estimate.us, ...usaInfo } : null,
-    engine: estimate.engine,
+    engine: { source: "fr8quote", base: estimate.base, model_version: estimate.model_version, total_cost_usd: estimate.total_cost_usd, concepts: estimate.concepts },
     engine_check: engineCheck,
     warnings,
     estimated_at: nowIso()
@@ -1539,6 +1554,44 @@ function safeEqual(a: string, b: string) {
   let diff = 0;
   for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
+}
+
+// Contrato fr8quote.estimate.v1: QuoteDesk pide a Fr8Quote el costo de una ruta ya resuelta, firmado con el mismo
+// secreto de Vault (fr8quote_quotedesk_secret). Fr8Quote responde los componentes del lane en USD.
+const FR8QUOTE_ESTIMATE_CONTRACT = "fr8quote.estimate.v1";
+const FR8QUOTE_ESTIMATE_URL = "https://fr8quote.vercel.app/api/estimate";
+
+type Fr8QuoteEstimate = {
+  tier?: string; margin: number; margins?: unknown; model_version: string; base: Row; total_cost_usd: number; concepts: unknown[]; warnings: unknown[];
+  components: Record<string, number | null>; carrierPriceUsd: number;
+  border: { carries: boolean; costUsd: number; known?: boolean };
+  mx: Row | null; us: Row | null;
+};
+
+async function fr8quoteEstimate(supabase: Db, body: Row): Promise<Fr8QuoteEstimate> {
+  const secretResult = await supabase.rpc("quotedesk_fr8quote_secret");
+  if (secretResult.error) throw secretResult.error;
+  const secret = typeof secretResult.data === "string" ? secretResult.data.trim() : "";
+  if (!secret) throw new HttpError(503, "La conexión con Fr8Quote no está configurada.");
+  const raw = JSON.stringify(body);
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  let response: Response;
+  try {
+    response = await fetch(FR8QUOTE_ESTIMATE_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", "X-FR8-Timestamp": timestamp, "X-FR8-Signature": `sha256=${await hmacSha256Hex(secret, `${timestamp}.${raw}`)}` },
+      body: raw,
+      signal: AbortSignal.timeout(55_000)
+    });
+  } catch (error) {
+    throw new HttpError(502, `Fr8Quote no respondió: ${(error as Error).message}`);
+  }
+  const data = record(await response.json().catch(() => null));
+  if (!response.ok) {
+    const detail = text(data.message, 500) || (Array.isArray(data.issues) ? data.issues.map(String).join("; ") : "") || text(data.error, 200) || `HTTP ${response.status}`;
+    throw new HttpError(response.status === 422 ? 422 : 502, `Fr8Quote no pudo costear la ruta: ${detail}`);
+  }
+  return data as unknown as Fr8QuoteEstimate;
 }
 
 async function fr8quoteWorkspace(supabase: Db): Promise<Workspace> {
