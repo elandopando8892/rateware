@@ -12,17 +12,17 @@ test('only the exact shared secret is accepted', () => {
 });
 
 test('builds the onboarding template with five body parameters', () => {
-  const m = metaMessage({ to: '+52 222 193 0036', template: { nombre: 'fr8onboard_alta_enlace', idioma: 'es_MX', variables: vars } });
+  const m = metaMessage({ to: '+52 222 193 0036', template: { nombre: 'fr8onboard_estado_alta', idioma: 'es_MX', variables: vars } });
   assert.equal(m.to, '522221930036');
-  assert.equal(m.template.name, 'fr8onboard_alta_enlace');
+  assert.equal(m.template.name, 'fr8onboard_estado_alta');
   assert.deepEqual(m.template.components[0].parameters.map((p) => p.text), vars);
 });
 
 test('rejects other templates, wrong arity, missing country code and line breaks become spaces', () => {
   assert.throws(() => metaMessage({ to: '522221930036', template: { nombre: 'rfx_invite', idioma: 'es_MX', variables: vars } }), /no permitida/);
-  assert.throws(() => metaMessage({ to: '522221930036', template: { nombre: 'fr8onboard_alta_enlace', idioma: 'es_MX', variables: vars.slice(0, 3) } }), /5 variables/);
+  assert.throws(() => metaMessage({ to: '522221930036', template: { nombre: 'fr8onboard_estado_alta', idioma: 'es_MX', variables: vars.slice(0, 3) } }), /5 variables/);
   assert.throws(() => metaMessage({ to: '2221930036', text: 'hola' }), /lada de país/);
-  const m = metaMessage({ to: '12105550100', template: { nombre: 'fr8onboard_alta_enlace', idioma: 'es_MX', variables: ['A\nB', ...vars.slice(1)] } });
+  const m = metaMessage({ to: '12105550100', template: { nombre: 'fr8onboard_estado_alta', idioma: 'es_MX', variables: ['A\nB', ...vars.slice(1)] } });
   assert.equal(m.template.components[0].parameters[0].text, 'A B');
 });
 

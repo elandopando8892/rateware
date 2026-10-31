@@ -1,6 +1,6 @@
 // Fr8Onboard sends through the internal HeyMarksman WhatsApp sender; it never holds Meta credentials.
 // Only the onboarding template (or free text inside the 24 h window) is accepted, authenticated with a shared secret.
-export const FR8ONBOARD_TEMPLATES = Object.freeze({ fr8onboard_alta_enlace: { languages: ['es_MX'], params: 5 } });
+export const FR8ONBOARD_TEMPLATES = Object.freeze({ fr8onboard_estado_alta: { languages: ['es_MX'], params: 5 } });
 
 export class Fr8onboardError extends Error {
   constructor(status, message) { super(message); this.status = status; }
