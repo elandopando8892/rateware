@@ -51,10 +51,7 @@ async function readSnapshot(): Promise<Row> {
             select json_build_object(
               'last_ok', max(started_at) filter (where status = 'succeeded'),
               'failed_24h', count(*) filter (where status = 'failed' and started_at > now() - interval '24 hours'),
-              'last_error', (select error from public.fcm_sync_runs where status = 'failed' order by started_at desc limit 1),
-              'engine_check', (
-                select engine_check from public.fcm_sync_runs
-                where status = 'succeeded' and engine_check is not null order by started_at desc limit 1))
+              'last_error', (select error from public.fcm_sync_runs where status = 'failed' order by started_at desc limit 1))
             from public.fcm_sync_runs),
           'fx_last_date', (select max(rate_date) from public.rateware_fx_spot_rates),
           'diesel_last_week', (select max(index_date) from public.rateware_fsc_trend where source = 'eia_weekly_rss'),

@@ -1,5 +1,5 @@
 /** Reviewed hourly FCM bases sync surface (supabase/functions/sync-fcm-bases). Static reviewed fingerprints. */
-const authorizationFingerprint = "98607a3359c14271173133306ba6ef5812c1855f403a3ead285c69c6ed94845b";
+const authorizationFingerprint = "28137ea86cbdf6c64d1a154122b7c643a4eb3c63c397f9703789cdb600bcf12e";
 const surfaces = [{
   "contractVersion": "1.3.0",
   "canonicalId": "edge.sync-fcm-bases.sync_fcm_bases",
@@ -20,13 +20,11 @@ const surfaces = [{
   "decisionStatus": "internal_only",
   "lifecycle": "active",
   "replacementAction": null,
-  "sourceFingerprint": "21b0fb24cc93dcbf4c8118b8e5eccfd43e7bca06d28afaac953b800541d3484f",
-  "notes": "Hourly pg_cron job with the shared SYNC_CRON_SECRET; reads the FCM database through a read-only role (FCM_DATABASE_URL) and writes fcm_cost_bases (per workspace, mapped by the FCM users' emails through workspace_identity_aliases) plus the fcm_* reference tables; then checks that QuoteDesk's copy of the FCM engine still matches the FCM (the live release's formula files, read through the public FCM /health and GitHub raw, the parameters of the copied bases, and a replay of the FCM's latest saved calculations) and logs the run with that check in fcm_sync_runs.",
+  "sourceFingerprint": "2b29ebc8aa4fd4ac08910db5c0739554b2baf078a9df1f27f843978cad26df43",
+  "notes": "Hourly pg_cron job with the shared SYNC_CRON_SECRET; reads the FCM database through a read-only role (FCM_DATABASE_URL) and writes fcm_cost_bases (per workspace, mapped by the FCM users' emails through workspace_identity_aliases) plus the fcm_* reference tables; logs each run in fcm_sync_runs. It no longer checks a copy of the FCM engine: the cost comes from Fr8Quote.",
   "analysisCoverage": "shared-observed",
   "dependencyFiles": [
     "supabase/functions/_shared/kinde.ts",
-    "supabase/functions/quotedesk-api/fcm.mjs",
-    "supabase/functions/sync-fcm-bases/engine-check.mjs",
     "supabase/functions/sync-fcm-bases/fcm-sync.mjs",
     "supabase/functions/sync-fcm-bases/index.ts"
   ],

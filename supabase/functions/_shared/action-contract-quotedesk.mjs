@@ -151,7 +151,7 @@ const surfaces = [
     "lifecycle": "active",
     "replacementAction": null,
     "sourceFingerprint": "73a585b5f3d1a3d03a2bbf7cc498db095433bd38426397ec7c7f98f689a3fb98",
-    "notes": "Bidware QuoteDesk. Prices a draft route with the ported FCM engine (fcm.mjs): MX all-in with FCM casetas per unit type, US RPM plus weekly FSC; reads free-text equipment as the FCM units with notes on guesses, cruce by crossing model, chosen tier margin; may measure missing legs with Google Routes (cached); flags the estimate when the latest engine check says the FCM changed. Writes nothing else. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
+    "notes": "Bidware QuoteDesk. Prices a draft route with Fr8Quote (/api/estimate, fr8quote.estimate.v1) over the route QuoteDesk resolves: MX all-in with FCM casetas per unit type, US RPM plus weekly FSC; reads free-text equipment as the FCM units with notes on guesses, cruce by crossing model, chosen tier margin; may measure missing legs with Google Routes (cached). Writes nothing else. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
@@ -361,7 +361,7 @@ const surfaces = [
     "lifecycle": "active",
     "replacementAction": null,
     "sourceFingerprint": "73a585b5f3d1a3d03a2bbf7cc498db095433bd38426397ec7c7f98f689a3fb98",
-    "notes": "Bidware QuoteDesk. Lists the workspace's usable FCM cost bases (copied from the FCM database into fcm_cost_bases) with their tier margins and the latest engine check from fcm_sync_runs. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
+    "notes": "Bidware QuoteDesk. Lists the workspace's usable FCM cost bases (copied from the FCM database into fcm_cost_bases) with their tier margins. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",

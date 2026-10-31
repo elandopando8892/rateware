@@ -1,5 +1,5 @@
 /** Reviewed daily operations watch surface (supabase/functions/ops-daily-watch). Static reviewed fingerprints. */
-const authorizationFingerprint = "4ecd1271e0bc527fbc040880ff06fa094037153df60ee1630f661a815b1d7b71";
+const authorizationFingerprint = "23b084480802262f74763fe02175e6c5b5015ad2f5c26a91ce487146df43bf9f";
 const surfaces = [{
   "contractVersion": "1.3.0",
   "canonicalId": "edge.ops-daily-watch.ops_daily_watch",
@@ -20,8 +20,8 @@ const surfaces = [{
   "decisionStatus": "internal_only",
   "lifecycle": "active",
   "replacementAction": null,
-  "sourceFingerprint": "1bb27095245ef8a2680bb5e69ce4532bf738fc69f6a95a9bb58605de90011272",
-  "notes": "Daily pg_cron job with the shared SYNC_CRON_SECRET; reads (read-only, SUPABASE_DB_URL) the cron run log, fcm_sync_runs and its engine check, Banxico FX and US diesel freshness, the sales@ Gmail mailbox status and 24 h delivery failures/bounces, and posts what needs a look (plus a Monday all-clear) to the team's Google Chat space through the existing Chat connection. Writes nothing else; `x-watch-dry-run: 1` returns the message without posting.",
+  "sourceFingerprint": "936fc956b1ae7abfd14b5503b5c24da4c13ad8445b1e7d1a2cff4ad624548fe4",
+  "notes": "Daily pg_cron job with the shared SYNC_CRON_SECRET; reads (read-only, SUPABASE_DB_URL) the cron run log, fcm_sync_runs, Banxico FX and US diesel freshness, the sales@ Gmail mailbox status and 24 h delivery failures/bounces, and posts what needs a look (plus a Monday all-clear) to the team's Google Chat space through the existing Chat connection. Writes nothing else; `x-watch-dry-run: 1` returns the message without posting.",
   "analysisCoverage": "shared-observed",
   "dependencyFiles": [
     "supabase/functions/_shared/bid-room-google-chat.ts",
