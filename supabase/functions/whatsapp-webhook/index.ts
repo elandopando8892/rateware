@@ -1,5 +1,6 @@
 import { trackingEventReceipts, TRACKING_SENDER } from './tracking-sender.mjs';
 import { normalizeMetaPhone, parseCallback, callbackReceiptId, selectInboundAssociation, callbackProjection } from "./callback-policy.mjs";
+import { forwardPayload, shouldForward } from "../fr8onboard-whatsapp/policy.mjs";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.111.0";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 
@@ -8,6 +9,26 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_K
 const WHATSAPP_WEBHOOK_VERIFY_TOKEN = (Deno.env.get("WHATSAPP_WEBHOOK_VERIFY_TOKEN") || "").trim();
 const WHATSAPP_APP_SECRET = (Deno.env.get("WHATSAPP_APP_SECRET") || "").trim();
 const WHATSAPP_TOKEN_ENCRYPTION_KEY = (Deno.env.get("WHATSAPP_TOKEN_ENCRYPTION_KEY") || "").trim();
+const FR8ONBOARD_FORWARD = {
+  url: (Deno.env.get("FR8ONBOARD_INBOUND_URL") || "").trim(),
+  secret: (Deno.env.get("FR8ONBOARD_SHARED_SECRET") || "").trim(),
+  phoneNumberId: (Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "").trim(),
+};
+
+// Best effort: a Fr8Onboard outage must not make Meta retry an already persisted callback.
+async function forwardToFr8onboard(event: any, phoneNumberId: string) {
+  if (!shouldForward(FR8ONBOARD_FORWARD, phoneNumberId, event)) return;
+  try {
+    await fetch(FR8ONBOARD_FORWARD.url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${FR8ONBOARD_FORWARD.secret}`, "Content-Type": "application/json" },
+      body: JSON.stringify(forwardPayload(event)),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (error) {
+    console.warn("Fr8Onboard forward failed", error instanceof Error ? error.message : error);
+  }
+}
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -425,6 +446,7 @@ Deno.serve(async (request) => {
     }
     for (const {event,connection,webhookIdentity} of callbacks) {
       if (await recordCallback(supabase,event,connection,webhookIdentity)) processed++;
+      await forwardToFr8onboard(event,webhookIdentity.phoneNumberId);
     }
     return jsonResponse({ ok: true, processed });
   } catch (error) {
