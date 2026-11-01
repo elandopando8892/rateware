@@ -74,6 +74,9 @@ jobs:
       - name: Gate authorization no-regression against main
         run: node tools/validate-action-contract-no-regression.mjs --baseline-root /tmp/rateware-main
 
+      - name: Test Rateware handler attribution and workspace scope
+        run: node --test tests/rateware-handler-attribution.test.mjs tests/rateware-memory-scope.test.mjs tests/rfx-project-owner-contract.test.mjs tests/outreach-message-readonly.test.mjs tests/rateware-read-projections.test.mjs
+
       # Main was re-signed with zero errors on 2026-09-25; from here on any
       # unreviewed drift fails, not only drift that is new against main.
       - name: Gate the full authorization contract
@@ -105,7 +108,7 @@ jobs:
           container='supabase_db_alqjqzqagdmcywpjtnnr'
           ledger="$(docker exec "$container" psql -U postgres -d postgres -Atc \
             "select count(*)::text || '|' || max(version)::text from supabase_migrations.schema_migrations")"
-          test "$ledger" = '416|20261027031059'
+          test "$ledger" = '417|20261027031059'
 
           grants="$(docker exec "$container" psql -U postgres -d postgres -Atc \
             "select has_table_privilege('service_role','public.provider_legal_entity_fact_promotions','SELECT'),

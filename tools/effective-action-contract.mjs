@@ -1,3 +1,5 @@
+import { REVIEWED_HANDLER_ATTRIBUTION as reviewedHandlers } from '../supabase/functions/_shared/action-contract-reviewed-handlers.mjs';
+import { REVIEWED_INVENTORY_RECONCILIATION as inventoryReconciliation } from '../supabase/functions/_shared/action-contract-reviewed-inventory.mjs';
 import { RADAR_RFI_LINK_ACTION_CONTRACT_EXTENSION as radarRfiLinkExtension } from '../supabase/functions/_shared/action-contract-radar-rfi-link.mjs';
 import { RFX_LANE_CONDITIONS_REPLIES_ACTION_CONTRACT_EXTENSION as laneConditionsRepliesExtension } from '../supabase/functions/_shared/action-contract-rfx-lane-conditions-replies.mjs';
 import { RFX_BID_API_V347_ACTION_CONTRACT_EXTENSION as rfxBidApiV347Extension } from '../supabase/functions/_shared/action-contract-rfx-bid-api-v347.mjs';
@@ -637,3 +639,15 @@ ACTION_CONTRACT.surfaces = ACTION_CONTRACT.surfaces.map(entry => {
   return { ...entry, ...(sourceFingerprint ? { sourceFingerprint } : {}), dependencyFiles: rfxBidApiV347Extension.rfxBidDependencyFiles };
 });
 ACTION_CONTRACT.surfaces.push(...rfxBidApiV347Extension.surfaces);
+
+// Review only: preserve decisions, historical removals and unrelated source drift.
+for (const [key, delta] of Object.entries(inventoryReconciliation.expectedCountsDelta)) ACTION_CONTRACT.expectedCounts[key] += delta;
+Object.assign(ACTION_CONTRACT.reviewedMetadataFingerprints, inventoryReconciliation.reviewedMetadataFingerprints);
+Object.assign(ACTION_CONTRACT.reviewedAuthorizationFingerprints, inventoryReconciliation.reviewedAuthorizationFingerprints);
+ACTION_CONTRACT.surfaces = ACTION_CONTRACT.surfaces.map(entry => ({ ...entry, ...(inventoryReconciliation.overrides[entry.canonicalId] || {}) }));
+ACTION_CONTRACT.surfaces.push(...inventoryReconciliation.surfaces);
+
+// Deterministic handler attribution; preserve existing decisions and unrelated baseline drift.
+Object.assign(ACTION_CONTRACT.reviewedMetadataFingerprints, reviewedHandlers.reviewedMetadataFingerprints);
+Object.assign(ACTION_CONTRACT.reviewedAuthorizationFingerprints, reviewedHandlers.reviewedAuthorizationFingerprints);
+ACTION_CONTRACT.surfaces = ACTION_CONTRACT.surfaces.map(entry => ({ ...entry, ...(reviewedHandlers.overrides[entry.canonicalId] || {}) }));
