@@ -58,19 +58,6 @@ export function watchFindings(snapshot, now = new Date()) {
     findings.push(`La copia del FCM falló ${plural(Number(fcm.failed_24h), "vez", "veces")} en 24 h, aunque la última salió bien.`);
   }
 
-  const check = fcm.engine_check || null;
-  if (check) {
-    const reasons = [
-      ...(Array.isArray(check.reasons) ? check.reasons : []),
-      ...(Array.isArray(check.unknown_params) ? check.unknown_params.map((entry) => entry.reason) : [])
-    ].filter(Boolean);
-    if (check.status === "review" || reasons.length) {
-      findings.push(`La alarma del FCM está en revisión: ${reasons.join(" ") || "el FCM cambió."}`);
-    } else if (check.status === "unverified") {
-      findings.push(`La alarma del FCM no pudo comparar la fórmula con el FCM publicado (revisión del ${shortDate(check.checked_at)}).`);
-    }
-  }
-
   const fx = toDate(snapshot.fx_last_date);
   if (!fx || at - fx.getTime() > LIMITS.fxDays * DAY) {
     findings.push(`El tipo de cambio de Banxico no se actualiza: el último FIX es del ${shortDate(snapshot.fx_last_date, false)}.`);

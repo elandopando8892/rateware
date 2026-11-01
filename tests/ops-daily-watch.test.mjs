@@ -12,8 +12,7 @@ function healthy(overrides = {}) {
     fcm: {
       last_ok: hoursAgo(0.7),
       failed_24h: 0,
-      last_error: null,
-      engine_check: { status: "ok", reasons: [], unknown_params: [], checked_at: hoursAgo(0.7) }
+      last_error: null
     },
     fx_last_date: "2026-09-24",
     diesel_last_week: "2026-09-21",
@@ -31,7 +30,7 @@ test("a healthy day says nothing, except on Mondays", () => {
   assert.match(watchMessage([], monday), /Todo en orden/);
 });
 
-test("the FCM copy stopping, failing often, or its alarm in review are reported", () => {
+test("the FCM copy stopping or failing often is reported", () => {
   const stopped = watchFindings(healthy({ fcm: { ...healthy().fcm, last_ok: hoursAgo(LIMITS.fcmCopyHours + 1), last_error: "connect timeout" } }), NOW);
   assert.equal(stopped.length, 1);
   assert.match(stopped[0], /La copia del FCM no ha salido bien desde 25 sep 04:00\. Último error: connect timeout/);
@@ -39,20 +38,6 @@ test("the FCM copy stopping, failing often, or its alarm in review are reported"
   const flaky = watchFindings(healthy({ fcm: { ...healthy().fcm, failed_24h: 3 } }), NOW);
   assert.match(flaky[0], /falló 3 veces en 24 h, aunque la última salió bien/);
 
-  const review = watchFindings(healthy({
-    fcm: {
-      ...healthy().fcm,
-      engine_check: {
-        status: "ok",
-        reasons: [],
-        unknown_params: [{ reason: "La base «X» trae valores que QuoteDesk no sabe usar: VEHICLE · Rabon." }]
-      }
-    }
-  }), NOW);
-  assert.match(review[0], /^La alarma del FCM está en revisión: La base «X»/);
-
-  const unverified = watchFindings(healthy({ fcm: { ...healthy().fcm, engine_check: { status: "unverified", reasons: [], checked_at: hoursAgo(1) } } }), NOW);
-  assert.match(unverified[0], /no pudo comparar la fórmula/);
 });
 
 test("stale FX and diesel respect holidays and the weekly cadence", () => {
